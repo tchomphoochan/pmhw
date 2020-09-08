@@ -1,0 +1,13 @@
+# Compiled object files
+*.o
+*.so
+
+# Compiled Bluespec/Bluesim files
+*.b[aio]
+
+# Compiled Verilog files
+*.v
+
+# Compiled C++ files
+*.h
+*.cxx
