@@ -1,5 +1,6 @@
 // Module to do 2 to 1 transaction set merger
 import Vector::*;
+import PmTypes::*;
 // A transaction set is composed of read set, a write set, and bit vector transaction_ids
 
 typedef struct {
@@ -7,12 +8,6 @@ typedef struct {
     ObjectSet writeSet;
     TransactionIds transactionIds;
 } TransactionSet deriving(Bits, Eq, FShow);
-
-typedef 4096 NumberLiveObjects;
-typedef Bit#(NumberLiveObjects) ObjectSet;
-
-typedef 16 SizeSchedulingPool;
-typedef Bit#(SizeSchedulingPool) TransactionIds;
 
 Integer numberOfComparators = 2;
 
