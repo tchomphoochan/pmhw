@@ -17,10 +17,10 @@ function TransactionSet transactionSetMerger(TransactionSet ts1, TransactionSet 
     let w1w2_set = ts1.writeSet & ts2.writeSet;
     let conflicts = r1w2_set | w1r2_set | w1w2_set;
     let has_conflicts = conflicts != 0;
-    if(has_conflicts) begin 
+    if(has_conflicts) begin
         return ts1;
     end else begin
-        return unionTransaction(ts1,ts2); 
+        return unionTransaction(ts1,ts2);
     end
 endfunction
 
