@@ -1,3 +1,6 @@
+# Compiled binaries
+*.out
+
 # Compiled object files
 *.o
 *.so
