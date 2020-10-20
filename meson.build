@@ -42,9 +42,7 @@ memfile = custom_target('memfile',
         prog_python,
         '@INPUT0@',
         '@INPUT1@',
-        '@OUTPUT@'
-    ]
-)
+        '@OUTPUT@'])
 
 shard_obj = custom_target('shard_obj',
     input: 'Shard.bsv',
