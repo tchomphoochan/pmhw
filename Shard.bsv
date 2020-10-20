@@ -38,7 +38,6 @@ module mkShard(Shard);
     endfunction
 
     rule startRename if (isAddressValid && !isRenameDone && !isReadInProgress);
-        $display("startRename");
         let startBit = valueOf(LogSizeShard) - 1;
         Bit#(LogSizeShard) objectName = (inputAddress.value + {0,tries})[startBit:0];
         outputName <= TaggedValue{tag: inputAddress.tag, value: objectName};
@@ -48,9 +47,7 @@ module mkShard(Shard);
     endrule
 
     rule doRename if (isAddressValid && !isRenameDone && isReadInProgress);
-        $display("doRename %d", tries);
         RenameTableEntry entry <- bram.portA.response.get();
-        $display("entry: ", fshow(entry));
         if (entry.counter == 0 || entry.objectId == inputAddress.value && entry.counter < fromInteger(valueOf(NumberLiveObjects))) begin
             isAddressValid <= False;
             isReadInProgress <= False;
@@ -68,7 +65,6 @@ module mkShard(Shard);
             // Fail.
             $display("fail");
         end else begin
-            $display("next");
             let startBit = valueOf(LogSizeShard) - 1;
             Bit#(LogSizeShard) objectName = (inputAddress.value + {0,tries})[startBit:0];
             outputName <= TaggedValue{tag: inputAddress.tag, value: objectName};
@@ -78,14 +74,12 @@ module mkShard(Shard);
     endrule
 
     method Action putRenameRequest(TaggedValue#(NumberParallelTransactions, ObjectAddress) addr) if (!isAddressValid);
-        $display("putRenameRequest");
         inputAddress <= addr;
         tries <= 0;
         isAddressValid <= True;
     endmethod
 
     method ActionValue#(TaggedValue#(NumberParallelTransactions, ShardedObjectName)) getRenameResponse() if (isRenameDone);
-        $display("getRenameResponse");
         isRenameDone <= False;
         return outputName;
     endmethod
@@ -104,7 +98,6 @@ module mkShardTestbench();
     Reg#(UInt#(32)) counter <- mkReg(0);
 
     rule feed if (counter < 5);
-        $display("feed");
         counter <= counter + 1;
         myShard.putRenameRequest(test_input[counter]);
     endrule
