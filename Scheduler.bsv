@@ -86,7 +86,7 @@ module mkScheduler(Scheduler);
     endmethod
 endmodule
 
-module mkTestbench();
+module mkSchedulerTestbench();
    Scheduler my_test_scheduler <- mkScheduler();
    Vector#(SizeSchedulingPool, TransactionSet) test_input;
    for (Integer i=0; i<valueOf(SizeSchedulingPool); i=i+1) begin
