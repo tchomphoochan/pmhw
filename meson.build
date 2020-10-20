@@ -26,13 +26,13 @@ sched_obj = custom_target('sched_obj',
 
 sched = custom_target('sched',
     input: sched_obj,
-    output: 'sched.bin',
+    output: 'mkSchedulerTestbench',
     command: [
         bsc,
         '-bdir', builddir,
         '-simdir', builddir,
         '-sim',
-        '-e', 'mkSchedulerTestbench',
+        '-e', '@OUTPUT@',
         '-o', '@OUTPUT@'])
 
 memfile = custom_target('memfile',
@@ -59,12 +59,12 @@ shard_obj = custom_target('shard_obj',
 
 shard = custom_target('shard',
     input: shard_obj,
-    output: 'shard.bin',
+    output: 'mkShardTestbench',
     command: [
         bsc,
         '-bdir', builddir,
         '-simdir', builddir,
         '-sim',
-        '-e', 'mkShardTestbench',
+        '-e', '@OUTPUT@',
         '-o', '@OUTPUT@'],
     depends: memfile)
