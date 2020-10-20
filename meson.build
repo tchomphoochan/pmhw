@@ -1,6 +1,7 @@
 project('pmhw')
 
 bsc = find_program('bsc')
+prog_python = import('python').find_installation('python3')
 builddir = meson.current_build_dir()
 
 pm_types_obj = custom_target('pm_types_obj',
@@ -34,6 +35,17 @@ sched = custom_target('sched',
         '-e', 'mkSchedulerTestbench',
         '-o', '@OUTPUT@'])
 
+memfile = custom_target('memfile',
+    input: ['make_memfile.py', 'PmTypes.bsv'],
+    output: 'mem.vmh',
+    command: [
+        prog_python,
+        '@INPUT0@',
+        '@INPUT1@',
+        '@OUTPUT@'
+    ]
+)
+
 shard_obj = custom_target('shard_obj',
     input: 'Shard.bsv',
     output: ['Shard.bo', 'mkShardTestbench.ba'],
@@ -54,4 +66,5 @@ shard = custom_target('shard',
         '-simdir', builddir,
         '-sim',
         '-e', 'mkShardTestbench',
-        '-o', '@OUTPUT@'])
+        '-o', '@OUTPUT@'],
+    depends: memfile)
