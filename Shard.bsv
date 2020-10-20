@@ -51,17 +51,18 @@ module mkShard(Shard);
         $display("doRename %d", tries);
         RenameTableEntry entry <- bram.portA.response.get();
         $display("entry: ", fshow(entry));
-        if (entry.objectId == inputAddress.value && entry.counter < fromInteger(valueOf(NumberLiveObjects))) begin
+        if (entry.counter == 0 || entry.objectId == inputAddress.value && entry.counter < fromInteger(valueOf(NumberLiveObjects))) begin
             isAddressValid <= False;
             isReadInProgress <= False;
             isRenameDone <= True;
-            RenameTableEntry new_entry = entry;
-            new_entry.counter = entry.counter + 1;
             bram.portA.request.put(BRAMRequest{
                 write: True,
                 responseOnWrite: False,
                 address: outputName.value,
-                datain: new_entry
+                datain: RenameTableEntry{
+                    counter: entry.counter + 1,
+                    objectId: inputAddress.value
+                }
             });
         end else if (entry.objectId == inputAddress.value || tries == fromInteger(valueOf(NumberHashes) - 1)) begin
             // Fail.
