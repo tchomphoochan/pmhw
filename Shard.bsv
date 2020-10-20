@@ -93,15 +93,16 @@ endmodule
 module mkShardTestbench();
     Shard myShard <- mkShard();
 
-    Vector#(4, TaggedValue#(NumberParallelTransactions, ObjectAddress)) test_input;
+    Vector#(5, TaggedValue#(NumberParallelTransactions, ObjectAddress)) test_input;
     test_input[0] = TaggedValue{tag: 0, value: 32'h00000000};
-    test_input[1] = TaggedValue{tag: 1, value: 32'h10000001};
-    test_input[2] = TaggedValue{tag: 0, value: 32'h20000002};
+    test_input[1] = TaggedValue{tag: 1, value: 32'h10000005};
+    test_input[2] = TaggedValue{tag: 0, value: 32'h20000006};
     test_input[3] = TaggedValue{tag: 1, value: 32'h70000100};
+    test_input[4] = TaggedValue{tag: 1, value: 32'h20000006};
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 
-    rule feed if (counter < 4);
+    rule feed if (counter < 5);
         $display("feed");
         counter <= counter + 1;
         myShard.putRenameRequest(test_input[counter]);
