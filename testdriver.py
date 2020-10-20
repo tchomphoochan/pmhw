@@ -37,4 +37,6 @@ for test_index in itertools.count():
         print(f"Passed {test_index}/{len(expected)} tests.")
         sys.exit()
     result = proc_output.readline()
-    assert result == expected[test_index], f"got {result}, expected {expected[i]}"
+    assert (
+        result == expected[test_index]
+    ), f"got {result}, expected {expected[test_index]}"
