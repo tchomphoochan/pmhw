@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-cur_dir = Path(".").resolve()
+cur_dir = Path(__file__).parent.resolve()
 
 # Assemble available tests.
 tests = {}
