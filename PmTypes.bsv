@@ -1,5 +1,7 @@
-typedef 1024 NumberLiveObjects;
+typedef 10 LogNumberLiveObjects;
+typedef TExp#(LogNumberLiveObjects) NumberLiveObjects;
 typedef Bit#(NumberLiveObjects) ObjectSet;
 
-typedef 16 SizeSchedulingPool;
+typedef 4 LogSizeSchedulingPool;
+typedef TExp#(LogSizeSchedulingPool) SizeSchedulingPool;
 typedef Bit#(SizeSchedulingPool) TransactionIds;

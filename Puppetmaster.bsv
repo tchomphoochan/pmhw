@@ -44,10 +44,10 @@ endinterface
 module mkScheduler(Scheduler);
     // Declare the state (the registers of the module)
     Reg#(Vector#(SizeSchedulingPool, TransactionSet)) workingTransactions <- mkReg(?);
-    Reg#(Bit#(TAdd#(1,TLog#(SizeSchedulingPool)))) round <- mkReg(-1);
-    Reg#(Bit#(TAdd#(1,TLog#(SizeSchedulingPool)))) step <- mkReg(0);
+    Reg#(Bit#(TAdd#(1,LogSizeSchedulingPool))) round <- mkReg(-1);
+    Reg#(Bit#(TAdd#(1,LogSizeSchedulingPool))) step <- mkReg(0);
 
-    Bit#(TAdd#(1,TLog#(SizeSchedulingPool))) tournamentFinished = fromInteger(valueOf(TAdd#(1, TLog#(SizeSchedulingPool))));
+    Bit#(TAdd#(1,LogSizeSchedulingPool)) tournamentFinished = fromInteger(valueOf(TAdd#(1, LogSizeSchedulingPool)));
 
     // round is never equal to 0. -1 means the module does not have any computation going
     // a value between 1 and tournamentFinished means that the tournament is running
