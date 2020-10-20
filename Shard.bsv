@@ -28,6 +28,14 @@ module mkShard(Shard);
     Reg#(Bool) isReadInProgress <- mkReg(False);
     Reg#(Bool) isRenameDone <- mkReg(False);
 
+    function Bit#(LogSizeShard) makeNewName();
+        // Computes hash function h_i(x) = (x + i) % b.
+        // x: address, i: offset (tries), b: base (SizeShard)
+        ObjectAddress key = inputAddress.value + {0,tries};
+        Integer startBit = valueOf(LogSizeShard) - 1;
+        return key[startBit:0];
+    endfunction
+
     function BRAMRequest#(ShardedObjectName, RenameTableEntry) makeReadRequest(ShardedObjectName addr);
         return BRAMRequest{
             write: False,
@@ -38,8 +46,7 @@ module mkShard(Shard);
     endfunction
 
     rule startRename if (isAddressValid && !isRenameDone && !isReadInProgress);
-        let startBit = valueOf(LogSizeShard) - 1;
-        Bit#(LogSizeShard) objectName = (inputAddress.value + {0,tries})[startBit:0];
+        let objectName = makeNewName();
         outputName <= TaggedValue{tag: inputAddress.tag, value: objectName};
         tries <= tries + 1;
         isReadInProgress <= True;
@@ -65,8 +72,7 @@ module mkShard(Shard);
             // Fail.
             $display("fail");
         end else begin
-            let startBit = valueOf(LogSizeShard) - 1;
-            Bit#(LogSizeShard) objectName = (inputAddress.value + {0,tries})[startBit:0];
+            let objectName = makeNewName();
             outputName <= TaggedValue{tag: inputAddress.tag, value: objectName};
             tries <= tries + 1;
             bram.portA.request.put(makeReadRequest(objectName));
