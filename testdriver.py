@@ -1,4 +1,9 @@
-"""Test script for BSV modules."""
+"""Test script for BSV modules.
+
+Command line usage: python3 testdriver.py <InterfaceName>
+
+The script assumes that test modules are named like "mkInterfaceNameTestbench".
+"""
 import io
 import itertools
 import subprocess
