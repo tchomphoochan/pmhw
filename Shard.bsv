@@ -4,8 +4,8 @@ import Vector::*;
 import PmTypes::*;
 
 interface Shard;
-    method Action putRenameRequest(TaggedValue#(NumberParallelTransactions, ObjectAddress) addr);
-    method ActionValue#(TaggedValue#(NumberParallelTransactions, ShardedObjectName)) getRenameResponse();
+    method Action putRenameRequest(TaggedValue#(SizeRenamerBuffer, ObjectAddress) addr);
+    method ActionValue#(TaggedValue#(SizeRenamerBuffer, ShardedObjectName)) getRenameResponse();
 endinterface
 
 typedef 3 LogNumberHashes;
@@ -21,8 +21,8 @@ module mkShard(Shard);
     cfg.loadFormat = tagged Hex "mem.vmh";
     BRAM2Port#(ShardedObjectName, RenameTableEntry) bram <- mkBRAM2Server(cfg);
 
-    Reg#(TaggedValue#(NumberParallelTransactions, ObjectAddress)) inputAddress <- mkReg(?);
-    Reg#(TaggedValue#(NumberParallelTransactions, ShardedObjectName)) outputName <- mkReg(?);
+    Reg#(TaggedValue#(SizeRenamerBuffer, ObjectAddress)) inputAddress <- mkReg(?);
+    Reg#(TaggedValue#(SizeRenamerBuffer, ShardedObjectName)) outputName <- mkReg(?);
     Reg#(Bit#(LogNumberHashes)) tries <- mkReg(0);
     Reg#(Bool) isAddressValid <- mkReg(False);
     Reg#(Bool) isReadInProgress <- mkReg(False);
@@ -79,13 +79,13 @@ module mkShard(Shard);
         end
     endrule
 
-    method Action putRenameRequest(TaggedValue#(NumberParallelTransactions, ObjectAddress) addr) if (!isAddressValid);
+    method Action putRenameRequest(TaggedValue#(SizeRenamerBuffer, ObjectAddress) addr) if (!isAddressValid);
         inputAddress <= addr;
         tries <= 0;
         isAddressValid <= True;
     endmethod
 
-    method ActionValue#(TaggedValue#(NumberParallelTransactions, ShardedObjectName)) getRenameResponse() if (isRenameDone);
+    method ActionValue#(TaggedValue#(SizeRenamerBuffer, ShardedObjectName)) getRenameResponse() if (isRenameDone);
         isRenameDone <= False;
         return outputName;
     endmethod
@@ -94,7 +94,7 @@ endmodule
 module mkShardTestbench();
     Shard myShard <- mkShard();
 
-    Vector#(5, TaggedValue#(NumberParallelTransactions, ObjectAddress)) test_input;
+    Vector#(5, TaggedValue#(SizeRenamerBuffer, ObjectAddress)) test_input;
     test_input[0] = TaggedValue{tag: 0, value: 32'h00000000};
     test_input[1] = TaggedValue{tag: 1, value: 32'h10000005};
     test_input[2] = TaggedValue{tag: 0, value: 32'h20000006};
