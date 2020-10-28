@@ -53,7 +53,7 @@ shard_obj = custom_target('shard_obj',
         '-sim',
         '-g', 'mkShardTestbench',
         '@INPUT@'],
-    depends: pm_types_obj)
+    depends: [pm_types_obj, memfile])
 
 shard = custom_target('shard',
     input: shard_obj,
@@ -64,5 +64,26 @@ shard = custom_target('shard',
         '-simdir', builddir,
         '-sim',
         '-e', '@OUTPUT@',
-        '-o', '@OUTPUT@'],
-    depends: memfile)
+        '-o', '@OUTPUT@'])
+
+renamer_obj = custom_target('renamer_obj',
+    input: 'Renamer.bsv',
+    output: ['Renamer.bo', 'mkRenamerTestbench.ba'],
+    command: [
+        bsc,
+        '-bdir', builddir,
+        '-sim',
+        '-g', 'mkRenamerTestbench',
+        '@INPUT@'],
+    depends: [pm_types_obj, shard_obj])
+
+renamer = custom_target('renamer',
+    input: renamer_obj,
+    output: 'mkRenamerTestbench',
+    command: [
+        bsc,
+        '-bdir', builddir,
+        '-simdir', builddir,
+        '-sim',
+        '-e', '@OUTPUT@',
+        '-o', '@OUTPUT@'])
