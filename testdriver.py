@@ -1,14 +1,13 @@
-"""Test script for BSV modules.
-
-Command line usage: python3 testdriver.py <InterfaceName>
-
-The script assumes that test modules are named like "mkInterfaceNameTestbench".
-"""
+#! /bin/env python3
+"""Test script for BSV modules."""
 import io
 import itertools
 import subprocess
 import sys
 from pathlib import Path
+
+if len(sys.argv) != 2:
+    sys.exit(f"Usage: {__file__} <InterfaceName>")
 
 cur_dir = Path(__file__).parent.resolve()
 
@@ -23,13 +22,16 @@ for test_file in test_dir.iterdir():
 # Find test for this module.
 module = sys.argv[1]
 if module.lower() not in tests:
-    sys.exit(f"unknown module {module}")
+    sys.exit(f"Unknown module: {module}")
 else:
     expected = tests[module.lower()]
 
 # Run test.
 proc_dir = cur_dir / "build"
-proc_path = proc_dir / f"mk{module.capitalize()}Testbench"
+module_name = f"mk{module.capitalize()}Testbench"
+proc_path = proc_dir / module_name
+if not proc_path.is_file():
+    sys.exit(f"Module executable {module_name} not found.")
 proc = subprocess.Popen([proc_path], cwd=proc_dir, stdout=subprocess.PIPE)
 if proc.stdout is not None:
     proc_output = io.TextIOWrapper(proc.stdout)
