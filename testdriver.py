@@ -4,10 +4,8 @@ import io
 import itertools
 import subprocess
 import sys
+from argparse import ArgumentParser
 from pathlib import Path
-
-if len(sys.argv) != 2:
-    sys.exit(f"Usage: {__file__} <InterfaceName>")
 
 cur_dir = Path(__file__).parent.resolve()
 
@@ -15,20 +13,23 @@ cur_dir = Path(__file__).parent.resolve()
 tests = {}
 test_dir = cur_dir / "test_outputs"
 for test_file in test_dir.iterdir():
-    test_name = test_file.stem.lower()
+    test_name = test_file.stem
     with open(test_file, "rt") as f:
         tests[test_name] = f.readlines()
 
-# Find test for this module.
-module = sys.argv[1]
-if module.lower() not in tests:
-    sys.exit(f"Unknown module: {module}")
-else:
-    expected = tests[module.lower()]
+# Read command line arguments.
+parser = ArgumentParser(description=__doc__)
+parser.add_argument(
+    "module",
+    metavar="InterfaceName",
+    choices=tests,
+    help="name of the interface that the module under testing implements",
+)
+args = parser.parse_args()
 
 # Run test.
 proc_dir = cur_dir / "build"
-module_name = f"mk{module.capitalize()}Testbench"
+module_name = f"mk{args.module}Testbench"
 proc_path = proc_dir / module_name
 if not proc_path.is_file():
     sys.exit(f"Module executable {module_name} not found.")
@@ -40,6 +41,7 @@ else:
 
 # Check test output.
 for test_index in itertools.count():
+    expected = tests[args.module]
     if test_index == len(expected):
         print(f"Passed {test_index}/{len(expected)} tests.")
         sys.exit()
