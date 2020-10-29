@@ -20,14 +20,21 @@ typedef TExp#(LogSizeShard) SizeShard;
 typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogNumberLiveObjects) ObjectName;
 typedef Bit#(LogSizeShard) ShardedObjectName;
+typedef Bit#(LogSizeRenamerBuffer) RenamerEntryIndex;
 typedef Bit#(NumberLiveObjects) ObjectSet;
 typedef Bit#(SizeSchedulingPool) TransactionIds;
 
 // Record types.
 typedef struct {
-    Bit#(TLog#(tagCount)) tag;
-    a value;
-} TaggedValue#(numeric type tagCount, type a) deriving(Bits, Eq, FShow);
+    RenamerEntryIndex index;
+    ObjectAddress address;
+    Bool isWrite;
+ } ShardRenameRequest deriving(Bits, Eq, FShow);
+typedef struct {
+    RenamerEntryIndex index;
+    ShardedObjectName name;
+    Bool isWrite;
+ } ShardRenameResponse deriving(Bits, Eq, FShow);
 typedef struct {
    Bit#(LogMaxNumberTransactions) uniqueIds;
    Vector#(NumberTransactionObjects, Maybe#(Bit#(LogSizeMemory))) readObjects;

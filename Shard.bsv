@@ -4,8 +4,8 @@ import Vector::*;
 import PmTypes::*;
 
 interface Shard;
-    method Action putRenameRequest(TaggedValue#(SizeRenamerBuffer, ObjectAddress) addr);
-    method ActionValue#(TaggedValue#(SizeRenamerBuffer, ShardedObjectName)) getRenameResponse();
+    method Action putRenameRequest(ShardRenameRequest req);
+    method ActionValue#(ShardRenameResponse) getRenameResponse();
 endinterface
 
 typedef 3 LogNumberHashes;
@@ -21,8 +21,8 @@ module mkShard(Shard);
     cfg.loadFormat = tagged Hex "mem.vmh";
     BRAM2Port#(ShardedObjectName, RenameTableEntry) bram <- mkBRAM2Server(cfg);
 
-    Reg#(TaggedValue#(SizeRenamerBuffer, ObjectAddress)) inputAddress <- mkReg(?);
-    Reg#(TaggedValue#(SizeRenamerBuffer, ShardedObjectName)) outputName <- mkReg(?);
+    Reg#(ShardRenameRequest) request <- mkReg(?);
+    Reg#(ShardRenameResponse) response <- mkReg(?);
     Reg#(Bit#(LogNumberHashes)) tries <- mkReg(0);
     Reg#(Bool) isAddressValid <- mkReg(False);
     Reg#(Bool) isReadInProgress <- mkReg(False);
@@ -31,7 +31,7 @@ module mkShard(Shard);
     function Bit#(LogSizeShard) makeNewName();
         // Computes hash function h_i(x) = (x + i) % b.
         // x: address, i: offset (tries), b: base (SizeShard)
-        ObjectAddress key = inputAddress.value + {0,tries};
+        ObjectAddress key = request.address + {0,tries};
         Integer startBit = valueOf(LogSizeShard) - 1;
         return key[startBit:0];
     endfunction
@@ -47,7 +47,7 @@ module mkShard(Shard);
 
     rule startRename if (isAddressValid && !isRenameDone && !isReadInProgress);
         let objectName = makeNewName();
-        outputName <= TaggedValue{tag: inputAddress.tag, value: objectName};
+        response <= ShardRenameResponse{index: request.index, name: objectName, isWrite: request.isWrite};
         tries <= tries + 1;
         isReadInProgress <= True;
         bram.portA.request.put(makeReadRequest(objectName));
@@ -55,51 +55,51 @@ module mkShard(Shard);
 
     rule doRename if (isAddressValid && !isRenameDone && isReadInProgress);
         RenameTableEntry entry <- bram.portA.response.get();
-        if (entry.counter == 0 || entry.objectId == inputAddress.value && entry.counter < fromInteger(valueOf(NumberLiveObjects))) begin
+        if (entry.counter == 0 || entry.objectId == request.address && entry.counter < fromInteger(valueOf(NumberLiveObjects))) begin
             isAddressValid <= False;
             isReadInProgress <= False;
             isRenameDone <= True;
             bram.portA.request.put(BRAMRequest{
                 write: True,
                 responseOnWrite: False,
-                address: outputName.value,
+                address: response.name,
                 datain: RenameTableEntry{
                     counter: entry.counter + 1,
-                    objectId: inputAddress.value
+                    objectId: request.address
                 }
             });
-        end else if (entry.objectId == inputAddress.value || tries == fromInteger(valueOf(NumberHashes) - 1)) begin
+        end else if (entry.objectId == request.address || tries == fromInteger(valueOf(NumberHashes) - 1)) begin
             // Fail.
             $display("fail");
         end else begin
             let objectName = makeNewName();
-            outputName <= TaggedValue{tag: inputAddress.tag, value: objectName};
+            response <= ShardRenameResponse{index: request.index, name: objectName, isWrite: request.isWrite};
             tries <= tries + 1;
             bram.portA.request.put(makeReadRequest(objectName));
         end
     endrule
 
-    method Action putRenameRequest(TaggedValue#(SizeRenamerBuffer, ObjectAddress) addr) if (!isAddressValid);
-        inputAddress <= addr;
+    method Action putRenameRequest(ShardRenameRequest req) if (!isAddressValid);
+        request <= req;
         tries <= 0;
         isAddressValid <= True;
     endmethod
 
-    method ActionValue#(TaggedValue#(SizeRenamerBuffer, ShardedObjectName)) getRenameResponse() if (isRenameDone);
+    method ActionValue#(ShardRenameResponse) getRenameResponse() if (isRenameDone);
         isRenameDone <= False;
-        return outputName;
+        return response;
     endmethod
 endmodule
 
 module mkShardTestbench();
     Shard myShard <- mkShard();
 
-    Vector#(5, TaggedValue#(SizeRenamerBuffer, ObjectAddress)) test_input;
-    test_input[0] = TaggedValue{tag: 0, value: 32'h00000000};
-    test_input[1] = TaggedValue{tag: 1, value: 32'h10000005};
-    test_input[2] = TaggedValue{tag: 0, value: 32'h20000006};
-    test_input[3] = TaggedValue{tag: 1, value: 32'h70000100};
-    test_input[4] = TaggedValue{tag: 1, value: 32'h20000006};
+    Vector#(5, ShardRenameRequest) test_input;
+    test_input[0] = ShardRenameRequest{index: 0, address: 32'h00000000, isWrite: False};
+    test_input[1] = ShardRenameRequest{index: 1, address: 32'h10000005, isWrite: True};
+    test_input[2] = ShardRenameRequest{index: 0, address: 32'h20000006, isWrite: False};
+    test_input[3] = ShardRenameRequest{index: 1, address: 32'h70000100, isWrite: False};
+    test_input[4] = ShardRenameRequest{index: 1, address: 32'h20000006, isWrite: True};
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 

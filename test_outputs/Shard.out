@@ -1,5 +1,5 @@
-TaggedValue { tag: 'h0, value: 'h00 }
-TaggedValue { tag: 'h1, value: 'h05 }
-TaggedValue { tag: 'h0, value: 'h06 }
-TaggedValue { tag: 'h1, value: 'h01 }
-TaggedValue { tag: 'h1, value: 'h06 }
+ShardRenameResponse { index: 'h0, name: 'h00, isWrite: False }
+ShardRenameResponse { index: 'h1, name: 'h05, isWrite: True }
+ShardRenameResponse { index: 'h0, name: 'h06, isWrite: False }
+ShardRenameResponse { index: 'h1, name: 'h01, isWrite: False }
+ShardRenameResponse { index: 'h1, name: 'h06, isWrite: True }
