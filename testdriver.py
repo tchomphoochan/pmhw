@@ -43,10 +43,8 @@ proc = subprocess.Popen(
     text=True,
     bufsize=1,
 )
-if proc.stdout is not None:
-    proc_output = proc.stdout
-else:
-    raise RuntimeError("this should never happen.")
+assert proc.stdout is not None
+proc_output = proc.stdout
 
 # Check test output.
 expected = tests[args.module]
