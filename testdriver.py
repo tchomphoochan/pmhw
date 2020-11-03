@@ -1,6 +1,5 @@
 #! /bin/env python3
 """Test script for BSV modules."""
-import io
 import subprocess
 import sys
 from argparse import ArgumentParser
@@ -36,9 +35,16 @@ module_name = f"mk{args.module}Testbench"
 proc_path = proc_dir / module_name
 if not proc_path.is_file():
     sys.exit(f"Module executable {module_name} not found.")
-proc = subprocess.Popen([proc_path], cwd=proc_dir, stdout=subprocess.PIPE)
+proc = subprocess.Popen(
+    [proc_path],
+    cwd=proc_dir,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+    bufsize=1,
+)
 if proc.stdout is not None:
-    proc_output = io.TextIOWrapper(proc.stdout)
+    proc_output = proc.stdout
 else:
     raise RuntimeError("this should never happen.")
 
