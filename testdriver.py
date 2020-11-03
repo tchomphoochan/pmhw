@@ -1,11 +1,14 @@
 #! /bin/env python3
 """Test script for BSV modules."""
 import io
-import itertools
 import subprocess
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
+from threading import Thread
+from typing import List
+
+TEST_TIMEOUT_SECONDS = 5
 
 cur_dir = Path(__file__).parent.resolve()
 
@@ -40,12 +43,17 @@ else:
     raise RuntimeError("this should never happen.")
 
 # Check test output.
-for test_index in itertools.count():
-    expected = tests[args.module]
-    if test_index == len(expected):
-        print(f"Passed {test_index}/{len(expected)} tests.")
-        sys.exit()
-    result = proc_output.readline()
-    assert (
-        result == expected[test_index]
-    ), f"got {result}, expected {expected[test_index]}"
+expected = tests[args.module]
+results: List[str] = []
+passed = 0
+try:
+    for i in range(len(expected)):
+        thread = Thread(target=lambda: results.append(proc_output.readline()))
+        thread.daemon = True
+        thread.start()
+        thread.join(TEST_TIMEOUT_SECONDS)
+        assert not thread.is_alive(), "test timed out"
+        assert results[-1] == expected[i], f"got {results[-1]}, expected {expected[i]}"
+        passed += 1
+finally:
+    print(f"Passed {passed}/{len(expected)} tests.")
