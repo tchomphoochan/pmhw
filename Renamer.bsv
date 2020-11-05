@@ -1,6 +1,7 @@
 import Arbiter::*;
 import Arbitrate::*;
 import ClientServer::*;
+import Connectable::*;
 import GetPut::*;
 import Vector::*;
 
@@ -57,11 +58,15 @@ module mkRenamer(Renamer);
     for (Integer i = 0; i < valueOf(NumberShards); i = i + 1) begin
         let arb <- mkRoundRobin;
         shardArbiters[i] <- mkArbiter(arb, 1);
+        mkConnection(shardArbiters[i].master, shards[i]);
     end
     Vector#(SizeRenamerBuffer, Arbiter#(NumberShards, ShardRenameResponse, void)) transactionArbiters;
     for (Integer i = 0; i < valueOf(SizeRenamerBuffer); i = i + 1) begin
         let arb <- mkRoundRobin;
         transactionArbiters[i] <- mkArbiter(arb, 1);
+        for (Integer j = 0; j < valueOf(NumberShards); j = j + 1) begin
+            mkConnection(shardArbiters[j].users[i].response, transactionArbiters[i].users[j].request);
+        end
     end
 
     ////////////////////////////////////////////////////////////////////////////
@@ -98,15 +103,6 @@ module mkRenamer(Renamer);
                 end else begin
                     // ???
                 end
-            end
-        end
-    endrule
-
-    rule forward;
-        for (Integer i = 0; i < valueOf(NumberShards); i = i + 1) begin
-            for (Integer j = 0; j < valueOf(SizeRenamerBuffer); j = j + 1) begin
-                let resp <- shardArbiters[i].users[j].response.get();
-                transactionArbiters[j].users[i].request.put(resp);
             end
         end
     endrule
