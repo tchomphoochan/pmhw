@@ -1,5 +1,7 @@
 import Arbiter::*;
-import FIFO::*;
+import Arbitrate::*;
+import ClientServer::*;
+import GetPut::*;
 import Vector::*;
 
 import PmTypes::*;
@@ -19,6 +21,16 @@ typedef struct {
     ObjectSet readSet;
     ObjectSet writeSet;
 } SetBufferEntry deriving(Bits, Eq, FShow);
+
+instance ArbRequestTC#(ShardRenameRequest);
+   function Bool isReadRequest(a x) = True;
+   function Bool isWriteRequest(a x) = False;
+endinstance
+
+instance ArbRequestTC#(ShardRenameResponse);
+   function Bool isReadRequest(a x) = False;
+   function Bool isWriteRequest(a x) = True;
+endinstance
 
 module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////
@@ -41,12 +53,16 @@ module mkRenamer(Renamer);
     // Output buffer.
     Vector#(SizeRenamerBuffer, Reg#(Maybe#(RenamedTransaction))) outputBuffer <- replicateM(mkReg(tagged Invalid));
     // Arbiter.
-    Vector#(NumberShards, Arbiter_IFC#(SizeRenamerBuffer)) forwardArbiters <- replicateM(mkArbiter(False));
-    Vector#(NumberShards, Vector#(SizeRenamerBuffer, FIFO#(ObjectAddress))) forwardQueues <- replicateM(replicateM(mkFIFO1));
-    Vector#(NumberShards, Vector#(SizeRenamerBuffer, FIFO#(Bool))) forwardWriteFlags <- replicateM(replicateM(mkFIFO1));
-    Vector#(SizeRenamerBuffer, Arbiter_IFC#(NumberShards)) backwardArbiters <- replicateM(mkArbiter(False));
-    Vector#(SizeRenamerBuffer, Vector#(NumberShards, FIFO#(ShardedObjectName))) backwardQueues <- replicateM(replicateM(mkFIFO1));
-    Vector#(SizeRenamerBuffer, Vector#(NumberShards, FIFO#(Bool))) backwardWriteFlags <- replicateM(replicateM(mkFIFO1));
+    Vector#(NumberShards, Arbiter#(SizeRenamerBuffer, ShardRenameRequest, ShardRenameResponse)) shardArbiters;
+    for (Integer i = 0; i < valueOf(NumberShards); i = i + 1) begin
+        let arb <- mkRoundRobin;
+        shardArbiters[i] <- mkArbiter(arb, 1);
+    end
+    Vector#(SizeRenamerBuffer, Arbiter#(NumberShards, ShardRenameResponse, void)) transactionArbiters;
+    for (Integer i = 0; i < valueOf(SizeRenamerBuffer); i = i + 1) begin
+        let arb <- mkRoundRobin;
+        transactionArbiters[i] <- mkArbiter(arb, 1);
+    end
 
     ////////////////////////////////////////////////////////////////////////////
     /// Functions
@@ -70,16 +86,14 @@ module mkRenamer(Renamer);
                 if (newEntry.readSetIndex <= fromInteger(valueOf(NumberTransactionObjects)) && isValid(maybeReadObject)) begin
                     currentObject = fromMaybe(?, maybeReadObject);
                     newEntry.readSetIndex = newEntry.readSetIndex + 1;
-                    forwardArbiters[getShard(currentObject)].clients[i].request();
-                    forwardQueues[getShard(currentObject)][i].enq(currentObject);
-                    forwardWriteFlags[getShard(currentObject)][i].enq(False);
+                    let request = ShardRenameRequest{index: fromInteger(i), address: currentObject, isWrite: False};
+                    shardArbiters[getShard(currentObject)].users[i].request.put(request);
                     inputBuffer[i] <= tagged Valid newEntry;
                 end else if (newEntry.writeSetIndex <= fromInteger(valueOf(NumberTransactionObjects)) && isValid(maybeWriteObject)) begin
                     currentObject = fromMaybe(?, maybeWriteObject);
                     newEntry.writeSetIndex = newEntry.writeSetIndex + 1;
-                    forwardArbiters[getShard(currentObject)].clients[i].request();
-                    forwardQueues[getShard(currentObject)][i].enq(currentObject);
-                    forwardWriteFlags[getShard(currentObject)][i].enq(True);
+                    let request = ShardRenameRequest{index: fromInteger(i), address: currentObject, isWrite: True};
+                    shardArbiters[getShard(currentObject)].users[i].request.put(request);
                     inputBuffer[i] <= tagged Valid newEntry;
                 end else begin
                     // ???
@@ -88,37 +102,21 @@ module mkRenamer(Renamer);
         end
     endrule
 
-    rule forwardArbitrate;
+    rule forward;
         for (Integer i = 0; i < valueOf(NumberShards); i = i + 1) begin
-            let queueIndex = forwardArbiters[i].grant_id;
-            let address = forwardQueues[i][queueIndex].first();
-            forwardQueues[i][queueIndex].deq();
-            let isWrite = forwardWriteFlags[i][queueIndex].first();
-            forwardWriteFlags[i][queueIndex].deq();
-            shards[i].putRenameRequest(ShardRenameRequest{index: fromInteger(i), address: address, isWrite: isWrite});
-        end
-    endrule
-
-    rule backwardArbitrate;
-        for (Integer i = 0; i < valueOf(NumberShards); i = i + 1) begin
-            let result <- shards[i].getRenameResponse();
-            let objName = result.name;
-            backwardArbiters[i].clients[result.index].request();
-            backwardQueues[i][result.index].enq(objName);
-            backwardWriteFlags[i][result.index].enq(result.isWrite);
+            for (Integer j = 0; j < valueOf(SizeRenamerBuffer); j = j + 1) begin
+                let resp <- shardArbiters[i].users[j].response.get();
+                transactionArbiters[j].users[i].request.put(resp);
+            end
         end
     endrule
 
     rule gather;
         for (Integer i = 0; i < valueOf(SizeRenamerBuffer); i = i + 1) begin
             let entry = renamedSetBuffer[i];
-            let shardIndex = backwardArbiters[i].grant_id;
-            ShardedObjectName shardObjName = backwardQueues[i][shardIndex].first();
-            backwardQueues[i][shardIndex].deq();
-            Bool isWrite = backwardWriteFlags[i][shardIndex].first();
-            backwardWriteFlags[i][shardIndex].deq();
-            ObjectName objName = {fromInteger(i), shardObjName};
-            if (isWrite) begin
+            let response <- transactionArbiters[i].master.request.get();
+            ObjectName objName = {fromInteger(i), response.name};
+            if (response.isWrite) begin
                 entry.writeSet = entry.writeSet | (1 << objName);
             end else begin
                 entry.readSet = entry.readSet | (1 << objName);
