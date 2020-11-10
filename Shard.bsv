@@ -55,7 +55,7 @@ module mkShard(Shard);
     endfunction
 
     rule startRename if (isAddressValid && !isRenameDone && !isReadInProgress);
-        resp <= ShardRenameResponse{name: {getIndex(), getNextName()}, isWrittenObject: req.isWrittenObject};
+        resp <= ShardRenameResponse{tid: req.tid, name: {getIndex(), getNextName()}, isWrittenObject: req.isWrittenObject};
         tries <= tries + 1;
         isReadInProgress <= True;
         bram.portA.request.put(makeReadRequest(getNextName()));
@@ -80,7 +80,7 @@ module mkShard(Shard);
             // Fail.
             $display("fail");
         end else begin
-            resp <= ShardRenameResponse{name: {getIndex(), getNextName()}, isWrittenObject: req.isWrittenObject};
+            resp <= ShardRenameResponse{tid: req.tid, name: {getIndex(), getNextName()}, isWrittenObject: req.isWrittenObject};
             tries <= tries + 1;
             bram.portA.request.put(makeReadRequest(getNextName()));
         end
@@ -106,11 +106,11 @@ module mkShardTestbench();
     Shard myShard <- mkShard();
 
     Vector#(5, ShardRenameRequest) test_input;
-    test_input[0] = ShardRenameRequest{address: 32'h00000000, isWrittenObject: False};
-    test_input[1] = ShardRenameRequest{address: 32'h80000005, isWrittenObject: True};
-    test_input[2] = ShardRenameRequest{address: 32'h20000006, isWrittenObject: False};
-    test_input[3] = ShardRenameRequest{address: 32'hC0000100, isWrittenObject: False};
-    test_input[4] = ShardRenameRequest{address: 32'h20000006, isWrittenObject: True};
+    test_input[0] = ShardRenameRequest{tid: 64'h1, address: 32'h00000000, isWrittenObject: False};
+    test_input[1] = ShardRenameRequest{tid: 64'h1, address: 32'h80000005, isWrittenObject: True};
+    test_input[2] = ShardRenameRequest{tid: 64'h1, address: 32'h20000006, isWrittenObject: False};
+    test_input[3] = ShardRenameRequest{tid: 64'h1, address: 32'hC0000100, isWrittenObject: False};
+    test_input[4] = ShardRenameRequest{tid: 64'h2, address: 32'h20000006, isWrittenObject: True};
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 

@@ -17,6 +17,7 @@ typedef TSub#(LogNumberLiveObjects, LogNumberShards) LogSizeShard;
 typedef TExp#(LogSizeShard) SizeShard;
 
 // Primitive types.
+typedef Bit#(LogMaxNumberTransactions) TransactionId;
 typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogNumberLiveObjects) ObjectName;
 typedef Bit#(LogNumberShards) ShardIndex;
@@ -27,20 +28,22 @@ typedef Bit#(SizeSchedulingPool) TransactionIds;
 
 // Record types.
 typedef struct {
+    TransactionId tid;
     ObjectAddress address;
     Bool isWrittenObject;
  } ShardRenameRequest deriving(Bits, Eq, FShow);
 typedef struct {
+    TransactionId tid;
     ObjectName name;
     Bool isWrittenObject;
  } ShardRenameResponse deriving(Bits, Eq, FShow);
 typedef struct {
-   Bit#(LogMaxNumberTransactions) uniqueIds;
-   Vector#(NumberTransactionObjects, Maybe#(Bit#(LogSizeMemory))) readObjects;
-   Vector#(NumberTransactionObjects, Maybe#(Bit#(LogSizeMemory))) writeObjects;
+   TransactionId tid;
+   Vector#(NumberTransactionObjects, ObjectAddress) readObjects;
+   Vector#(NumberTransactionObjects, ObjectAddress) writeObjects;
 } InputTransaction deriving(Bits, Eq, FShow);
 typedef struct {
-    Bit#(LogMaxNumberTransactions) uniqueIds;
+    TransactionId tid;
     ObjectSet readSet;
     ObjectSet writeSet;
 } RenamedTransaction deriving(Bits, Eq, FShow);
