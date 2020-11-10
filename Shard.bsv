@@ -26,7 +26,18 @@ module mkShard(Shard);
     Reg#(Bool) isReadInProgress <- mkReg(False);
     Reg#(Bool) isRenameDone <- mkReg(False);
 
-    function Bit#(LogSizeShard) makeNewName();
+    function ShardIndex getIndex();
+        Integer startBit = valueOf(LogSizeMemory) - 1;
+        Integer endBit = valueOf(LogSizeMemory) - valueOf(LogNumberShards);
+        return req.address[startBit:endBit];
+    endfunction
+
+    function ShardedObjectName getName();
+        Integer startBit = valueOf(LogSizeShard) - 1;
+        return resp.name[startBit:0];
+    endfunction
+
+    function ShardedObjectName getNextName();
         // Computes hash function h_i(x) = (x + i) % b.
         // x: address, i: offset (tries), b: base (SizeShard)
         ObjectAddress key = req.address + {0,tries};
@@ -44,11 +55,10 @@ module mkShard(Shard);
     endfunction
 
     rule startRename if (isAddressValid && !isRenameDone && !isReadInProgress);
-        let objectName = makeNewName();
-        resp <= ShardRenameResponse{index: req.index, name: objectName, isWrite: req.isWrite};
+        resp <= ShardRenameResponse{name: {getIndex(), getNextName()}, isWrittenObject: req.isWrittenObject};
         tries <= tries + 1;
         isReadInProgress <= True;
-        bram.portA.request.put(makeReadRequest(objectName));
+        bram.portA.request.put(makeReadRequest(getNextName()));
     endrule
 
     rule doRename if (isAddressValid && !isRenameDone && isReadInProgress);
@@ -60,7 +70,7 @@ module mkShard(Shard);
             bram.portA.request.put(BRAMRequest{
                 write: True,
                 responseOnWrite: False,
-                address: resp.name,
+                address: getName(),
                 datain: RenameTableEntry{
                     counter: entry.counter + 1,
                     objectId: req.address
@@ -70,10 +80,9 @@ module mkShard(Shard);
             // Fail.
             $display("fail");
         end else begin
-            let objectName = makeNewName();
-            resp <= ShardRenameResponse{index: req.index, name: objectName, isWrite: req.isWrite};
+            resp <= ShardRenameResponse{name: {getIndex(), getNextName()}, isWrittenObject: req.isWrittenObject};
             tries <= tries + 1;
-            bram.portA.request.put(makeReadRequest(objectName));
+            bram.portA.request.put(makeReadRequest(getNextName()));
         end
     endrule
 
@@ -97,11 +106,11 @@ module mkShardTestbench();
     Shard myShard <- mkShard();
 
     Vector#(5, ShardRenameRequest) test_input;
-    test_input[0] = ShardRenameRequest{index: 0, address: 32'h00000000, isWrite: False};
-    test_input[1] = ShardRenameRequest{index: 1, address: 32'h10000005, isWrite: True};
-    test_input[2] = ShardRenameRequest{index: 0, address: 32'h20000006, isWrite: False};
-    test_input[3] = ShardRenameRequest{index: 1, address: 32'h70000100, isWrite: False};
-    test_input[4] = ShardRenameRequest{index: 1, address: 32'h20000006, isWrite: True};
+    test_input[0] = ShardRenameRequest{address: 32'h00000000, isWrittenObject: False};
+    test_input[1] = ShardRenameRequest{address: 32'h80000005, isWrittenObject: True};
+    test_input[2] = ShardRenameRequest{address: 32'h20000006, isWrittenObject: False};
+    test_input[3] = ShardRenameRequest{address: 32'hC0000100, isWrittenObject: False};
+    test_input[4] = ShardRenameRequest{address: 32'h20000006, isWrittenObject: True};
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 

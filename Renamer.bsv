@@ -69,7 +69,7 @@ module mkRenamer(Renamer);
     end
     Vector#(SizeRenamerBuffer, Client#(SetBufferEntry, ShardRenameResponse)) aggregators;
     for (Integer i = 0; i < valueOf(SizeRenamerBuffer); i = i + 1) begin
-        aggregators[i] <- mkShardRenameResponseAggregator(i);
+        aggregators[i] <- mkShardRenameResponseAggregator;
         mkConnection(transactionArbiters[i].master.request, aggregators[i].response);
     end
 
@@ -95,13 +95,13 @@ module mkRenamer(Renamer);
                 if (newEntry.readSetIndex <= fromInteger(valueOf(NumberTransactionObjects)) && isValid(maybeReadObject)) begin
                     currentObject = fromMaybe(?, maybeReadObject);
                     newEntry.readSetIndex = newEntry.readSetIndex + 1;
-                    let request = ShardRenameRequest{index: fromInteger(i), address: currentObject, isWrite: False};
+                    let request = ShardRenameRequest{address: currentObject, isWrittenObject: False};
                     shardArbiters[getShard(currentObject)].users[i].request.put(request);
                     inputBuffer[i] <= tagged Valid newEntry;
                 end else if (newEntry.writeSetIndex <= fromInteger(valueOf(NumberTransactionObjects)) && isValid(maybeWriteObject)) begin
                     currentObject = fromMaybe(?, maybeWriteObject);
                     newEntry.writeSetIndex = newEntry.writeSetIndex + 1;
-                    let request = ShardRenameRequest{index: fromInteger(i), address: currentObject, isWrite: True};
+                    let request = ShardRenameRequest{address: currentObject, isWrittenObject: True};
                     shardArbiters[getShard(currentObject)].users[i].request.put(request);
                     inputBuffer[i] <= tagged Valid newEntry;
                 end else begin
@@ -177,7 +177,7 @@ module mkRenamerTestbench();
 
 endmodule
 
-module mkShardRenameResponseAggregator#(Integer shardIndex)(Client#(SetBufferEntry, ShardRenameResponse));
+module mkShardRenameResponseAggregator(Client#(SetBufferEntry, ShardRenameResponse));
     let defaultValue = SetBufferEntry{readSet: 0, writeSet: 0};
     Reg#(SetBufferEntry) entry <- mkReg(defaultValue);
     Reg#(Bool) isDone <- mkReg(False);
@@ -192,13 +192,11 @@ module mkShardRenameResponseAggregator#(Integer shardIndex)(Client#(SetBufferEnt
 
     interface Put response;
         method Action put(ShardRenameResponse response) if (!isDone);
-            $display("gather %0d", shardIndex);
-            ObjectName objName = {fromInteger(shardIndex), response.name};
             SetBufferEntry newEntry = entry;
-            if (response.isWrite) begin
-                newEntry.writeSet = entry.writeSet | (1 << objName);
+            if (response.isWrittenObject) begin
+                newEntry.writeSet = entry.writeSet | (1 << response.name);
             end else begin
-                newEntry.readSet = entry.readSet | (1 << objName);
+                newEntry.readSet = entry.readSet | (1 << response.name);
             end
             entry <= newEntry;
         endmethod

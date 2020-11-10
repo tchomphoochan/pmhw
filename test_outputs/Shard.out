@@ -1,5 +1,5 @@
-ShardRenameResponse { index: 'h0, name: 'h00, isWrite: False }
-ShardRenameResponse { index: 'h1, name: 'h05, isWrite: True }
-ShardRenameResponse { index: 'h0, name: 'h06, isWrite: False }
-ShardRenameResponse { index: 'h1, name: 'h01, isWrite: False }
-ShardRenameResponse { index: 'h1, name: 'h06, isWrite: True }
+ShardRenameResponse { name: 'h000, isWrittenObject: False }
+ShardRenameResponse { name: 'h205, isWrittenObject: True }
+ShardRenameResponse { name: 'h006, isWrittenObject: False }
+ShardRenameResponse { name: 'h301, isWrittenObject: False }
+ShardRenameResponse { name: 'h006, isWrittenObject: True }
