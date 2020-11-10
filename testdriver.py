@@ -17,7 +17,7 @@ test_dir = cur_dir / "test_outputs"
 for test_file in test_dir.iterdir():
     test_name = test_file.stem
     with open(test_file, "rt") as f:
-        tests[test_name] = f.readlines()
+        tests[test_name] = f.read().splitlines()
 
 # Read command line arguments.
 parser = ArgumentParser(description=__doc__)
@@ -57,7 +57,8 @@ try:
         thread.start()
         thread.join(TEST_TIMEOUT_SECONDS)
         assert not thread.is_alive(), "test timed out"
-        assert results[-1] == expected[i], f"got {results[-1]}, expected {expected[i]}"
+        result = results[-1].rstrip()
+        assert result == expected[i], f"got\n\t{result}\nexpected\n\t{expected[i]}"
         passed += 1
 finally:
     print(f"Passed {passed}/{len(expected)} tests.")

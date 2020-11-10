@@ -134,13 +134,17 @@ endmodule
 module mkRenamerTestbench();
     Renamer myRenamer <- mkRenamer();
 
-    rule feed;
-        InputTransaction it;
-        it.tid = 0;
-        for (Integer i = 0; i < valueOf(NumberTransactionObjects); i = i + 1) begin
-            it.readObjects[i] = fromInteger(i) * 8;
-            it.writeObjects[i] = (fromInteger(i) + 1) * 4;
-        end
+    Vector#(1, InputTransaction) test_inputs;
+    test_inputs[0].tid = 0;
+    for (Integer i = 0; i < valueOf(NumberTransactionObjects); i = i + 1) begin
+        test_inputs[0].readObjects[i] = fromInteger(i) * 8;
+        test_inputs[0].writeObjects[i] = (fromInteger(i) + 1) * 4;
+    end
+
+    Reg#(UInt#(32)) counter <- mkReg(0);
+
+    rule feed if (counter < 1);
+        counter <= counter + 1;
         myRenamer.putInputTransaction(it);
     endrule
 

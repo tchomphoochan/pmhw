@@ -87,24 +87,22 @@ module mkScheduler(Scheduler);
 endmodule
 
 module mkSchedulerTestbench();
-   Scheduler my_test_scheduler <- mkScheduler();
-   Vector#(SizeSchedulingPool, TransactionSet) test_input;
-   for (Integer i=0; i<valueOf(SizeSchedulingPool); i=i+1) begin
-       test_input[i] = TransactionSet{
-                                    readSet: 43,
-                                    writeSet: 12,
-                                    transactionIds: (1<<i)};
+    Scheduler my_test_scheduler <- mkScheduler();
 
-   end
+    Vector#(1, Vector#(SizeSchedulingPool, TransactionSet)) test_inputs = newVector;
+    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+        test_inputs[0][i] = TransactionSet{readSet: 'h43, writeSet: 'h12, transactionIds: (1<<i)};
+    end
 
+    Reg#(UInt#(32)) counter <- mkReg(0);
 
-   rule feed;
-        my_test_scheduler.req_Schedule(test_input);
-   endrule
+    rule feed if (counter < 1);
+        counter <= counter + 1;
+        my_test_scheduler.req_Schedule(test_inputs[counter]);
+    endrule
 
-   rule stream;
+    rule stream;
         let result <- my_test_scheduler.resp_Schedule;
-        $display("result:", fshow(result));
-   endrule
-
+        $display(fshow(result));
+    endrule
 endmodule
