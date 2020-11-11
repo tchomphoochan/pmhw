@@ -1,71 +1,72 @@
 // Module to do 2 to 1 transaction set merger
+import ClientServer::*;
+import GetPut::*;
 import Vector::*;
+
 import PmTypes::*;
 
-// A transaction set is composed of read set, a write set, and bit vector transaction_ids
+// A transaction set is composed of read set, a write set, and bit vector indices.
+// The indices are specific to a given round and indicate which transactions are in the set.
+typedef Bit#(SizeSchedulingPool) ContainedTransactions;
 typedef struct {
     ObjectSet readSet;
     ObjectSet writeSet;
-    TransactionIds transactionIds; // TODO change that name to make it clear it is internal data
+    ContainedTransactions indices;
 } TransactionSet deriving(Bits, Eq, FShow);
 
-Integer numberOfComparators = 2;
+// Interface.
+typedef Vector#(SizeSchedulingPool, TransactionSet) SchedulingRequest;
+typedef TransactionSet SchedulingResponse;
+typedef Server#(SchedulingRequest, SchedulingResponse) Scheduler;
 
-function TransactionSet transactionSetMerger(TransactionSet ts1, TransactionSet ts2);
-    let r1w2_set = ts1.readSet & ts2.writeSet;
-    let w1r2_set = ts1.writeSet & ts2.readSet;
-    let w1w2_set = ts1.writeSet & ts2.writeSet;
-    let conflicts = r1w2_set | w1r2_set | w1w2_set;
-    let has_conflicts = conflicts != 0;
-    if(has_conflicts) begin
-        return ts1;
-    end else begin
-        return unionTransaction(ts1,ts2);
-    end
-endfunction
-
-
-function TransactionSet unionTransaction(TransactionSet ts1, TransactionSet ts2);
-    let readSet = ts1.readSet | ts2.readSet;
-    let writeSet = ts1.writeSet | ts2.writeSet;
-    let transactionIds = ts1.transactionIds | ts2.transactionIds;
-    return TransactionSet{
-        readSet: readSet,
-        writeSet: writeSet,
-        transactionIds: transactionIds
-    };
-endfunction
-
-interface Scheduler;
-    method Action req_Schedule(Vector#(SizeSchedulingPool, TransactionSet) inputTransactions);
-    method ActionValue#(TransactionSet) resp_Schedule();
-endinterface
-
+// Main module.
 module mkScheduler(Scheduler);
-    // Declare the state (the registers of the module)
+    Integer numComparators = valueOf(NumberComparators);
+    Integer maxRounds = valueOf(LogSizeSchedulingPool) + 1;
+    Integer maxIndices = valueOf(SizeSchedulingPool);
+
     Reg#(Vector#(SizeSchedulingPool, TransactionSet)) workingTransactions <- mkReg(?);
+    // round is never equal to 0. -1 means the module does not have any computation running.
+    // A value between 1 and maxRounds means that the tournament is running and
+    //     the number of transactions has been halved that many times (minus one).
+    // maxRounds means that we are done.
     Reg#(Bit#(TAdd#(1,LogSizeSchedulingPool))) round <- mkReg(-1);
+    // step is the number of times we have worked on this round. 
     Reg#(Bit#(TAdd#(1,LogSizeSchedulingPool))) step <- mkReg(0);
 
-    Bit#(TAdd#(1,LogSizeSchedulingPool)) tournamentFinished = fromInteger(valueOf(TAdd#(1, LogSizeSchedulingPool)));
+    function TransactionSet addSets(TransactionSet ts1, TransactionSet ts2);
+        return TransactionSet{
+            readSet: ts1.readSet | ts2.readSet,
+            writeSet: ts1.writeSet | ts2.writeSet,
+            indices: ts1.indices | ts2.indices
+        };
+    endfunction
 
-    // round is never equal to 0. -1 means the module does not have any computation going
-    // a value between 1 and tournamentFinished means that the tournament is running
-    // tournamentFinished means that we are ready to consume the response.
+    function TransactionSet tryMergeSets(TransactionSet ts1, TransactionSet ts2);
+        let r1w2_set = ts1.readSet & ts2.writeSet;
+        let w1r2_set = ts1.writeSet & ts2.readSet;
+        let w1w2_set = ts1.writeSet & ts2.writeSet;
+        let conflicts = r1w2_set | w1r2_set | w1w2_set;
+        let has_conflicts = conflicts != 0;
+        if (has_conflicts) begin
+            return ts1;
+        end else begin
+            return addSets(ts1, ts2);
+        end
+    endfunction
 
-    // Define the rules of the state machine
-    rule doTournament if(round != -1 && round != tournamentFinished );
+    rule doTournament if (round != -1 && round != fromInteger(maxRounds));
         let stride = 1 << round;
-        Vector#(SizeSchedulingPool,TransactionSet) newTransactions = workingTransactions;
-        for (Integer i = 0; i < numberOfComparators; i = i + 1) begin
-            let firstIndex = (step * fromInteger(numberOfComparators) + fromInteger(i)) * stride;
+        Vector#(SizeSchedulingPool, TransactionSet) newTransactions = workingTransactions;
+        for (Integer i = 0; i < numComparators; i = i + 1) begin
+            let firstIndex = (step * fromInteger(numComparators) + fromInteger(i)) * stride;
             let secondIndex = firstIndex + (stride >> 1);
-            if (secondIndex < fromInteger(valueOf(SizeSchedulingPool))) begin
-                newTransactions[firstIndex] = transactionSetMerger(workingTransactions[firstIndex], workingTransactions[secondIndex]);
+            if (secondIndex < fromInteger(maxIndices)) begin
+                newTransactions[firstIndex] = tryMergeSets(workingTransactions[firstIndex], workingTransactions[secondIndex]);
             end
         end
         workingTransactions <= newTransactions;
-        if ((step * fromInteger(numberOfComparators) + fromInteger(numberOfComparators) - 1) * stride >= fromInteger(numberOfComparators)) begin
+        if (((step + 1) * fromInteger(numComparators) - 1) * stride >= fromInteger(numComparators)) begin
             round <= round + 1;
             step <= 0;
         end else begin
@@ -73,36 +74,39 @@ module mkScheduler(Scheduler);
         end
     endrule
 
-    // Define the methods of the module
-    method Action req_Schedule(Vector#(SizeSchedulingPool, TransactionSet) inputTransactions) if (round == -1);
-        workingTransactions <= inputTransactions;
-        round <= 1;
-        step <= 0;
-    endmethod
+    interface Put request;
+        method Action put(SchedulingRequest inputTransactions) if (round == -1);
+            workingTransactions <= inputTransactions;
+            round <= 1;
+            step <= 0;
+        endmethod
+    endinterface
 
-    method ActionValue#(TransactionSet) resp_Schedule() if (round == tournamentFinished);
-        round <= -1;
-        return workingTransactions[0];
-    endmethod
+    interface Get response;
+        method ActionValue#(SchedulingResponse) get() if (round == fromInteger(maxRounds));
+            round <= -1;
+            return workingTransactions[0];
+        endmethod
+    endinterface
 endmodule
 
 module mkSchedulerTestbench();
-    Scheduler my_test_scheduler <- mkScheduler();
+    Scheduler myScheduler <- mkScheduler();
 
-    Vector#(1, Vector#(SizeSchedulingPool, TransactionSet)) test_inputs = newVector;
+    Vector#(1, SchedulingRequest) testInputs = newVector;
     for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
-        test_inputs[0][i] = TransactionSet{readSet: 'h43, writeSet: 'h12, transactionIds: (1<<i)};
+        testInputs[0][i] = TransactionSet{readSet: 'h43, writeSet: 'h12, indices: (1<<i)};
     end
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 
     rule feed if (counter < 1);
         counter <= counter + 1;
-        my_test_scheduler.req_Schedule(test_inputs[counter]);
+        myScheduler.request.put(testInputs[counter]);
     endrule
 
     rule stream;
-        let result <- my_test_scheduler.resp_Schedule;
+        let result <- myScheduler.response.get();
         $display(fshow(result));
     endrule
 endmodule

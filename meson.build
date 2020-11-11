@@ -24,7 +24,7 @@ sched_obj = custom_target('sched_obj',
         '@INPUT@'],
     depends: pm_types_obj)
 
-sched = custom_target('sched',
+sched = custom_target('scheduler',
     input: sched_obj,
     output: 'mkSchedulerTestbench',
     command: [
