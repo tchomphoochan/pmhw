@@ -10,6 +10,7 @@ pm_types_obj = custom_target('pm_types_obj',
     command: [
         bsc,
         '-bdir', builddir,
+        '-aggressive-conditions',
         '-sim',
         '@INPUT@'])
 
@@ -19,6 +20,7 @@ sched_obj = custom_target('sched_obj',
     command: [
         bsc,
         '-bdir', builddir,
+        '-aggressive-conditions',
         '-sim',
         '-g', 'mkSchedulerTestbench',
         '@INPUT@'],
@@ -50,6 +52,7 @@ shard_obj = custom_target('shard_obj',
     command: [
         bsc,
         '-bdir', builddir,
+        '-aggressive-conditions',
         '-sim',
         '-g', 'mkShardTestbench',
         '@INPUT@'],
@@ -72,6 +75,7 @@ renamer_obj = custom_target('renamer_obj',
     command: [
         bsc,
         '-bdir', builddir,
+        '-aggressive-conditions',
         '-sim',
         '-g', 'mkRenamerTestbench',
         '@INPUT@'],
