@@ -19,6 +19,47 @@ typedef Vector#(SizeSchedulingPool, TransactionSet) SchedulingRequest;
 typedef TransactionSet SchedulingResponse;
 typedef Server#(SchedulingRequest, SchedulingResponse) Scheduler;
 
+(* noinline *)
+function TransactionSet addSets(TransactionSet ts1, TransactionSet ts2);
+    return TransactionSet{
+        readSet: ts1.readSet | ts2.readSet,
+        writeSet: ts1.writeSet | ts2.writeSet,
+        indices: ts1.indices | ts2.indices
+    };
+endfunction
+
+(* noinline *)
+function TransactionSet tryMergeSets(TransactionSet ts1, TransactionSet ts2);
+    let r1w2_set = ts1.readSet & ts2.writeSet;
+    let w1r2_set = ts1.writeSet & ts2.readSet;
+    let w1w2_set = ts1.writeSet & ts2.writeSet;
+    let conflicts = r1w2_set | w1r2_set | w1w2_set;
+    let has_conflicts = conflicts != 0;
+    if (has_conflicts) begin
+        return ts1;
+    end else begin
+        return addSets(ts1, ts2);
+    end
+endfunction
+
+(* noinline *)
+function Vector#(SizeSchedulingPool, TransactionSet) doCompare(
+        Bit#(TAdd#(1,LogSizeSchedulingPool)) step,
+        Bit#(TAdd#(1,LogSizeSchedulingPool)) offset,
+        Bit#(TAdd#(1,LogSizeSchedulingPool)) stride,
+        Vector#(SizeSchedulingPool, TransactionSet) transactions);
+
+    Integer numComparators = valueOf(NumberComparators);
+    Integer maxIndices = valueOf(SizeSchedulingPool);
+
+    let firstIndex = (step * fromInteger(numComparators) + offset) * stride;
+    let secondIndex = firstIndex + (stride >> 1);
+    if (secondIndex < fromInteger(maxIndices)) begin
+        transactions[firstIndex] = tryMergeSets(transactions[firstIndex], transactions[secondIndex]);
+    end
+    return transactions;
+endfunction
+
 // Main module.
 module mkScheduler(Scheduler);
     Integer numComparators = valueOf(NumberComparators);
@@ -34,36 +75,11 @@ module mkScheduler(Scheduler);
     // step is the number of times we have worked on this round. 
     Reg#(Bit#(TAdd#(1,LogSizeSchedulingPool))) step <- mkReg(0);
 
-    function TransactionSet addSets(TransactionSet ts1, TransactionSet ts2);
-        return TransactionSet{
-            readSet: ts1.readSet | ts2.readSet,
-            writeSet: ts1.writeSet | ts2.writeSet,
-            indices: ts1.indices | ts2.indices
-        };
-    endfunction
-
-    function TransactionSet tryMergeSets(TransactionSet ts1, TransactionSet ts2);
-        let r1w2_set = ts1.readSet & ts2.writeSet;
-        let w1r2_set = ts1.writeSet & ts2.readSet;
-        let w1w2_set = ts1.writeSet & ts2.writeSet;
-        let conflicts = r1w2_set | w1r2_set | w1w2_set;
-        let has_conflicts = conflicts != 0;
-        if (has_conflicts) begin
-            return ts1;
-        end else begin
-            return addSets(ts1, ts2);
-        end
-    endfunction
-
     rule doTournament if (round != -1 && round != fromInteger(maxRounds));
         let stride = 1 << round;
         Vector#(SizeSchedulingPool, TransactionSet) newTransactions = workingTransactions;
         for (Integer i = 0; i < numComparators; i = i + 1) begin
-            let firstIndex = (step * fromInteger(numComparators) + fromInteger(i)) * stride;
-            let secondIndex = firstIndex + (stride >> 1);
-            if (secondIndex < fromInteger(maxIndices)) begin
-                newTransactions[firstIndex] = tryMergeSets(workingTransactions[firstIndex], workingTransactions[secondIndex]);
-            end
+            newTransactions = doCompare(step, fromInteger(i), stride, newTransactions);
         end
         workingTransactions <= newTransactions;
         if (((step + 1) * fromInteger(numComparators) - 1) * stride >= fromInteger(numComparators)) begin
