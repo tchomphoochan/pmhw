@@ -91,3 +91,26 @@ renamer = custom_target('renamer',
         '-sim',
         '-e', '@OUTPUT@',
         '-o', '@OUTPUT@'])
+
+pm_obj = custom_target('pm_obj',
+    input: 'Puppetmaster.bsv',
+    output: ['Puppetmaster.bo', 'mkPuppetmasterTestbench.ba'],
+    command: [
+        bsc,
+        '-bdir', builddir,
+        '-aggressive-conditions',
+        '-sim',
+        '-g', 'mkPuppetmasterTestbench',
+        '@INPUT@'],
+    depends: [pm_types_obj, renamer_obj, sched_obj])
+
+pm = custom_target('pm',
+    input: pm_obj,
+    output: 'mkPuppetmasterTestbench',
+    command: [
+        bsc,
+        '-bdir', builddir,
+        '-simdir', builddir,
+        '-sim',
+        '-e', '@OUTPUT@',
+        '-o', '@OUTPUT@'])
