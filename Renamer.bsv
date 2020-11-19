@@ -25,10 +25,7 @@ instance ArbRequestTC#(RenamedTransaction);
    function Bool isWriteRequest(a x) = True;
 endinstance
 
-interface Renamer;
-    method Action putInputTransaction(InputTransaction it);
-    method ActionValue#(RenamedTransaction) getRenamedTransaction();
-endinterface
+typedef Server#(InputTransaction, RenamedTransaction) Renamer;
 
 typedef Server#(ShardRenameResponse, RenamedTransaction) ResponseAggregator;
 
@@ -156,15 +153,17 @@ module mkRenamer(Renamer);
         end
     endrule
 
-    // Add input transaction to (circular) buffer.
-    method Action putInputTransaction(InputTransaction it) if (!isValid(inputBuffer[inputBufferEnd + 1]));
-        let entry = InputBufferEntry{inputTr: it, readSetIndex: 0, writeSetIndex: 0};
-        inputBuffer[inputBufferEnd + 1] <= tagged Valid entry;
-        inputBufferEnd <= inputBufferEnd + 1;
-    endmethod
+    interface Put request;
+        // Add input transaction to (circular) buffer.
+        method Action put(InputTransaction it) if (!isValid(inputBuffer[inputBufferEnd + 1]));
+            let entry = InputBufferEntry{inputTr: it, readSetIndex: 0, writeSetIndex: 0};
+            inputBuffer[inputBufferEnd + 1] <= tagged Valid entry;
+            inputBufferEnd <= inputBufferEnd + 1;
+        endmethod
+    endinterface
 
     // Return computed result (implemented inside arbiter).
-    method ActionValue#(RenamedTransaction) getRenamedTransaction = outputArbiter.master.request.get;
+    interface Get response = outputArbiter.master.request;
 endmodule
 
 module mkRenamerTestbench();
@@ -181,11 +180,11 @@ module mkRenamerTestbench();
 
     rule feed if (counter < 1);
         counter <= counter + 1;
-        myRenamer.putInputTransaction(testInputs[0]);
+        myRenamer.request.put(testInputs[0]);
     endrule
 
     rule stream;
-        let result <- myRenamer.getRenamedTransaction();
+        let result <- myRenamer.response.get();
         $display(fshow(result));
     endrule
 endmodule

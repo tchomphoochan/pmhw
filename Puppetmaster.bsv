@@ -24,12 +24,12 @@ module mkPuppetmaster(Puppetmaster);
     rule send if (isValid(req) && !isValid(resp) && inputIndex < fromInteger(valueOf(SizeSchedulingPool)));
         inputIndex <= inputIndex + 1;
         let inputs = fromMaybe(?, req);
-        renamer.putInputTransaction(inputs[inputIndex]);
+        renamer.request.put(inputs[inputIndex]);
     endrule
 
     rule receive if (isValid(req) && !isValid(resp) && bufferIndex < fromInteger(valueOf(SizeSchedulingPool)));
         bufferIndex <= bufferIndex + 1;
-        let result <- renamer.getRenamedTransaction();
+        let result <- renamer.response.get();
         buffer[bufferIndex] <= result;
     endrule
 
