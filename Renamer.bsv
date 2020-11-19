@@ -8,6 +8,23 @@ import Vector::*;
 import PmTypes::*;
 import Shard::*;
 
+typedef struct {
+   TransactionId tid;
+   Vector#(NumberTransactionObjects, ObjectAddress) readObjects;
+   Vector#(NumberTransactionObjects, ObjectAddress) writeObjects;
+} InputTransaction deriving(Bits, Eq, FShow);
+
+typedef struct {
+    TransactionId tid;
+    ObjectSet readSet;
+    ObjectSet writeSet;
+} RenamedTransaction deriving(Bits, Eq, FShow);
+
+instance ArbRequestTC#(RenamedTransaction);
+   function Bool isReadRequest(a x) = False;
+   function Bool isWriteRequest(a x) = True;
+endinstance
+
 interface Renamer;
     method Action putInputTransaction(InputTransaction it);
     method ActionValue#(RenamedTransaction) getRenamedTransaction();

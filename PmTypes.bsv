@@ -30,22 +30,3 @@ typedef Bit#(LogNumberShards) ShardIndex;
 typedef Bit#(LogSizeShard) ShardKey;
 typedef Bit#(LogSizeRenamerBuffer) RenamerEntryIndex;
 typedef Bit#(NumberLiveObjects) ObjectSet;
-
-// Record types.
-typedef struct {
-   TransactionId tid;
-   Vector#(NumberTransactionObjects, ObjectAddress) readObjects;
-   Vector#(NumberTransactionObjects, ObjectAddress) writeObjects;
-} InputTransaction deriving(Bits, Eq, FShow);
-
-typedef struct {
-    TransactionId tid;
-    ObjectSet readSet;
-    ObjectSet writeSet;
-} RenamedTransaction deriving(Bits, Eq, FShow);
-
-// Type class instances.
-instance ArbRequestTC#(RenamedTransaction);
-   function Bool isReadRequest(a x) = False;
-   function Bool isWriteRequest(a x) = True;
-endinstance
