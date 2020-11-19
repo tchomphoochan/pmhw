@@ -85,8 +85,8 @@ module mkPuppetmasterTestbench();
     for (Integer i = 0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
         testInput[i].tid = fromInteger(i);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
-            testInput[i].readObjects[j] = fromInteger(j) * 8;
-            testInput[i].writeObjects[j] = (fromInteger(j) + 1) * 4;
+            testInput[i].readObjects[j] = fromInteger(i) * fromInteger(objSetSize) * 2 + fromInteger(j) * 2;
+            testInput[i].writeObjects[j] = fromInteger(i) * fromInteger(objSetSize) * 2 + fromInteger(j) * 2 + 1;
         end
     end
 
