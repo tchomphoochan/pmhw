@@ -10,7 +10,7 @@ typedef 2 LogNumberShards;
 typedef 3 LogNumberHashes;
 typedef TSub#(LogNumberLiveObjects, LogNumberShards) LogSizeShard;
 typedef 2 LogSizeRenamerBuffer;
-typedef 4 LogSizeSchedulingPool;
+typedef 3 LogSizeSchedulingPool;
 typedef 1 LogNumberComparators;
 
 // Numeric types.
