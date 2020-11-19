@@ -1,4 +1,7 @@
-// Transaction renamer. Maps object addresses to a smaller address space.
+////////////////////////////////////////////////////////////////////////////////
+//  Filename      : Renamer.bsv
+//  Description   : Maps object addresses to a smaller address space.
+////////////////////////////////////////////////////////////////////////////////
 import Arbitrate::*;
 import ClientServer::*;
 import Connectable::*;
@@ -8,6 +11,9 @@ import Vector::*;
 import PmTypes::*;
 import Shard::*;
 
+////////////////////////////////////////////////////////////////////////////////
+/// Module interface.
+////////////////////////////////////////////////////////////////////////////////
 typedef struct {
    TransactionId tid;
    Vector#(NumberTransactionObjects, ObjectAddress) readObjects;
@@ -20,40 +26,39 @@ typedef struct {
     ObjectSet writeSet;
 } RenamedTransaction deriving(Bits, Eq, FShow);
 
-instance ArbRequestTC#(RenamedTransaction);
-   function Bool isReadRequest(a x) = False;
-   function Bool isWriteRequest(a x) = True;
-endinstance
-
 typedef Server#(InputTransaction, RenamedTransaction) Renamer;
 
-typedef Server#(ShardRenameResponse, RenamedTransaction) ResponseAggregator;
-
-typedef struct {
-    InputTransaction inputTr;
-    Bit#(TAdd#(LogNumberTransactionObjects, 1)) readSetIndex;
-    Bit#(TAdd#(LogNumberTransactionObjects, 1)) writeSetIndex;
-} InputBufferEntry deriving(Bits, Eq, FShow);
-
-typedef struct {
-    TransactionId tid;
-    ObjectSet readSet;
-    ObjectSet writeSet;
-    Bit#(TAdd#(LogNumberTransactionObjects, 1)) readObjectCount;
-    Bit#(TAdd#(LogNumberTransactionObjects, 1)) writtenObjectCount;
-} SetBufferEntry deriving(Bits, Eq, FShow);
-
+////////////////////////////////////////////////////////////////////////////////
+/// Numeric constants.
+////////////////////////////////////////////////////////////////////////////////
 Integer maxTransactions = valueOf(SizeRenamerBuffer);
 Integer numShards = valueOf(NumberShards);
 Integer objSetSize = valueOf(NumberTransactionObjects);
 
-// Helper module to aggregate responses from shards.
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+///
+/// Helper module to aggregate responses from shards.
+///
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+typedef Server#(ShardRenameResponse, RenamedTransaction) ResponseAggregator;
+
 module mkResponseAggregator(ResponseAggregator);
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Constants.
+    ////////////////////////////////////////////////////////////////////////////////
     let defaultValue = SetBufferEntry{tid: ?, readSet: 0, writeSet: 0, readObjectCount: 0, writtenObjectCount: 0};
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Design elements.
+    ////////////////////////////////////////////////////////////////////////////////
     Reg#(SetBufferEntry) entry <- mkReg(defaultValue);
     Reg#(Bool) isDone <- mkReg(False);
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Interface connections and methods.
+    ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
         method Action put(ShardRenameResponse response) if (!isDone);
             SetBufferEntry newEntry = entry;
@@ -86,8 +91,41 @@ module mkResponseAggregator(ResponseAggregator);
     endinterface
 endmodule
 
-// Main renamer module.
+////////////////////////////////////////////////////////////////////////////////
+/// Internal types.
+////////////////////////////////////////////////////////////////////////////////
+typedef struct {
+    InputTransaction inputTr;
+    Bit#(TAdd#(LogNumberTransactionObjects, 1)) readSetIndex;
+    Bit#(TAdd#(LogNumberTransactionObjects, 1)) writeSetIndex;
+} InputBufferEntry deriving(Bits, Eq, FShow);
+
+typedef struct {
+    TransactionId tid;
+    ObjectSet readSet;
+    ObjectSet writeSet;
+    Bit#(TAdd#(LogNumberTransactionObjects, 1)) readObjectCount;
+    Bit#(TAdd#(LogNumberTransactionObjects, 1)) writtenObjectCount;
+} SetBufferEntry deriving(Bits, Eq, FShow);
+
+// Tells the arbiter that there is no need to route responses back.
+instance ArbRequestTC#(RenamedTransaction);
+   function Bool isReadRequest(a x) = False;
+   function Bool isWriteRequest(a x) = True;
+endinstance
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+///
+/// Renamer implementation.
+///
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 module mkRenamer(Renamer);
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Design elements.
+    ////////////////////////////////////////////////////////////////////////////////
     // Shards.
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
 
@@ -107,8 +145,8 @@ module mkRenamer(Renamer);
     // Connections from shards to aggregators.
     Vector#(SizeRenamerBuffer, Arbiter#(NumberShards, ShardRenameResponse, void)) transactionArbiters;
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
-        let arb <- mkRoundRobin;
-        transactionArbiters[i] <- mkArbiter(arb, 1);
+        let arb1 <- mkRoundRobin;
+        transactionArbiters[i] <- mkArbiter(arb1, 1);
         for (Integer j = 0; j < numShards; j = j + 1) begin
             mkConnection(shardArbiters[j].users[i].response, transactionArbiters[i].users[j].request);
         end
@@ -122,12 +160,15 @@ module mkRenamer(Renamer);
     end
 
     // Connections from aggregators to output.
-    let arbi <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, RenamedTransaction, void) outputArbiter <- mkArbiter(arbi, 1);
+    let arb2 <- mkRoundRobin;
+    Arbiter#(SizeRenamerBuffer, RenamedTransaction, void) outputArbiter <- mkArbiter(arb2, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].response, outputArbiter.users[i].request);
     end
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
     // Send every object in the input transactions to the appropriate shard.
     rule scatter;
         for (Integer i = 0; i < maxTransactions; i = i + 1) begin
@@ -153,8 +194,11 @@ module mkRenamer(Renamer);
         end
     endrule
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Interface connections and methods.
+    ////////////////////////////////////////////////////////////////////////////////
+    // Add input transaction to (circular) buffer.
     interface Put request;
-        // Add input transaction to (circular) buffer.
         method Action put(InputTransaction it) if (!isValid(inputBuffer[inputBufferEnd + 1]));
             let entry = InputBufferEntry{inputTr: it, readSetIndex: 0, writeSetIndex: 0};
             inputBuffer[inputBufferEnd + 1] <= tagged Valid entry;
@@ -166,6 +210,9 @@ module mkRenamer(Renamer);
     interface Get response = outputArbiter.master.request;
 endmodule
 
+////////////////////////////////////////////////////////////////////////////////
+// Renamer tests.
+////////////////////////////////////////////////////////////////////////////////
 module mkRenamerTestbench();
     Renamer myRenamer <- mkRenamer();
 
