@@ -1,4 +1,4 @@
-import Arbiter::*;
+// Transaction renamer. Maps object addresses to a smaller address space.
 import Arbitrate::*;
 import ClientServer::*;
 import Connectable::*;
