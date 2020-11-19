@@ -21,13 +21,13 @@ module mkPuppetmaster(Puppetmaster);
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
 
-    rule send if (isValid(req) && !isValid(resp) && inputIndex <= fromInteger(valueOf(SizeSchedulingPool)));
+    rule send if (isValid(req) && !isValid(resp) && inputIndex < fromInteger(valueOf(SizeSchedulingPool)));
         inputIndex <= inputIndex + 1;
         let inputs = fromMaybe(?, req);
         renamer.putInputTransaction(inputs[inputIndex]);
     endrule
 
-    rule receive if (isValid(req) && !isValid(resp) && bufferIndex <= fromInteger(valueOf(SizeSchedulingPool)));
+    rule receive if (isValid(req) && !isValid(resp) && bufferIndex < fromInteger(valueOf(SizeSchedulingPool)));
         bufferIndex <= bufferIndex + 1;
         let result <- renamer.getRenamedTransaction();
         buffer[bufferIndex] <= result;
