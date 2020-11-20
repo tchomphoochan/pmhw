@@ -38,6 +38,74 @@ Integer objSetSize = valueOf(NumberTransactionObjects);
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ///
+/// Helper module to distribute requests to shards.
+///
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+interface RequestDistributor;
+    interface Put#(InputTransaction) request;
+    interface Vector#(NumberShards, Get#(ShardRenameRequest)) outputs;
+endinterface
+
+module mkRequestDistributor(RequestDistributor);
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Design elements.
+    ////////////////////////////////////////////////////////////////////////////////
+    Reg#(Maybe#(InputBufferEntry)) entry <- mkReg(tagged Invalid);
+    RWire#(InputBufferEntry) nextEntry <- mkRWire();
+    RWire#(ShardIndex) shardIndex <- mkRWire();
+    RWire#(ShardRenameRequest) shardRequest <- mkRWire();
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+    // Send every object in the input transaction to the appropriate shard.
+    rule progress if (isValid(entry));
+        let newEntry = fromMaybe(?, entry);
+        if (newEntry.readSetIndex < fromInteger(objSetSize)) begin
+            let readObject = newEntry.inputTr.readObjects[newEntry.readSetIndex];
+            newEntry.readSetIndex = newEntry.readSetIndex + 1;
+            shardIndex.wset(getShard(readObject));
+            shardRequest.wset(ShardRenameRequest{tid: newEntry.inputTr.tid, address: readObject, isWrittenObject: False});
+        end else if (newEntry.writeSetIndex < fromInteger(objSetSize)) begin
+            let writtenObject = newEntry.inputTr.writeObjects[newEntry.writeSetIndex];
+            newEntry.writeSetIndex = newEntry.writeSetIndex + 1;
+            shardIndex.wset(getShard(writtenObject));
+            shardRequest.wset(ShardRenameRequest{tid: newEntry.inputTr.tid, address: writtenObject, isWrittenObject: True});
+        end
+        nextEntry.wset(newEntry);
+    endrule
+
+    rule finalize if (isValid(entry) && !isValid(shardIndex.wget()));
+        entry <= tagged Invalid;
+    endrule
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Interface connections and methods.
+    ////////////////////////////////////////////////////////////////////////////////
+    function makeOutputInterface(Integer i);
+        return (
+            interface Get
+                method ActionValue#(ShardRenameRequest) get() if (isValid(entry) && isValid(shardIndex.wget()) && fromMaybe(?, shardIndex.wget()) == fromInteger(i));
+                    entry <= tagged Valid fromMaybe(?, nextEntry.wget());
+                    return fromMaybe(?, shardRequest.wget());
+                endmethod
+            endinterface
+        );
+    endfunction
+
+    interface outputs = map(makeOutputInterface, genVector());
+
+    interface Put request;
+        method Action put(InputTransaction it) if (!isValid(entry));
+            entry <= tagged Valid InputBufferEntry{inputTr: it, readSetIndex: 0, writeSetIndex: 0};
+        endmethod
+    endinterface
+endmodule
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+///
 /// Helper module to aggregate responses from shards.
 ///
 ////////////////////////////////////////////////////////////////////////////////
@@ -126,19 +194,23 @@ module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
+    // Request distributors.
+    Vector#(SizeRenamerBuffer, RequestDistributor) distributors <- replicateM(mkRequestDistributor);
+
     // Shards.
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
 
     // Input buffer.
-    Vector#(SizeRenamerBuffer, Reg#(Maybe#(InputBufferEntry))) inputBuffer <- replicateM(mkReg(tagged Invalid));
-    Reg#(Bit#(LogSizeRenamerBuffer)) inputBufferStart <- mkReg(0);
     Reg#(Bit#(LogSizeRenamerBuffer)) inputBufferEnd <- mkReg(0);
 
-    // Connections from input buffers to shards.
+    // Connections from distributors to shards.
     Vector#(NumberShards, Arbiter#(SizeRenamerBuffer, ShardRenameRequest, ShardRenameResponse)) shardArbiters;
     for (Integer i = 0; i < numShards; i = i + 1) begin
         let arb <- mkRoundRobin;
         shardArbiters[i] <- mkArbiter(arb, 1);
+        for (Integer j = 0; j < maxTransactions; j = j + 1) begin
+            mkConnection(distributors[j].outputs[i], shardArbiters[i].users[j].request);
+        end
         mkConnection(shardArbiters[i].master, shards[i]);
     end
 
@@ -167,41 +239,12 @@ module mkRenamer(Renamer);
     end
 
     ////////////////////////////////////////////////////////////////////////////////
-    /// Rules.
-    ////////////////////////////////////////////////////////////////////////////////
-    // Send every object in the input transactions to the appropriate shard.
-    rule scatter;
-        for (Integer i = 0; i < maxTransactions; i = i + 1) begin
-            let entry = inputBuffer[i];
-            if (isValid(entry)) begin
-                let newEntry = fromMaybe(?, entry);
-                if (newEntry.readSetIndex < fromInteger(objSetSize)) begin
-                    let readObject = newEntry.inputTr.readObjects[newEntry.readSetIndex];
-                    newEntry.readSetIndex = newEntry.readSetIndex + 1;
-                    let request = ShardRenameRequest{tid: newEntry.inputTr.tid, address: readObject, isWrittenObject: False};
-                    shardArbiters[getShard(readObject)].users[i].request.put(request);
-                    inputBuffer[i] <= tagged Valid newEntry;
-                end else if (newEntry.writeSetIndex < fromInteger(objSetSize)) begin
-                    let writtenObject = newEntry.inputTr.writeObjects[newEntry.writeSetIndex];
-                    newEntry.writeSetIndex = newEntry.writeSetIndex + 1;
-                    let request = ShardRenameRequest{tid: newEntry.inputTr.tid, address: writtenObject, isWrittenObject: True};
-                    shardArbiters[getShard(writtenObject)].users[i].request.put(request);
-                    inputBuffer[i] <= tagged Valid newEntry;
-                end else begin
-                    inputBuffer[i] <= tagged Invalid;
-                end
-            end
-        end
-    endrule
-
-    ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     // Add input transaction to (circular) buffer.
     interface Put request;
-        method Action put(InputTransaction it) if (!isValid(inputBuffer[inputBufferEnd + 1]));
-            let entry = InputBufferEntry{inputTr: it, readSetIndex: 0, writeSetIndex: 0};
-            inputBuffer[inputBufferEnd + 1] <= tagged Valid entry;
+        method Action put(InputTransaction it);
+            distributors[inputBufferEnd + 1].request.put(it);
             inputBufferEnd <= inputBufferEnd + 1;
         endmethod
     endinterface
