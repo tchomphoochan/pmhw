@@ -5,7 +5,9 @@
 import Arbitrate::*;
 import ClientServer::*;
 import Connectable::*;
+import FIFO::*;
 import GetPut::*;
+import SpecialFIFOs::*;
 import Vector::*;
 
 import PmTypes::*;
@@ -47,48 +49,63 @@ interface RequestDistributor;
     interface Vector#(NumberShards, Get#(ShardRenameRequest)) outputs;
 endinterface
 
+typedef enum { ReadSet, WriteSet } SetType deriving (Bits, Eq, FShow);
+
 module mkRequestDistributor(RequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(Maybe#(InputBufferEntry)) entry <- mkReg(tagged Invalid);
-    RWire#(InputBufferEntry) nextEntry <- mkRWire();
-    RWire#(ShardIndex) shardIndex <- mkRWire();
-    RWire#(ShardRenameRequest) shardRequest <- mkRWire();
+    FIFO#(InputTransaction) inputFifo <- mkBypassFIFO();
+    Reg#(SetType) setType <- mkReg(ReadSet);
+    Reg#(Bit#(LogNumberTransactionObjects)) setIndex <- mkReg(0);
+    Wire#(ShardIndex) shardIndex <- mkWire();
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
     // Send every object in the input transaction to the appropriate shard.
-    rule progress if (isValid(entry));
-        let newEntry = fromMaybe(?, entry);
-        if (newEntry.readSetIndex < fromInteger(objSetSize)) begin
-            let readObject = newEntry.inputTr.readObjects[newEntry.readSetIndex];
-            newEntry.readSetIndex = newEntry.readSetIndex + 1;
-            shardIndex.wset(getShard(readObject));
-            shardRequest.wset(ShardRenameRequest{tid: newEntry.inputTr.tid, address: readObject, isWrittenObject: False});
-        end else if (newEntry.writeSetIndex < fromInteger(objSetSize)) begin
-            let writtenObject = newEntry.inputTr.writeObjects[newEntry.writeSetIndex];
-            newEntry.writeSetIndex = newEntry.writeSetIndex + 1;
-            shardIndex.wset(getShard(writtenObject));
-            shardRequest.wset(ShardRenameRequest{tid: newEntry.inputTr.tid, address: writtenObject, isWrittenObject: True});
+    rule progress;
+        InputTransaction inputTr = inputFifo.first();
+        if (setType == ReadSet) begin
+            let readObject = inputTr.readObjects[setIndex];
+            shardIndex <= getShard(readObject);
+        end else begin
+            let writtenObject = inputTr.writeObjects[setIndex];
+            shardIndex <= getShard(writtenObject);
         end
-        nextEntry.wset(newEntry);
-    endrule
-
-    rule finalize if (isValid(entry) && !isValid(shardIndex.wget()));
-        entry <= tagged Invalid;
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
-    function makeOutputInterface(Integer i);
+    function Get#(ShardRenameRequest) makeOutputInterface(Integer i);
         return (
             interface Get
-                method ActionValue#(ShardRenameRequest) get() if (isValid(entry) && isValid(shardIndex.wget()) && fromMaybe(?, shardIndex.wget()) == fromInteger(i));
-                    entry <= tagged Valid fromMaybe(?, nextEntry.wget());
-                    return fromMaybe(?, shardRequest.wget());
+                method ActionValue#(ShardRenameRequest) get() if (shardIndex == fromInteger(i));
+                    InputTransaction inputTr = inputFifo.first();
+                    ShardRenameRequest request;
+                    request.tid = inputTr.tid;
+                    if (setType == ReadSet) begin
+                        request.address = inputTr.readObjects[setIndex];
+                        request.isWrittenObject = False;
+                        if (setIndex < fromInteger(objSetSize - 1)) begin
+                            setIndex <= setIndex + 1;
+                        end else begin
+                            setIndex <= 0;
+                            setType <= WriteSet;
+                        end
+                    end else begin
+                        request.address = inputTr.writeObjects[setIndex];
+                        request.isWrittenObject = True;
+                        if (setIndex < fromInteger(objSetSize - 1)) begin
+                            setIndex <= setIndex + 1;
+                        end else begin
+                            setIndex <= 0;
+                            setType <= ReadSet;
+                            inputFifo.deq();
+                        end
+                    end
+                    return request;
                 endmethod
             endinterface
         );
@@ -96,11 +113,7 @@ module mkRequestDistributor(RequestDistributor);
 
     interface outputs = map(makeOutputInterface, genVector());
 
-    interface Put request;
-        method Action put(InputTransaction it) if (!isValid(entry));
-            entry <= tagged Valid InputBufferEntry{inputTr: it, readSetIndex: 0, writeSetIndex: 0};
-        endmethod
-    endinterface
+    interface Put request = toPut(inputFifo);
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////
