@@ -1,12 +1,20 @@
-// Module to do 2 to 1 transaction set merger
+////////////////////////////////////////////////////////////////////////////////
+//  Filename      : Scheduler.bsv
+//  Description   : Computes a vector of compatible transactions from among the
+//                  ones in the input vector based on their read and write sets.
+////////////////////////////////////////////////////////////////////////////////
 import ClientServer::*;
 import GetPut::*;
 import Vector::*;
 
 import PmTypes::*;
 
-// A transaction set is composed of read set, a write set, and bit vector indices.
-// The indices are specific to a given round and indicate which transactions are in the set.
+////////////////////////////////////////////////////////////////////////////////
+/// Module interface.
+////////////////////////////////////////////////////////////////////////////////
+// A transaction set is composed of read set, a write set, and the bit vector
+// indices. The indices are specific to a given round and indicate which
+// transactions are in the set.
 typedef Bit#(SizeSchedulingPool) ContainedTransactions;
 typedef struct {
     ObjectSet readSet;
@@ -14,11 +22,22 @@ typedef struct {
     ContainedTransactions indices;
 } TransactionSet deriving(Bits, Eq, FShow);
 
-// Interface.
 typedef Vector#(SizeSchedulingPool, TransactionSet) SchedulingRequest;
 typedef TransactionSet SchedulingResponse;
 typedef Server#(SchedulingRequest, SchedulingResponse) Scheduler;
 
+////////////////////////////////////////////////////////////////////////////////
+/// Numeric constants.
+////////////////////////////////////////////////////////////////////////////////
+Integer numComparators = valueOf(NumberComparators);
+Integer maxRounds = valueOf(LogSizeSchedulingPool) + 1;
+Integer maxIndices = valueOf(SizeSchedulingPool);
+
+////////////////////////////////////////////////////////////////////////////////
+/// Helper functions.
+////////////////////////////////////////////////////////////////////////////////
+// Merges two transactions sets, returning their union if they don't conflict,
+// and returning the first set if they do.
 function TransactionSet mergeTransactionSets(TransactionSet ts1, TransactionSet ts2);
     let r1w2_set = ts1.readSet & ts2.writeSet;
     let w1r2_set = ts1.writeSet & ts2.readSet;
@@ -36,26 +55,57 @@ function TransactionSet mergeTransactionSets(TransactionSet ts1, TransactionSet 
     end
 endfunction
 
-// Main module.
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+///
+/// Tournament scheduler implementation.
+///
+/// We start with a vector of transaction sets, and merge them into half as many
+/// transactions, each of which is either a combination of two transactions, if
+/// those don't conflict, or only one of the two, if they do conlict.
+///
+/// Two transactions conflict if one of the reads an object that the other one
+/// writes or if both of them write the same object. If two transactions
+/// conflict, the first one (according to the order in the vector) progresses to
+/// the next round.
+///
+/// Since the number of comparators might not be large enough to
+/// allow comparing all pairs of transactions in the pool, some rounds can take
+/// multiple cycles.
+///
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 module mkScheduler(Scheduler);
-    Integer numComparators = valueOf(NumberComparators);
-    Integer maxRounds = valueOf(LogSizeSchedulingPool) + 1;
-    Integer maxIndices = valueOf(SizeSchedulingPool);
-
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Design elements.
+    ////////////////////////////////////////////////////////////////////////////////
+    // Transaction sets. The number of "active" transaction sets is halved in
+    // each round. These are stored in this vector contiguously, flushed to the
+    // left (starting at index 0).
     Reg#(Vector#(SizeSchedulingPool, TransactionSet)) workingTransactions <- mkReg(?);
-    // round is never equal to 0. -1 means the module does not have any computation running.
-    // A value between 1 and maxRounds means that the tournament is running and
-    //     the number of transactions has been halved that many times (minus one).
-    // maxRounds means that we are done.
+    // Tournament round.
+    // - -1 means the module does not have any computation running
+    // - it is never equal to 0
+    // - value between 1 and maxRounds means that the tournament is running
+    // - maxRounds means that we are done
     Reg#(Bit#(TAdd#(1,LogSizeSchedulingPool))) round <- mkReg(-1);
+    // Number of transactions that have already been merged in this round.
     Reg#(Bit#(LogSizeSchedulingPool)) offset <- mkReg(0);
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
     rule doTournament if (round != -1 && round != fromInteger(maxRounds));
+        // Rotate to the right, so the sets we are working on will be at the end.
         let rotatedTrVec = rotateBy(workingTransactions, unpack(offset));
-        Vector#(SizeComparisonPool, TransactionSet) currentTransactions = takeTail(rotatedTrVec);
+        // Split into two, first half contains the sets that stay the same.
         Vector#(TSub#(SizeSchedulingPool, SizeComparisonPool), TransactionSet) unchangedTransactions = take(rotatedTrVec);
+        Vector#(SizeComparisonPool, TransactionSet) currentTransactions = takeTail(rotatedTrVec);
+        // Do the actual merging.
         let mergedTransactions = mapPairs(mergeTransactionSets, id, currentTransactions);
-        rotatedTrVec = append(append(mergedTransactions, ?), unchangedTransactions); // Fills unused space.
+        // Concatenate with unchanged sets, filling unused space with ?.
+        rotatedTrVec = append(append(mergedTransactions, ?), unchangedTransactions);
+        // Rotate back and update state.
         let revOffset = fromInteger(maxIndices - 1) - offset + 1;
         workingTransactions <= rotateBy(rotatedTrVec, unpack(revOffset));
         let nextOffset = offset + fromInteger((numComparators * 2) % maxIndices);
@@ -65,6 +115,9 @@ module mkScheduler(Scheduler);
         end
     endrule
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Interface connections and methods.
+    ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
         method Action put(SchedulingRequest inputTransactions) if (round == -1);
             workingTransactions <= inputTransactions;
@@ -81,6 +134,9 @@ module mkScheduler(Scheduler);
     endinterface
 endmodule
 
+////////////////////////////////////////////////////////////////////////////////
+// Scheduler tests.
+////////////////////////////////////////////////////////////////////////////////
 module mkSchedulerTestbench();
     Scheduler myScheduler <- mkScheduler();
 

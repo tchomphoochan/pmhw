@@ -1,3 +1,8 @@
+////////////////////////////////////////////////////////////////////////////////
+//  Filename      : Shard.bsv
+//  Description   : Maps an object address into a smaller namespace so that it
+//                  can be stored in a bit vector.
+////////////////////////////////////////////////////////////////////////////////
 import Arbitrate::*;
 import BRAM::*;
 import ClientServer::*;
@@ -5,7 +10,9 @@ import Vector::*;
 
 import PmTypes::*;
 
-// Interface.
+////////////////////////////////////////////////////////////////////////////////
+/// Module interface.
+////////////////////////////////////////////////////////////////////////////////
 typedef struct {
     TransactionId tid;
     ObjectAddress address;
@@ -20,7 +27,8 @@ typedef struct {
 
 typedef Server#(ShardRenameRequest, ShardRenameResponse) Shard;
 
-// Type class instances.
+// Type class instances telling the arbiter in the renamer module which messages
+// need responses routed back.
 instance ArbRequestTC#(ShardRenameRequest);
    function Bool isReadRequest(a x) = True;
    function Bool isWriteRequest(a x) = False;
@@ -31,22 +39,41 @@ instance ArbRequestTC#(ShardRenameResponse);
    function Bool isWriteRequest(a x) = True;
 endinstance
 
-// Internal structures.
-typedef Bit#(TAdd#(LogNumberLiveObjects, 1)) ReferenceCounter;
-typedef struct {
-    ReferenceCounter counter;
-    ObjectAddress objectId;
-} RenameTableEntry deriving(Bits, Eq, FShow);
-
-// Helper functions.
+////////////////////////////////////////////////////////////////////////////////
+/// Helper functions.
+////////////////////////////////////////////////////////////////////////////////
+// Return the shard index for a given address, which are the low order bits
+// preceding the key used by the shards.
 function ShardIndex getShard(ObjectAddress address);
     Integer startBit = valueOf(LogNumberLiveObjects)- 1;
     Integer endBit = valueOf(LogSizeShard);
     return address[startBit:endBit];
 endfunction
 
-// Main module.
+////////////////////////////////////////////////////////////////////////////////
+/// Internal structures.
+////////////////////////////////////////////////////////////////////////////////
+typedef Bit#(TAdd#(LogNumberLiveObjects, 1)) ReferenceCounter;
+typedef struct {
+    ReferenceCounter counter;
+    ObjectAddress objectId;
+} RenameTableEntry deriving(Bits, Eq, FShow);
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+///
+/// Shard implementation.
+///
+/// The object address space is partitioned into shards. Each shard computes a
+/// "name" (an address with less bits) using primitive hashing (modulus) with
+/// linear probing. The probing step only checks at most NumberHashes slots.
+///
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 module mkShard(Shard);
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Design elements.
+    ////////////////////////////////////////////////////////////////////////////////
     BRAM_Configure cfg = defaultValue();
     cfg.loadFormat = tagged Hex "mem.vmh";
     BRAM2Port#(ShardKey, RenameTableEntry) bram <- mkBRAM2Server(cfg);
@@ -58,6 +85,9 @@ module mkShard(Shard);
     Reg#(Bool) isReadInProgress <- mkReg(False);
     Reg#(Bool) isRenameDone <- mkReg(False);
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Helper functions.
+    ////////////////////////////////////////////////////////////////////////////////
     // Computes hash function h_i(x) = (x + i) % b.
     // x: address, i: offset (tries), b: base (SizeShard)
     function ShardKey getNextName();
@@ -98,6 +128,11 @@ module mkShard(Shard);
         };
     endfunction
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+    // This rule is needed because doRename is blocked before the first read
+    // request gets sent to the BRAM.
     rule startRename if (isAddressValid && !isRenameDone && !isReadInProgress);
         resp <= makeShardResponse();
         tries <= tries + 1;
@@ -122,6 +157,9 @@ module mkShard(Shard);
         end
     endrule
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Interface connections and methods.
+    ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
         method Action put(ShardRenameRequest request) if (!isAddressValid);
             req <= request;
@@ -138,6 +176,9 @@ module mkShard(Shard);
     endinterface
 endmodule
 
+////////////////////////////////////////////////////////////////////////////////
+// Shard tests.
+////////////////////////////////////////////////////////////////////////////////
 module mkShardTestbench();
     Shard myShard <- mkShard();
 

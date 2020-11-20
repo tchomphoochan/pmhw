@@ -28,6 +28,7 @@ typedef struct {
     ObjectSet writeSet;
 } RenamedTransaction deriving(Bits, Eq, FShow);
 
+// Tells the arbiter that we don't need to route responses back.
 instance ArbRequestTC#(RenamedTransaction);
    function Bool isReadRequest(a x) = False;
    function Bool isWriteRequest(a x) = True;
@@ -68,7 +69,7 @@ module mkRequestDistributor(RequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-    // Send every object in the input transaction to the appropriate shard.
+    // Calculate shard corresponding to current object.
     rule progress;
         InputTransaction inputTr = inputFifo.first();
         if (setType == ReadSet) begin
@@ -86,6 +87,8 @@ module mkRequestDistributor(RequestDistributor);
     function Get#(ShardRenameRequest) makeOutputInterface(Integer i);
         return (
             interface Get
+                // One get method per shard.
+                // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRenameRequest) get() if (shardIndex == fromInteger(i));
                     InputTransaction inputTr = inputFifo.first();
                     ShardRenameRequest request;
@@ -94,8 +97,10 @@ module mkRequestDistributor(RequestDistributor);
                         request.address = inputTr.readObjects[setIndex];
                         request.isWrittenObject = False;
                         if (setIndex < fromInteger(objSetSize - 1)) begin
+                            // Go to next read object.
                             setIndex <= setIndex + 1;
                         end else begin
+                            // No more read objects, go to first write object.
                             setIndex <= 0;
                             setType <= WriteSet;
                         end
@@ -103,8 +108,10 @@ module mkRequestDistributor(RequestDistributor);
                         request.address = inputTr.writeObjects[setIndex];
                         request.isWrittenObject = True;
                         if (setIndex < fromInteger(objSetSize - 1)) begin
+                            // Go to next write object.
                             setIndex <= setIndex + 1;
                         end else begin
+                            // No more write objects, transaction is processed.
                             setIndex <= 0;
                             setType <= ReadSet;
                             inputFifo.deq();
