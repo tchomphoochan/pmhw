@@ -28,6 +28,11 @@ typedef struct {
     ObjectSet writeSet;
 } RenamedTransaction deriving(Bits, Eq, FShow);
 
+instance ArbRequestTC#(RenamedTransaction);
+   function Bool isReadRequest(a x) = False;
+   function Bool isWriteRequest(a x) = True;
+endinstance
+
 typedef Server#(InputTransaction, RenamedTransaction) Renamer;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -127,73 +132,47 @@ typedef Server#(ShardRenameResponse, RenamedTransaction) ResponseAggregator;
 
 module mkResponseAggregator(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
-    /// Constants.
-    ////////////////////////////////////////////////////////////////////////////////
-    let defaultValue = SetBufferEntry{tid: ?, readSet: 0, writeSet: 0, readObjectCount: 0, writtenObjectCount: 0};
-
-    ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(SetBufferEntry) entry <- mkReg(defaultValue);
-    Reg#(Bool) isDone <- mkReg(False);
+    Reg#(TransactionId) tid <- mkReg(?);
+    Reg#(ObjectSet) readSet <- mkReg(0);
+    Reg#(ObjectSet) writeSet <- mkReg(0);
+    Reg#(Bit#(TAdd#(LogNumberTransactionObjects, 1))) readObjectCount <- mkReg(0);
+    Reg#(Bit#(TAdd#(LogNumberTransactionObjects, 1))) writtenObjectCount <- mkReg(0);
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Functions.
+    ////////////////////////////////////////////////////////////////////////////////
+    function Bool isDone();
+        return readObjectCount == fromInteger(objSetSize) && writtenObjectCount == fromInteger(objSetSize);
+    endfunction
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
-        method Action put(ShardRenameResponse response) if (!isDone);
-            SetBufferEntry newEntry = entry;
-            newEntry.tid = response.tid;
+        method Action put(ShardRenameResponse response) if (!isDone());
+            tid <= response.tid;
             if (response.isWrittenObject) begin
-                newEntry.writeSet = entry.writeSet | (1 << response.name);
-                newEntry.writtenObjectCount = entry.writtenObjectCount + 1;
+                writeSet <= writeSet | (1 << response.name);
+                writtenObjectCount <= writtenObjectCount + 1;
             end else begin
-                newEntry.readSet = entry.readSet | (1 << response.name);
-                newEntry.readObjectCount = entry.readObjectCount + 1;
-            end
-            entry <= newEntry;
-            if (newEntry.readObjectCount == fromInteger(objSetSize)
-                    && newEntry.writtenObjectCount == fromInteger(objSetSize)) begin
-                isDone <= True;
+                readSet <= readSet | (1 << response.name);
+                readObjectCount <= readObjectCount + 1;
             end
         endmethod
     endinterface
 
     interface Get response;
-        method ActionValue#(RenamedTransaction) get() if (isDone);
-            entry <= defaultValue;
-            isDone <= False;
-            return RenamedTransaction{
-                tid: entry.tid,
-                readSet: entry.readSet,
-                writeSet: entry.writeSet
-            };
+        method ActionValue#(RenamedTransaction) get() if (isDone());
+            readSet <= 0;
+            writeSet <= 0;
+            readObjectCount <= 0;
+            writtenObjectCount <= 0;
+            return RenamedTransaction{ tid: tid, readSet: readSet, writeSet: writeSet };
         endmethod
     endinterface
 endmodule
-
-////////////////////////////////////////////////////////////////////////////////
-/// Internal types.
-////////////////////////////////////////////////////////////////////////////////
-typedef struct {
-    InputTransaction inputTr;
-    Bit#(TAdd#(LogNumberTransactionObjects, 1)) readSetIndex;
-    Bit#(TAdd#(LogNumberTransactionObjects, 1)) writeSetIndex;
-} InputBufferEntry deriving(Bits, Eq, FShow);
-
-typedef struct {
-    TransactionId tid;
-    ObjectSet readSet;
-    ObjectSet writeSet;
-    Bit#(TAdd#(LogNumberTransactionObjects, 1)) readObjectCount;
-    Bit#(TAdd#(LogNumberTransactionObjects, 1)) writtenObjectCount;
-} SetBufferEntry deriving(Bits, Eq, FShow);
-
-// Tells the arbiter that there is no need to route responses back.
-instance ArbRequestTC#(RenamedTransaction);
-   function Bool isReadRequest(a x) = False;
-   function Bool isWriteRequest(a x) = True;
-endinstance
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,7 +182,6 @@ endinstance
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 module mkRenamer(Renamer);
-
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
