@@ -20,6 +20,7 @@ typedef TExp#(LogNumberShards) NumberShards;
 typedef TExp#(LogNumberHashes) NumberHashes;
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
 typedef TExp#(LogSizeSchedulingPool) SizeSchedulingPool;
+typedef TMul#(2, NumberComparators) SizeComparisonPool;
 typedef TExp#(LogNumberComparators) NumberComparators;
 
 // Bit vector types.

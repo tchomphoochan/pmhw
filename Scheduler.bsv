@@ -19,17 +19,7 @@ typedef Vector#(SizeSchedulingPool, TransactionSet) SchedulingRequest;
 typedef TransactionSet SchedulingResponse;
 typedef Server#(SchedulingRequest, SchedulingResponse) Scheduler;
 
-(* noinline *)
-function TransactionSet addSets(TransactionSet ts1, TransactionSet ts2);
-    return TransactionSet{
-        readSet: ts1.readSet | ts2.readSet,
-        writeSet: ts1.writeSet | ts2.writeSet,
-        indices: ts1.indices | ts2.indices
-    };
-endfunction
-
-(* noinline *)
-function TransactionSet tryMergeSets(TransactionSet ts1, TransactionSet ts2);
+function TransactionSet mergeTransactionSets(TransactionSet ts1, TransactionSet ts2);
     let r1w2_set = ts1.readSet & ts2.writeSet;
     let w1r2_set = ts1.writeSet & ts2.readSet;
     let w1w2_set = ts1.writeSet & ts2.writeSet;
@@ -38,26 +28,12 @@ function TransactionSet tryMergeSets(TransactionSet ts1, TransactionSet ts2);
     if (has_conflicts) begin
         return ts1;
     end else begin
-        return addSets(ts1, ts2);
+        return TransactionSet{
+            readSet: ts1.readSet | ts2.readSet,
+            writeSet: ts1.writeSet | ts2.writeSet,
+            indices: ts1.indices | ts2.indices
+        };
     end
-endfunction
-
-(* noinline *)
-function Vector#(SizeSchedulingPool, TransactionSet) doCompare(
-        Bit#(TAdd#(1,LogSizeSchedulingPool)) step,
-        Bit#(TAdd#(1,LogSizeSchedulingPool)) offset,
-        Bit#(TAdd#(1,LogSizeSchedulingPool)) stride,
-        Vector#(SizeSchedulingPool, TransactionSet) transactions);
-
-    Integer numComparators = valueOf(NumberComparators);
-    Integer maxIndices = valueOf(SizeSchedulingPool);
-
-    let firstIndex = (step * fromInteger(numComparators) + offset) * stride;
-    let secondIndex = firstIndex + (stride >> 1);
-    if (secondIndex < fromInteger(maxIndices)) begin
-        transactions[firstIndex] = tryMergeSets(transactions[firstIndex], transactions[secondIndex]);
-    end
-    return transactions;
 endfunction
 
 // Main module.
@@ -72,21 +48,20 @@ module mkScheduler(Scheduler);
     //     the number of transactions has been halved that many times (minus one).
     // maxRounds means that we are done.
     Reg#(Bit#(TAdd#(1,LogSizeSchedulingPool))) round <- mkReg(-1);
-    // step is the number of times we have worked on this round. 
-    Reg#(Bit#(TAdd#(1,LogSizeSchedulingPool))) step <- mkReg(0);
+    Reg#(Bit#(LogSizeSchedulingPool)) offset <- mkReg(0);
 
     rule doTournament if (round != -1 && round != fromInteger(maxRounds));
-        let stride = 1 << round;
-        Vector#(SizeSchedulingPool, TransactionSet) newTransactions = workingTransactions;
-        for (Integer i = 0; i < numComparators; i = i + 1) begin
-            newTransactions = doCompare(step, fromInteger(i), stride, newTransactions);
-        end
-        workingTransactions <= newTransactions;
-        if (((step + 1) * fromInteger(numComparators) - 1) * stride >= fromInteger(numComparators)) begin
+        let rotatedTrVec = rotateBy(workingTransactions, unpack(offset));
+        Vector#(SizeComparisonPool, TransactionSet) currentTransactions = takeTail(rotatedTrVec);
+        Vector#(TSub#(SizeSchedulingPool, SizeComparisonPool), TransactionSet) unchangedTransactions = take(rotatedTrVec);
+        let mergedTransactions = mapPairs(mergeTransactionSets, id, currentTransactions);
+        rotatedTrVec = append(append(mergedTransactions, ?), unchangedTransactions); // Fills unused space.
+        let revOffset = fromInteger(maxIndices - 1) - offset + 1;
+        workingTransactions <= rotateBy(rotatedTrVec, unpack(revOffset));
+        let nextOffset = offset + fromInteger((numComparators * 2) % maxIndices);
+        offset <= nextOffset;
+        if (nextOffset == 0) begin
             round <= round + 1;
-            step <= 0;
-        end else begin
-            step <= step + 1;
         end
     endrule
 
@@ -94,7 +69,7 @@ module mkScheduler(Scheduler);
         method Action put(SchedulingRequest inputTransactions) if (round == -1);
             workingTransactions <= inputTransactions;
             round <= 1;
-            step <= 0;
+            offset <= 0;
         endmethod
     endinterface
 
