@@ -137,17 +137,80 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 // Scheduler tests.
 ////////////////////////////////////////////////////////////////////////////////
+typedef 8 NumberSchedulerTests;
+
 module mkSchedulerTestbench();
     Scheduler myScheduler <- mkScheduler();
 
-    Vector#(1, SchedulingRequest) testInputs = newVector;
+    Vector#(NumberSchedulerTests, SchedulingRequest) testInputs = newVector;
+    // Empty transactions.
     for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
-        testInputs[0][i] = TransactionSet{readSet: 'h43, writeSet: 'h12, indices: (1<<i)};
+        testInputs[0][i] = TransactionSet{
+            readSet: 'b0,
+            writeSet: 'b0,
+            indices: 'b1 << i
+        };
+    end
+    // Non-conflicting read-only transactions.
+    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+        testInputs[1][i] = TransactionSet{
+            readSet: 'b1 << i,
+            writeSet: 'b0,
+            indices: 'b1 << i
+        };
+    end
+    // Overlapping read-only transactions.
+    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+        testInputs[2][i] = TransactionSet{
+            readSet: 'b1111 << i,
+            writeSet: 'b0,
+            indices: 'b1 << i
+        };
+    end
+    // Non-conflicting read-write transactions.
+    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+        testInputs[3][i] = TransactionSet{
+            readSet: 'b11 << (2 * i),
+            writeSet: 'b1 << (valueOf(NumberLiveObjects) - i - 1),
+            indices: 'b1 << i
+        };
+    end
+    // Non-conflicting read-write transactions with overlapping reads.
+    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+        testInputs[4][i] = TransactionSet{
+            readSet: 'b1111 << i,
+            writeSet: 'b1 << (valueOf(NumberLiveObjects) - i - 1),
+            indices: 'b1 << i
+        };
+    end
+    // Transactions with read-write conflicts.
+    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+        testInputs[5][i] = TransactionSet{
+            readSet: 'b11 << (2 * i),
+            writeSet: 'b100 << (2 * i),
+            indices: 'b1 << i
+        };
+    end
+    // Transacions with write-write conflicts.
+    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+        testInputs[6][i] = TransactionSet{
+            readSet: 'b1000 << i,
+            writeSet: 'b1 << (i % 3),
+            indices: 'b1 << i
+        };
+    end
+    // Transactions with both conflicts.
+    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+        testInputs[7][i] = TransactionSet{
+            readSet: 'b1010 << i,
+            writeSet: 'b101 << i,
+            indices: 'b1 << i
+        };
     end
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 
-    rule feed if (counter < 1);
+    rule feed if (counter < fromInteger(valueOf(NumberSchedulerTests)));
         counter <= counter + 1;
         myScheduler.request.put(testInputs[counter]);
     endrule
