@@ -30,7 +30,7 @@ typedef Server#(SchedulingRequest, SchedulingResponse) Scheduler;
 /// Numeric constants.
 ////////////////////////////////////////////////////////////////////////////////
 Integer numComparators = valueOf(NumberComparators);
-Integer maxRounds = valueOf(LogSizeSchedulingPool) + 1;
+Integer maxRounds = valueOf(LogSizeSchedulingPool);
 Integer maxIndices = valueOf(SizeSchedulingPool);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,7 +91,7 @@ module mkScheduler(Scheduler);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-    rule doTournament if (isValid(trSets) && round < fromInteger(maxRounds - 1));
+    rule doTournament if (isValid(trSets) && round < fromInteger(maxRounds));
         let currentTrSets = fromMaybe(?, trSets);
         // Extract transactions to be merged, starting at offset. rotateBy rotates
         // to the right, so we compute the offset from the other end of the vector.
@@ -110,9 +110,9 @@ module mkScheduler(Scheduler);
         trSets <= tagged Valid newTrSets;
         // Compute next offset and round.
         // newOffset = (offset + 2*numComparators) % (SizeSchedulingPool / 2^round)
-        Bit#(LogSizeSchedulingPool) newOffset = offset + fromInteger((numComparators * 2) % maxIndices);
-        let startBit = fromInteger(valueOf(LogSizeSchedulingPool) - 1) - round;
-        newOffset = newOffset[startBit:0];
+        Bit#(LogSizeSchedulingPool) numMergedTr = fromInteger((numComparators * 2) % maxIndices);
+        Bit#(LogSizeSchedulingPool) mask = (1 << (fromInteger(maxRounds) - round)) - 1;
+        Bit#(LogSizeSchedulingPool) newOffset = (offset + numMergedTr) & mask;
         offset <= newOffset;
         if (newOffset == 0) begin
             round <= round + 1;
@@ -131,7 +131,7 @@ module mkScheduler(Scheduler);
     endinterface
 
     interface Get response;
-        method ActionValue#(SchedulingResponse) get() if (isValid(trSets) && round == fromInteger(maxRounds - 1));
+        method ActionValue#(SchedulingResponse) get() if (isValid(trSets) && round == fromInteger(maxRounds));
             trSets <= tagged Invalid;
             return fromMaybe(?, trSets)[0];
         endmethod
