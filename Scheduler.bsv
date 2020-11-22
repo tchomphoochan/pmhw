@@ -96,19 +96,23 @@ module mkScheduler(Scheduler);
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
     rule doTournament if (round != -1 && round != fromInteger(maxRounds));
-        // Rotate to the right, so the sets we are working on will be at the end.
-        let rotatedTrVec = rotateBy(workingTransactions, unpack(offset));
-        // Split into two, first half contains the sets that stay the same.
-        Vector#(TSub#(SizeSchedulingPool, SizeComparisonPool), TransactionSet) unchangedTransactions = take(rotatedTrVec);
-        Vector#(SizeComparisonPool, TransactionSet) currentTransactions = takeTail(rotatedTrVec);
-        // Do the actual merging.
-        let mergedTransactions = mapPairs(mergeTransactionSets, id, currentTransactions);
-        // Concatenate with unchanged sets, filling unused space with ?.
-        rotatedTrVec = append(append(mergedTransactions, ?), unchangedTransactions);
-        // Rotate back and update state.
+        // Extract transactions to be merged, starting at offset.
         let revOffset = fromInteger(maxIndices - 1) - offset + 1;
-        workingTransactions <= rotateBy(rotatedTrVec, unpack(revOffset));
-        let nextOffset = offset + fromInteger((numComparators * 2) % maxIndices);
+        let rotatedTrVec = rotateBy(workingTransactions, unpack(revOffset)); // rotates to right
+        Vector#(SizeComparisonPool, TransactionSet) currentTransactions = take(rotatedTrVec);
+        // Merge transactions pairwise.
+        let mergedTransactions = mapPairs(mergeTransactionSets, id, currentTransactions);
+        // Split original vector into chunks and replace chunk corresponding
+        // to these transactions in the next round.
+        Vector#(TDiv#(SizeSchedulingPool, NumberComparators), Vector#(NumberComparators, TransactionSet)) chunks = toChunks(workingTransactions);
+        let chunkIndex = (offset >> 1) >> valueOf(LogNumberComparators);
+        chunks[chunkIndex] = mergedTransactions;
+        // Concatenate chunks and update state.
+        workingTransactions <= concat(chunks);
+        // Compute next offset and round.
+        Bit#(LogSizeSchedulingPool) nextOffset = offset + fromInteger((numComparators * 2) % maxIndices);
+        let startBit = fromInteger(valueOf(LogSizeSchedulingPool) - 1) - (round - 1);
+        nextOffset = nextOffset[startBit:0];  // = nextOffset % SizeSchedulingPool
         offset <= nextOffset;
         if (nextOffset == 0) begin
             round <= round + 1;
