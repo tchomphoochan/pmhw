@@ -93,9 +93,10 @@ module mkScheduler(Scheduler);
     ////////////////////////////////////////////////////////////////////////////////
     rule doTournament if (isValid(trSets) && round < fromInteger(maxRounds - 1));
         let currentTrSets = fromMaybe(?, trSets);
-        // Extract transactions to be merged, starting at offset.
+        // Extract transactions to be merged, starting at offset. rotateBy rotates
+        // to the right, so we compute the offset from the other end of the vector.
         let revOffset = fromInteger(maxIndices - 1) - offset + 1;
-        let rotatedTrSets = rotateBy(currentTrSets, unpack(revOffset)); // rotates to right
+        let rotatedTrSets = rotateBy(currentTrSets, unpack(revOffset));
         Vector#(SizeComparisonPool, TransactionSet) activeTrSets = take(rotatedTrSets);
         // Merge transactions pairwise.
         let mergedTrSets = mapPairs(mergeTransactionSets, id, activeTrSets);
@@ -108,9 +109,10 @@ module mkScheduler(Scheduler);
         let newTrSets = concat(chunks);
         trSets <= tagged Valid newTrSets;
         // Compute next offset and round.
+        // newOffset = (offset + 2*numComparators) % (SizeSchedulingPool / 2^round)
         Bit#(LogSizeSchedulingPool) newOffset = offset + fromInteger((numComparators * 2) % maxIndices);
         let startBit = fromInteger(valueOf(LogSizeSchedulingPool) - 1) - round;
-        newOffset = newOffset[startBit:0];  // = newOffset % SizeSchedulingPool
+        newOffset = newOffset[startBit:0];
         offset <= newOffset;
         if (newOffset == 0) begin
             round <= round + 1;
