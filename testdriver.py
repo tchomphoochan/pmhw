@@ -50,15 +50,18 @@ proc_output = proc.stdout
 expected = tests[args.module]
 results: List[str] = []
 passed = 0
-try:
-    for i in range(len(expected)):
-        thread = Thread(target=lambda: results.append(proc_output.readline()))
-        thread.daemon = True
-        thread.start()
-        thread.join(TEST_TIMEOUT_SECONDS)
+for i in range(len(expected)):
+    thread = Thread(target=lambda: results.append(proc_output.readline()))
+    thread.daemon = True
+    thread.start()
+    thread.join(TEST_TIMEOUT_SECONDS)
+    try:
         assert not thread.is_alive(), "test timed out"
         result = results[-1].rstrip()
         assert result == expected[i], f"got\n\t{result}\nexpected\n\t{expected[i]}"
+    except AssertionError as e:
+        print(f"Test {i + 1} failed: {e}")
+    else:
         passed += 1
-finally:
-    print(f"Passed {passed}/{len(expected)} tests.")
+print("-" * 80)
+print(f"Passed {passed}/{len(expected)} tests.")
