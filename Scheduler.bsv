@@ -82,39 +82,37 @@ module mkScheduler(Scheduler);
     // Transaction sets. The number of "active" transaction sets is halved in
     // each round. These are stored in this vector contiguously, flushed to the
     // left (starting at index 0).
-    Reg#(Vector#(SizeSchedulingPool, TransactionSet)) workingTransactions <- mkReg(?);
+    Reg#(Maybe#(Vector#(SizeSchedulingPool, TransactionSet))) trSets <- mkReg(tagged Invalid);
     // Tournament round.
-    // - -1 means the module does not have any computation running
-    // - it is never equal to 0
-    // - value between 1 and maxRounds means that the tournament is running
-    // - maxRounds means that we are done
-    Reg#(Bit#(TAdd#(1,LogSizeSchedulingPool))) round <- mkReg(-1);
+    Reg#(Bit#(LogSizeSchedulingPool)) round <- mkReg(0);
     // Number of transactions that have already been merged in this round.
     Reg#(Bit#(LogSizeSchedulingPool)) offset <- mkReg(0);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-    rule doTournament if (round != -1 && round != fromInteger(maxRounds));
+    rule doTournament if (isValid(trSets) && round < fromInteger(maxRounds - 1));
+        let currentTrSets = fromMaybe(?, trSets);
         // Extract transactions to be merged, starting at offset.
         let revOffset = fromInteger(maxIndices - 1) - offset + 1;
-        let rotatedTrVec = rotateBy(workingTransactions, unpack(revOffset)); // rotates to right
-        Vector#(SizeComparisonPool, TransactionSet) currentTransactions = take(rotatedTrVec);
+        let rotatedTrSets = rotateBy(currentTrSets, unpack(revOffset)); // rotates to right
+        Vector#(SizeComparisonPool, TransactionSet) activeTrSets = take(rotatedTrSets);
         // Merge transactions pairwise.
-        let mergedTransactions = mapPairs(mergeTransactionSets, id, currentTransactions);
+        let mergedTrSets = mapPairs(mergeTransactionSets, id, activeTrSets);
         // Split original vector into chunks and replace chunk corresponding
         // to these transactions in the next round.
-        Vector#(TDiv#(SizeSchedulingPool, NumberComparators), Vector#(NumberComparators, TransactionSet)) chunks = toChunks(workingTransactions);
+        Vector#(TDiv#(SizeSchedulingPool, NumberComparators), Vector#(NumberComparators, TransactionSet)) chunks = toChunks(currentTrSets);
         let chunkIndex = (offset >> 1) >> valueOf(LogNumberComparators);
-        chunks[chunkIndex] = mergedTransactions;
+        chunks[chunkIndex] = mergedTrSets;
         // Concatenate chunks and update state.
-        workingTransactions <= concat(chunks);
+        let newTrSets = concat(chunks);
+        trSets <= tagged Valid newTrSets;
         // Compute next offset and round.
-        Bit#(LogSizeSchedulingPool) nextOffset = offset + fromInteger((numComparators * 2) % maxIndices);
-        let startBit = fromInteger(valueOf(LogSizeSchedulingPool) - 1) - (round - 1);
-        nextOffset = nextOffset[startBit:0];  // = nextOffset % SizeSchedulingPool
-        offset <= nextOffset;
-        if (nextOffset == 0) begin
+        Bit#(LogSizeSchedulingPool) newOffset = offset + fromInteger((numComparators * 2) % maxIndices);
+        let startBit = fromInteger(valueOf(LogSizeSchedulingPool) - 1) - round;
+        newOffset = newOffset[startBit:0];  // = newOffset % SizeSchedulingPool
+        offset <= newOffset;
+        if (newOffset == 0) begin
             round <= round + 1;
         end
     endrule
@@ -123,17 +121,17 @@ module mkScheduler(Scheduler);
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
-        method Action put(SchedulingRequest inputTransactions) if (round == -1);
-            workingTransactions <= inputTransactions;
-            round <= 1;
+        method Action put(SchedulingRequest inputTransactions) if (!isValid(trSets));
+            trSets <= tagged Valid inputTransactions;
+            round <= 0;
             offset <= 0;
         endmethod
     endinterface
 
     interface Get response;
-        method ActionValue#(SchedulingResponse) get() if (round == fromInteger(maxRounds));
-            round <= -1;
-            return workingTransactions[0];
+        method ActionValue#(SchedulingResponse) get() if (isValid(trSets) && round == fromInteger(maxRounds - 1));
+            trSets <= tagged Invalid;
+            return fromMaybe(?, trSets)[0];
         endmethod
     endinterface
 endmodule
