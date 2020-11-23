@@ -4,17 +4,7 @@ bsc = find_program('bsc')
 prog_python = import('python').find_installation('python3')
 builddir = meson.current_build_dir()
 
-pm_types_obj = custom_target('pm_types_obj',
-    input: 'PmTypes.bsv',
-    output: 'PmTypes.bo',
-    command: [
-        bsc,
-        '-bdir', builddir,
-        '-aggressive-conditions',
-        '-sim',
-        '@INPUT@'])
-
-sched_obj = custom_target('sched_obj',
+scheduler_obj = custom_target('scheduler_obj',
     input: 'Scheduler.bsv',
     output: ['Scheduler.bo', 'mkSchedulerTestbench.ba'],
     command: [
@@ -23,11 +13,10 @@ sched_obj = custom_target('sched_obj',
         '-aggressive-conditions',
         '-sim',
         '-g', 'mkSchedulerTestbench',
-        '@INPUT@'],
-    depends: pm_types_obj)
+        '@INPUT@'])
 
-sched = custom_target('scheduler',
-    input: sched_obj,
+scheduler = custom_target('scheduler',
+    input: scheduler_obj,
     output: 'mkSchedulerTestbench',
     command: [
         bsc,
@@ -38,12 +27,13 @@ sched = custom_target('scheduler',
         '-o', '@OUTPUT@'])
 
 memfile = custom_target('memfile',
-    input: ['make_memfile.py', 'PmTypes.bsv'],
+    input: ['make_memfile.py', 'Scheduler.bsv', 'Shard.bsv'],
     output: 'mem.vmh',
     command: [
         prog_python,
         '@INPUT0@',
         '@INPUT1@',
+        '@INPUT2@',
         '@OUTPUT@'])
 
 shard_obj = custom_target('shard_obj',
@@ -56,7 +46,7 @@ shard_obj = custom_target('shard_obj',
         '-sim',
         '-g', 'mkShardTestbench',
         '@INPUT@'],
-    depends: [pm_types_obj, memfile])
+    depends: [scheduler_obj, memfile])
 
 shard = custom_target('shard',
     input: shard_obj,
@@ -79,7 +69,7 @@ renamer_obj = custom_target('renamer_obj',
         '-sim',
         '-g', 'mkRenamerTestbench',
         '@INPUT@'],
-    depends: [pm_types_obj, shard_obj])
+    depends: [scheduler_obj, shard_obj])
 
 renamer = custom_target('renamer',
     input: renamer_obj,
@@ -102,7 +92,7 @@ pm_obj = custom_target('pm_obj',
         '-sim',
         '-g', 'mkPuppetmasterTestbench',
         '@INPUT@'],
-    depends: [pm_types_obj, renamer_obj, sched_obj])
+    depends: [scheduler_obj, renamer_obj])
 
 pm = custom_target('pm',
     input: pm_obj,

@@ -8,11 +8,27 @@ import BRAM::*;
 import ClientServer::*;
 import Vector::*;
 
-import PmTypes::*;
+import Scheduler::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
+typedef 64 LogMaxNumberTransactions;
+typedef 32 LogSizeMemory;
+typedef 2 LogNumberShards;
+typedef 3 LogNumberHashes;
+
+typedef TSub#(LogNumberLiveObjects, LogNumberShards) LogSizeShard;
+
+typedef TExp#(LogNumberShards) NumberShards;
+typedef TExp#(LogNumberHashes) NumberHashes;
+
+typedef Bit#(LogMaxNumberTransactions) TransactionId;
+typedef Bit#(LogSizeMemory) ObjectAddress;
+typedef Bit#(LogNumberLiveObjects) ObjectName;
+typedef Bit#(LogNumberShards) ShardIndex;
+typedef Bit#(LogSizeShard) ShardKey;
+
 typedef struct {
     TransactionId tid;
     ObjectAddress address;

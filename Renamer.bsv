@@ -10,12 +10,18 @@ import GetPut::*;
 import SpecialFIFOs::*;
 import Vector::*;
 
-import PmTypes::*;
+import Scheduler::*;
 import Shard::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
+typedef 3 LogNumberTransactionObjects;
+typedef 2 LogSizeRenamerBuffer;
+
+typedef TExp#(LogNumberTransactionObjects) NumberTransactionObjects;
+typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
+
 typedef struct {
    TransactionId tid;
    Vector#(NumberTransactionObjects, ObjectAddress) readObjects;

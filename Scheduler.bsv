@@ -7,15 +7,25 @@ import ClientServer::*;
 import GetPut::*;
 import Vector::*;
 
-import PmTypes::*;
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
+typedef 10 LogNumberLiveObjects;
+typedef 3 LogSizeSchedulingPool;
+typedef 1 LogNumberComparators;
+
+typedef TMul#(2, NumberComparators) SizeComparisonPool;
+
+typedef TExp#(LogNumberLiveObjects) NumberLiveObjects;
+typedef TExp#(LogSizeSchedulingPool) SizeSchedulingPool;
+typedef TExp#(LogNumberComparators) NumberComparators;
+
+typedef Bit#(NumberLiveObjects) ObjectSet;
+typedef Bit#(SizeSchedulingPool) ContainedTransactions;
+
 // A transaction set is composed of read set, a write set, and the bit vector
 // indices. The indices are specific to a given round and indicate which
 // transactions are in the set.
-typedef Bit#(SizeSchedulingPool) ContainedTransactions;
 typedef struct {
     ObjectSet readSet;
     ObjectSet writeSet;
