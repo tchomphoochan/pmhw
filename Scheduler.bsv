@@ -101,9 +101,9 @@ module mkScheduler(Scheduler);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    // Transaction sets. The number of "active" transaction sets is halved in
-    // each round. These are stored in this vector contiguously, flushed to the
-    // left (starting at index 0).
+    // Transaction sets. It is Valid only when there is a request being processed.
+    // The number of "active" transaction sets is halved in each round. These are
+    // stored contiguously, flushed to the left (starting at index 0).
     Reg#(Maybe#(SchedulingPool)) trSets <- mkReg(tagged Invalid);
     // Tournament round.
     Reg#(SchedulingPoolIndex) round <- mkReg(0);
@@ -125,7 +125,7 @@ module mkScheduler(Scheduler);
         // Split original vector into chunks and replace chunk corresponding
         // to these transactions in the next round.
         Vector#(NumberComparisonChunks, MergedComparisonPool) chunks = toChunks(currentTrSets);
-        SchedulingPoolIndex chunkIndex = (offset >> 1) >> logNumComparators;
+        SchedulingPoolIndex chunkIndex = (offset >> logNumComparators) >> 1;
         chunks[chunkIndex] = mergedTrSets;
         // Concatenate chunks and update state.
         SchedulingPool newTrSets = concat(chunks);
