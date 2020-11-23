@@ -19,8 +19,14 @@ import Shard::*;
 typedef 3 LogNumberTransactionObjects;
 typedef 2 LogSizeRenamerBuffer;
 
+typedef TAdd#(1, LogNumberTransactionObjects) TransactionObjectCount;
+
 typedef TExp#(LogNumberTransactionObjects) NumberTransactionObjects;
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
+
+typedef Bit#(LogNumberTransactionObjects) TransactionObjectIndex;
+typedef Bit#(LogSizeRenamerBuffer) RenamerBufferIndex;
+typedef Bit#(TransactionObjectCount) TransactionObjectCounter;
 
 typedef struct {
    TransactionId tid;
@@ -69,7 +75,7 @@ module mkRequestDistributor(RequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     FIFO#(InputTransaction) inputFifo <- mkBypassFIFO();
     Reg#(SetType) setType <- mkReg(ReadSet);
-    Reg#(Bit#(LogNumberTransactionObjects)) setIndex <- mkReg(0);
+    Reg#(TransactionObjectIndex) setIndex <- mkReg(0);
     Wire#(ShardIndex) shardIndex <- mkWire();
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -150,8 +156,8 @@ module mkResponseAggregator(ResponseAggregator);
     Reg#(TransactionId) tid <- mkReg(?);
     Reg#(ObjectSet) readSet <- mkReg(0);
     Reg#(ObjectSet) writeSet <- mkReg(0);
-    Reg#(Bit#(TAdd#(LogNumberTransactionObjects, 1))) readObjectCount <- mkReg(0);
-    Reg#(Bit#(TAdd#(LogNumberTransactionObjects, 1))) writtenObjectCount <- mkReg(0);
+    Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
+    Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -205,13 +211,13 @@ module mkRenamer(Renamer);
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
 
     // Input buffer.
-    Reg#(Bit#(LogSizeRenamerBuffer)) inputBufferEnd <- mkReg(0);
+    Reg#(RenamerBufferIndex) inputBufferEnd <- mkReg(0);
 
     // Connections from distributors to shards.
     Vector#(NumberShards, Arbiter#(SizeRenamerBuffer, ShardRenameRequest, ShardRenameResponse)) shardArbiters;
     for (Integer i = 0; i < numShards; i = i + 1) begin
-        let arb <- mkRoundRobin;
-        shardArbiters[i] <- mkArbiter(arb, 1);
+        let arb1 <- mkRoundRobin;
+        shardArbiters[i] <- mkArbiter(arb1, 1);
         for (Integer j = 0; j < maxTransactions; j = j + 1) begin
             mkConnection(distributors[j].outputs[i], shardArbiters[i].users[j].request);
         end
@@ -221,8 +227,8 @@ module mkRenamer(Renamer);
     // Connections from shards to aggregators.
     Vector#(SizeRenamerBuffer, Arbiter#(NumberShards, ShardRenameResponse, void)) transactionArbiters;
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
-        let arb1 <- mkRoundRobin;
-        transactionArbiters[i] <- mkArbiter(arb1, 1);
+        let arb2 <- mkRoundRobin;
+        transactionArbiters[i] <- mkArbiter(arb2, 1);
         for (Integer j = 0; j < numShards; j = j + 1) begin
             mkConnection(shardArbiters[j].users[i].response, transactionArbiters[i].users[j].request);
         end
@@ -236,8 +242,8 @@ module mkRenamer(Renamer);
     end
 
     // Connections from aggregators to output.
-    let arb2 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, RenamedTransaction, void) outputArbiter <- mkArbiter(arb2, 1);
+    let arb3 <- mkRoundRobin;
+    Arbiter#(SizeRenamerBuffer, RenamedTransaction, void) outputArbiter <- mkArbiter(arb3, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].response, outputArbiter.users[i].request);
     end
@@ -260,10 +266,12 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 // Renamer tests.
 ////////////////////////////////////////////////////////////////////////////////
+typedef 1 NumberRenamerTests;
+
 module mkRenamerTestbench();
     Renamer myRenamer <- mkRenamer();
 
-    Vector#(1, InputTransaction) testInputs = newVector;
+    Vector#(NumberRenamerTests, InputTransaction) testInputs = newVector;
     testInputs[0].tid = 0;
     for (Integer i = 0; i < objSetSize; i = i + 1) begin
         testInputs[0].readObjects[i] = fromInteger(i) * 8;
@@ -272,7 +280,7 @@ module mkRenamerTestbench();
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 
-    rule feed if (counter < 1);
+    rule feed if (counter < fromInteger(valueOf(NumberRenamerTests)));
         counter <= counter + 1;
         myRenamer.request.put(testInputs[0]);
     endrule

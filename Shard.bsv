@@ -25,9 +25,14 @@ typedef TExp#(LogNumberHashes) NumberHashes;
 
 typedef Bit#(LogMaxNumberTransactions) TransactionId;
 typedef Bit#(LogSizeMemory) ObjectAddress;
-typedef Bit#(LogNumberLiveObjects) ObjectName;
 typedef Bit#(LogNumberShards) ShardIndex;
+typedef Bit#(LogNumberHashes) HashIndex;
 typedef Bit#(LogSizeShard) ShardKey;
+
+typedef struct {
+    ReferenceCounter counter;
+    ObjectAddress objectId;
+} RenameTableEntry deriving(Bits, Eq, FShow);
 
 typedef struct {
     TransactionId tid;
@@ -56,24 +61,19 @@ instance ArbRequestTC#(ShardRenameResponse);
 endinstance
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Numeric constants.
+////////////////////////////////////////////////////////////////////////////////
+Integer logMaxShardObjects = valueOf(LogSizeShard);
+Integer maxHashes = valueOf(NumberHashes);
+
+////////////////////////////////////////////////////////////////////////////////
 /// Helper functions.
 ////////////////////////////////////////////////////////////////////////////////
 // Return the shard index for a given address, which are the low order bits
 // preceding the key used by the shards.
 function ShardIndex getShard(ObjectAddress address);
-    Integer startBit = valueOf(LogNumberLiveObjects)- 1;
-    Integer endBit = valueOf(LogSizeShard);
-    return address[startBit:endBit];
+    return address[logMaxLiveObjects - 1 : logMaxShardObjects];
 endfunction
-
-////////////////////////////////////////////////////////////////////////////////
-/// Internal structures.
-////////////////////////////////////////////////////////////////////////////////
-typedef Bit#(TAdd#(LogNumberLiveObjects, 1)) ReferenceCounter;
-typedef struct {
-    ReferenceCounter counter;
-    ObjectAddress objectId;
-} RenameTableEntry deriving(Bits, Eq, FShow);
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,7 +96,7 @@ module mkShard(Shard);
 
     Reg#(ShardRenameRequest) req <- mkReg(?);
     Reg#(ShardRenameResponse) resp <- mkReg(?);
-    Reg#(Bit#(LogNumberHashes)) tries <- mkReg(0);
+    Reg#(HashIndex) tries <- mkReg(0);
     Reg#(Bool) isAddressValid <- mkReg(False);
     Reg#(Bool) isReadInProgress <- mkReg(False);
     Reg#(Bool) isRenameDone <- mkReg(False);
@@ -107,9 +107,8 @@ module mkShard(Shard);
     // Computes hash function h_i(x) = (x + i) % b.
     // x: address, i: offset (tries), b: base (SizeShard)
     function ShardKey getNextName();
-        ObjectAddress key = req.address + {0,tries};
-        Integer startBit = valueOf(LogSizeShard) - 1;
-        return key[startBit:0];
+        ObjectAddress key = req.address + zeroExtend(tries);
+        return key[logMaxShardObjects - 1 : 0];
     endfunction
 
     function makeShardResponse();
@@ -130,8 +129,7 @@ module mkShard(Shard);
     endfunction
 
     function BRAMRequest#(ShardKey, RenameTableEntry) makeWriteRequest(ReferenceCounter counter);
-        Integer startBit = valueOf(LogSizeShard) - 1;
-        ShardKey currentName = resp.name[startBit:0];
+        ShardKey currentName = resp.name[logMaxShardObjects - 1 : 0];
         let entry = RenameTableEntry{
             counter: counter + 1,
             objectId: req.address
@@ -158,12 +156,12 @@ module mkShard(Shard);
 
     rule doRename if (isAddressValid && !isRenameDone && isReadInProgress);
         RenameTableEntry entry <- bram.portA.response.get();
-        if (entry.counter == 0 || entry.objectId == req.address && entry.counter < fromInteger(valueOf(NumberLiveObjects))) begin
+        if (entry.counter == 0 || entry.objectId == req.address && entry.counter < fromInteger(maxLiveObjects)) begin
             isAddressValid <= False;
             isReadInProgress <= False;
             isRenameDone <= True;
             bram.portA.request.put(makeWriteRequest(entry.counter));
-        end else if (entry.objectId == req.address || tries == fromInteger(valueOf(NumberHashes) - 1)) begin
+        end else if (entry.objectId == req.address || tries == fromInteger(maxHashes - 1)) begin
             // TODO: actually fail and clean up.
             $display("fail");
         end else begin
@@ -195,10 +193,12 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 // Shard tests.
 ////////////////////////////////////////////////////////////////////////////////
+typedef 5 NumberShardTests;
+
 module mkShardTestbench();
     Shard myShard <- mkShard();
 
-    Vector#(5, ShardRenameRequest) testInputs;
+    Vector#(NumberShardTests, ShardRenameRequest) testInputs;
     testInputs[0] = ShardRenameRequest{tid: 64'h1, address: 32'h00000000, isWrittenObject: False};
     testInputs[1] = ShardRenameRequest{tid: 64'h1, address: 32'h00000205, isWrittenObject: True};
     testInputs[2] = ShardRenameRequest{tid: 64'h1, address: 32'hA0000406, isWrittenObject: False};
@@ -207,7 +207,7 @@ module mkShardTestbench();
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 
-    rule feed if (counter < 5);
+    rule feed if (counter < fromInteger(valueOf(NumberShardTests)));
         counter <= counter + 1;
         myShard.request.put(testInputs[counter]);
     endrule

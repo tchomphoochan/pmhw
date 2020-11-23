@@ -14,14 +14,23 @@ typedef 10 LogNumberLiveObjects;
 typedef 3 LogSizeSchedulingPool;
 typedef 1 LogNumberComparators;
 
+typedef TAdd#(1, LogNumberLiveObjects) ObjectCount;
 typedef TMul#(2, NumberComparators) SizeComparisonPool;
+typedef TDiv#(SizeSchedulingPool, NumberComparators) NumberComparisonChunks;
 
 typedef TExp#(LogNumberLiveObjects) NumberLiveObjects;
 typedef TExp#(LogSizeSchedulingPool) SizeSchedulingPool;
 typedef TExp#(LogNumberComparators) NumberComparators;
 
+typedef Bit#(LogNumberLiveObjects) ObjectName;
+typedef Bit#(LogSizeSchedulingPool) SchedulingPoolIndex;
+typedef Bit#(ObjectCount) ReferenceCounter;
 typedef Bit#(NumberLiveObjects) ObjectSet;
 typedef Bit#(SizeSchedulingPool) ContainedTransactions;
+
+typedef Vector#(SizeSchedulingPool, TransactionSet) SchedulingPool;
+typedef Vector#(SizeComparisonPool, TransactionSet) ComparisonPool;
+typedef Vector#(NumberComparators, TransactionSet) MergedComparisonPool;
 
 // A transaction set is composed of read set, a write set, and the bit vector
 // indices. The indices are specific to a given round and indicate which
@@ -32,16 +41,19 @@ typedef struct {
     ContainedTransactions indices;
 } TransactionSet deriving(Bits, Eq, FShow);
 
-typedef Vector#(SizeSchedulingPool, TransactionSet) SchedulingRequest;
+typedef SchedulingPool SchedulingRequest;
 typedef TransactionSet SchedulingResponse;
 typedef Server#(SchedulingRequest, SchedulingResponse) Scheduler;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Numeric constants.
 ////////////////////////////////////////////////////////////////////////////////
+Integer logMaxLiveObjects = valueOf(LogNumberLiveObjects);
+Integer maxLiveObjects = valueOf(NumberLiveObjects);
+Integer logNumComparators = valueOf(LogNumberComparators);
 Integer numComparators = valueOf(NumberComparators);
 Integer maxRounds = valueOf(LogSizeSchedulingPool);
-Integer maxIndices = valueOf(SizeSchedulingPool);
+Integer maxScheduledObjects = valueOf(SizeSchedulingPool);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Helper functions.
@@ -92,37 +104,37 @@ module mkScheduler(Scheduler);
     // Transaction sets. The number of "active" transaction sets is halved in
     // each round. These are stored in this vector contiguously, flushed to the
     // left (starting at index 0).
-    Reg#(Maybe#(Vector#(SizeSchedulingPool, TransactionSet))) trSets <- mkReg(tagged Invalid);
+    Reg#(Maybe#(SchedulingPool)) trSets <- mkReg(tagged Invalid);
     // Tournament round.
-    Reg#(Bit#(LogSizeSchedulingPool)) round <- mkReg(0);
+    Reg#(SchedulingPoolIndex) round <- mkReg(0);
     // Number of transactions that have already been merged in this round.
-    Reg#(Bit#(LogSizeSchedulingPool)) offset <- mkReg(0);
+    Reg#(SchedulingPoolIndex) offset <- mkReg(0);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
     rule doTournament if (isValid(trSets) && round < fromInteger(maxRounds));
-        let currentTrSets = fromMaybe(?, trSets);
+        SchedulingPool currentTrSets = fromMaybe(?, trSets);
         // Extract transactions to be merged, starting at offset. rotateBy rotates
         // to the right, so we compute the offset from the other end of the vector.
-        let revOffset = fromInteger(maxIndices - 1) - offset + 1;
-        let rotatedTrSets = rotateBy(currentTrSets, unpack(revOffset));
-        Vector#(SizeComparisonPool, TransactionSet) activeTrSets = take(rotatedTrSets);
+        SchedulingPoolIndex revOffset = fromInteger(maxScheduledObjects - 1) - offset + 1;
+        SchedulingPool rotatedTrSets = rotateBy(currentTrSets, unpack(revOffset));
+        ComparisonPool activeTrSets = take(rotatedTrSets);
         // Merge transactions pairwise.
-        let mergedTrSets = mapPairs(mergeTransactionSets, id, activeTrSets);
+        MergedComparisonPool mergedTrSets = mapPairs(mergeTransactionSets, id, activeTrSets);
         // Split original vector into chunks and replace chunk corresponding
         // to these transactions in the next round.
-        Vector#(TDiv#(SizeSchedulingPool, NumberComparators), Vector#(NumberComparators, TransactionSet)) chunks = toChunks(currentTrSets);
-        let chunkIndex = (offset >> 1) >> valueOf(LogNumberComparators);
+        Vector#(NumberComparisonChunks, MergedComparisonPool) chunks = toChunks(currentTrSets);
+        SchedulingPoolIndex chunkIndex = (offset >> 1) >> logNumComparators;
         chunks[chunkIndex] = mergedTrSets;
         // Concatenate chunks and update state.
-        let newTrSets = concat(chunks);
+        SchedulingPool newTrSets = concat(chunks);
         trSets <= tagged Valid newTrSets;
         // Compute next offset and round.
         // newOffset = (offset + 2*numComparators) % (SizeSchedulingPool / 2^round)
-        Bit#(LogSizeSchedulingPool) numMergedTr = fromInteger((numComparators * 2) % maxIndices);
-        Bit#(LogSizeSchedulingPool) mask = (1 << (fromInteger(maxRounds) - round)) - 1;
-        Bit#(LogSizeSchedulingPool) newOffset = (offset + numMergedTr) & mask;
+        SchedulingPoolIndex numMergedTr = fromInteger((numComparators * 2) % maxScheduledObjects);
+        SchedulingPoolIndex mask = (1 << (fromInteger(maxRounds) - round)) - 1;
+        SchedulingPoolIndex newOffset = (offset + numMergedTr) & mask;
         offset <= newOffset;
         if (newOffset == 0) begin
             round <= round + 1;
@@ -158,7 +170,7 @@ module mkSchedulerTestbench();
 
     Vector#(NumberSchedulerTests, SchedulingRequest) testInputs = newVector;
     // Empty transactions.
-    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+    for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
         testInputs[0][i] = TransactionSet{
             readSet: 'b0,
             writeSet: 'b0,
@@ -166,7 +178,7 @@ module mkSchedulerTestbench();
         };
     end
     // Non-conflicting read-only transactions.
-    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+    for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
         testInputs[1][i] = TransactionSet{
             readSet: 'b1 << i,
             writeSet: 'b0,
@@ -174,7 +186,7 @@ module mkSchedulerTestbench();
         };
     end
     // Overlapping read-only transactions.
-    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+    for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
         testInputs[2][i] = TransactionSet{
             readSet: 'b1111 << i,
             writeSet: 'b0,
@@ -182,23 +194,23 @@ module mkSchedulerTestbench();
         };
     end
     // Non-conflicting read-write transactions.
-    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+    for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
         testInputs[3][i] = TransactionSet{
             readSet: 'b11 << (2 * i),
-            writeSet: 'b1 << (valueOf(NumberLiveObjects) - i - 1),
+            writeSet: 'b1 << (maxLiveObjects - i - 1),
             indices: 'b1 << i
         };
     end
     // Non-conflicting read-write transactions with overlapping reads.
-    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+    for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
         testInputs[4][i] = TransactionSet{
             readSet: 'b1111 << i,
-            writeSet: 'b1 << (valueOf(NumberLiveObjects) - i - 1),
+            writeSet: 'b1 << (maxLiveObjects - i - 1),
             indices: 'b1 << i
         };
     end
     // Transactions with read-write conflicts.
-    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+    for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
         testInputs[5][i] = TransactionSet{
             readSet: 'b11 << (2 * i),
             writeSet: 'b100 << (2 * i),
@@ -206,7 +218,7 @@ module mkSchedulerTestbench();
         };
     end
     // Transacions with write-write conflicts.
-    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+    for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
         testInputs[6][i] = TransactionSet{
             readSet: 'b1000 << i,
             writeSet: 'b1 << (i % 3),
@@ -214,7 +226,7 @@ module mkSchedulerTestbench();
         };
     end
     // Transactions with both conflicts.
-    for (Integer i=0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+    for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
         testInputs[7][i] = TransactionSet{
             readSet: 'b1010 << i,
             writeSet: 'b101 << i,
