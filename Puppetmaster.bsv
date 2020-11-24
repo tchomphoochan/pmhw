@@ -3,9 +3,9 @@ import ClientServer::*;
 import GetPut::*;
 import Vector::*;
 
-import PmTypes::*;
 import Renamer::*;
 import Scheduler::*;
+import Shard::*;
 
 typedef Vector#(SizeSchedulingPool, InputTransaction) PuppetmasterRequest;
 typedef Vector#(SizeSchedulingPool, Maybe#(TransactionId)) PuppetmasterResponse;
