@@ -34,11 +34,16 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     rule process if (isValid(req) && !isValid(resp) && bufferIndex == fromInteger(valueOf(SizeSchedulingPool)));
+        let inputs = fromMaybe(?, req);
         Vector#(SizeSchedulingPool, TransactionSet) scheduled;
         for (Integer i = 0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
+            function Bool matchesTid(RenamedTransaction tr);
+                return tr.tid == inputs[i].tid;
+            endfunction
+            let entry = fromMaybe(?, find(matchesTid, readVReg(buffer)));
             scheduled[i] = TransactionSet{
-                readSet: buffer[i].readSet,
-                writeSet: buffer[i].writeSet,
+                readSet: entry.readSet,
+                writeSet: entry.writeSet,
                 indices: 1 << i
             };
         end
@@ -52,7 +57,7 @@ module mkPuppetmaster(Puppetmaster);
         Integer index = 0;
         for (Integer i = 0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
             if (result.indices[i] == 1'b1) begin
-                response[index] = tagged Valid inputs[index].tid;
+                response[index] = tagged Valid inputs[i].tid;
                 index = index + 1;
             end
         end
