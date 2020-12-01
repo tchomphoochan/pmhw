@@ -104,6 +104,7 @@ module mkRequestDistributor(RequestDistributor);
                 method ActionValue#(ShardRenameRequest) get() if (shardIndex == fromInteger(i));
                     InputTransaction inputTr = inputFifo.first();
                     ShardRenameRequest request;
+                    request.reqType = InsertRequest;
                     request.tid = inputTr.tid;
                     if (setType == ReadSet) begin
                         request.address = inputTr.readObjects[setIndex];

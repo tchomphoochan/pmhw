@@ -29,12 +29,15 @@ typedef Bit#(LogNumberShards) ShardIndex;
 typedef Bit#(LogNumberHashes) HashIndex;
 typedef Bit#(LogSizeShard) ShardKey;
 
+typedef enum { InsertRequest, DeleteRequest } ShardRequestType deriving (Bits, Eq, FShow);
+
 typedef struct {
     ReferenceCounter counter;
     ObjectAddress objectId;
 } RenameTableEntry deriving(Bits, Eq, FShow);
 
 typedef struct {
+    ShardRequestType reqType;
     TransactionId tid;
     ObjectAddress address;
     Bool isWrittenObject;
@@ -133,7 +136,7 @@ module mkShard(Shard);
     function BRAMRequest#(ShardKey, RenameTableEntry) makeWriteRequest(ReferenceCounter counter);
         ShardKey currentName = resp.name[logMaxShardObjects - 1 : 0];
         let entry = RenameTableEntry{
-            counter: counter + 1,
+            counter: counter,
             objectId: req.address
         };
         return BRAMRequest{
@@ -158,12 +161,20 @@ module mkShard(Shard);
 
     rule doRename if (isAddressValid && !isRenameDone && isReadInProgress);
         RenameTableEntry entry <- bram.portA.response.get();
-        if (entry.counter == 0 || entry.objectId == req.address && entry.counter < fromInteger(maxLiveObjects)) begin
+        if (req.reqType == InsertRequest && (entry.counter == 0 || entry.counter < fromInteger(maxLiveObjects) && entry.objectId == req.address)) begin
+            // Sucessful insert request: found empty slot or non-full existing entry for the object.
             isAddressValid <= False;
             isReadInProgress <= False;
             isRenameDone <= True;
-            bram.portA.request.put(makeWriteRequest(entry.counter));
-        end else if (entry.objectId == req.address || tries == fromInteger(maxHashes - 1)) begin
+            bram.portA.request.put(makeWriteRequest(entry.counter + 1));
+        end else if (req.reqType == DeleteRequest && entry.counter != 0 && entry.objectId == req.address) begin
+            // Successful delete request: found existing entry for the object.
+            isAddressValid <= False;
+            isReadInProgress <= False;
+            isRenameDone <= True;
+            bram.portA.request.put(makeWriteRequest(entry.counter - 1));
+        end else if (entry.counter == fromInteger(maxLiveObjects) && entry.objectId == req.address || tries == fromInteger(maxHashes - 1)) begin
+            // Request failed: slot is full (for insert request) or hash functions exhausted.
             let newResp = resp;
             newResp.success = False;
             resp <= newResp;
@@ -171,6 +182,7 @@ module mkShard(Shard);
             isReadInProgress <= False;
             isRenameDone <= True;
         end else begin
+            // Try next hash function (next offset).
             resp <= makeShardResponse();
             tries <= tries + 1;
             bram.portA.request.put(makeNextReadRequest());
@@ -199,24 +211,29 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 // Shard tests.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 12 NumberShardTests;
+typedef 17 NumberShardTests;
 
 module mkShardTestbench();
     Shard myShard <- mkShard();
 
     Vector#(NumberShardTests, ShardRenameRequest) testInputs;
-    testInputs[0] = ShardRenameRequest{tid: 64'h1, address: 32'h00000000, isWrittenObject: False};
-    testInputs[1] = ShardRenameRequest{tid: 64'h1, address: 32'h00000205, isWrittenObject: True};
-    testInputs[2] = ShardRenameRequest{tid: 64'h1, address: 32'hA0000406, isWrittenObject: False};
-    testInputs[3] = ShardRenameRequest{tid: 64'h1, address: 32'h00000300, isWrittenObject: False};
-    testInputs[4] = ShardRenameRequest{tid: 64'h2, address: 32'hA0000406, isWrittenObject: True};
-    testInputs[5] = ShardRenameRequest{tid: 64'h1, address: 32'hB0000406, isWrittenObject: False};
-    testInputs[6] = ShardRenameRequest{tid: 64'h3, address: 32'hC0000406, isWrittenObject: False};
-    testInputs[7] = ShardRenameRequest{tid: 64'h4, address: 32'hD0000406, isWrittenObject: False};
-    testInputs[8] = ShardRenameRequest{tid: 64'h5, address: 32'hE0000406, isWrittenObject: False};
-    testInputs[9] = ShardRenameRequest{tid: 64'h6, address: 32'hF0000406, isWrittenObject: True};
-    testInputs[10] = ShardRenameRequest{tid: 64'h7, address: 32'hF0000806, isWrittenObject: False};
-    testInputs[11] = ShardRenameRequest{tid: 64'h8, address: 32'hF0000C06, isWrittenObject: False};
+    testInputs[0] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h1, address: 32'h00000000, isWrittenObject: False};
+    testInputs[1] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h1, address: 32'h00000205, isWrittenObject: True};
+    testInputs[2] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h1, address: 32'hA0000406, isWrittenObject: False};
+    testInputs[3] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h1, address: 32'h00000300, isWrittenObject: False};
+    testInputs[4] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h2, address: 32'hA0000406, isWrittenObject: True};
+    testInputs[5] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h1, address: 32'hB0000406, isWrittenObject: False};
+    testInputs[6] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h3, address: 32'hC0000406, isWrittenObject: False};
+    testInputs[7] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h4, address: 32'hD0000406, isWrittenObject: False};
+    testInputs[8] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h5, address: 32'hE0000406, isWrittenObject: False};
+    testInputs[9] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h6, address: 32'hF0000406, isWrittenObject: True};
+    testInputs[10] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h7, address: 32'hF0000806, isWrittenObject: False};
+    testInputs[11] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h8, address: 32'hF0000C06, isWrittenObject: False};
+    testInputs[12] = ShardRenameRequest{reqType: DeleteRequest, tid: 64'h6, address: 32'hF0000406, isWrittenObject: True};
+    testInputs[13] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h8, address: 32'hF0000C06, isWrittenObject: False};
+    testInputs[14] = ShardRenameRequest{reqType: DeleteRequest, tid: 64'h1, address: 32'hA0000406, isWrittenObject: False};
+    testInputs[15] = ShardRenameRequest{reqType: DeleteRequest, tid: 64'h2, address: 32'hA0000406, isWrittenObject: True};
+    testInputs[16] = ShardRenameRequest{reqType: InsertRequest, tid: 64'h9, address: 32'hA0000006, isWrittenObject: False};
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 

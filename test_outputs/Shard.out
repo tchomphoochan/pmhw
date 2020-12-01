@@ -10,3 +10,8 @@ ShardRenameResponse { success: True, tid: 'h0000000000000005, name: 'h00a, isWri
 ShardRenameResponse { success: True, tid: 'h0000000000000006, name: 'h00b, isWrittenObject: True }
 ShardRenameResponse { success: True, tid: 'h0000000000000007, name: 'h00c, isWrittenObject: False }
 ShardRenameResponse { success: False, tid: 'h0000000000000008, name: 'h00c, isWrittenObject: False }
+ShardRenameResponse { success: True, tid: 'h0000000000000006, name: 'h00b, isWrittenObject: True }
+ShardRenameResponse { success: True, tid: 'h0000000000000008, name: 'h00b, isWrittenObject: False }
+ShardRenameResponse { success: True, tid: 'h0000000000000001, name: 'h006, isWrittenObject: False }
+ShardRenameResponse { success: True, tid: 'h0000000000000002, name: 'h006, isWrittenObject: True }
+ShardRenameResponse { success: True, tid: 'h0000000000000009, name: 'h006, isWrittenObject: False }
