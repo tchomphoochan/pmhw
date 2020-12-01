@@ -41,6 +41,7 @@ typedef struct {
  } ShardRenameRequest deriving(Bits, Eq, FShow);
 
 typedef struct {
+    Bool success;
     TransactionId tid;
     ObjectName name;
     Bool isWrittenObject;
@@ -113,6 +114,7 @@ module mkShard(Shard);
 
     function makeShardResponse();
         return ShardRenameResponse{
+            success: True,
             tid: req.tid,
             name: {getShard(req.address), getNextName()},
             isWrittenObject: req.isWrittenObject
@@ -162,8 +164,12 @@ module mkShard(Shard);
             isRenameDone <= True;
             bram.portA.request.put(makeWriteRequest(entry.counter));
         end else if (entry.objectId == req.address || tries == fromInteger(maxHashes - 1)) begin
-            // TODO: actually fail and clean up.
-            $display("fail");
+            let newResp = resp;
+            newResp.success = False;
+            resp <= newResp;
+            isAddressValid <= False;
+            isReadInProgress <= False;
+            isRenameDone <= True;
         end else begin
             resp <= makeShardResponse();
             tries <= tries + 1;
@@ -193,7 +199,7 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 // Shard tests.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 5 NumberShardTests;
+typedef 12 NumberShardTests;
 
 module mkShardTestbench();
     Shard myShard <- mkShard();
@@ -204,6 +210,13 @@ module mkShardTestbench();
     testInputs[2] = ShardRenameRequest{tid: 64'h1, address: 32'hA0000406, isWrittenObject: False};
     testInputs[3] = ShardRenameRequest{tid: 64'h1, address: 32'h00000300, isWrittenObject: False};
     testInputs[4] = ShardRenameRequest{tid: 64'h2, address: 32'hA0000406, isWrittenObject: True};
+    testInputs[5] = ShardRenameRequest{tid: 64'h1, address: 32'hB0000406, isWrittenObject: False};
+    testInputs[6] = ShardRenameRequest{tid: 64'h3, address: 32'hC0000406, isWrittenObject: False};
+    testInputs[7] = ShardRenameRequest{tid: 64'h4, address: 32'hD0000406, isWrittenObject: False};
+    testInputs[8] = ShardRenameRequest{tid: 64'h5, address: 32'hE0000406, isWrittenObject: False};
+    testInputs[9] = ShardRenameRequest{tid: 64'h6, address: 32'hF0000406, isWrittenObject: True};
+    testInputs[10] = ShardRenameRequest{tid: 64'h7, address: 32'hF0000806, isWrittenObject: False};
+    testInputs[11] = ShardRenameRequest{tid: 64'h8, address: 32'hF0000C06, isWrittenObject: False};
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 

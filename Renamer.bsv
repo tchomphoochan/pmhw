@@ -172,7 +172,9 @@ module mkResponseAggregator(ResponseAggregator);
     interface Put request;
         method Action put(ShardRenameResponse response) if (!isDone());
             tid <= response.tid;
-            if (response.isWrittenObject) begin
+            if (!response.success) begin
+                // TODO: mark transaction failed.
+            end else if (response.isWrittenObject) begin
                 writeSet <= writeSet | (1 << response.name);
                 writtenObjectCount <= writtenObjectCount + 1;
             end else begin
