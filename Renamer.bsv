@@ -64,7 +64,7 @@ Integer objSetSize = valueOf(NumberTransactionObjects);
 ////////////////////////////////////////////////////////////////////////////////
 interface RequestDistributor;
     interface Put#(InputTransaction) request;
-    interface Vector#(NumberShards, Get#(ShardRenameRequest)) outputs;
+    interface Vector#(NumberShards, Get#(ShardRequest)) outputs;
 endinterface
 
 typedef enum { ReadSet, WriteSet } SetType deriving (Bits, Eq, FShow);
@@ -96,19 +96,14 @@ module mkRequestDistributor(RequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
-    function Get#(ShardRenameRequest) makeOutputInterface(Integer i);
+    function Get#(ShardRequest) makeOutputInterface(Integer i);
         return (
             interface Get
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
-                method ActionValue#(ShardRenameRequest) get() if (shardIndex == fromInteger(i));
+                method ActionValue#(ShardRequest) get() if (shardIndex == fromInteger(i));
                     InputTransaction inputTr = inputFifo.first();
-                    ShardRenameRequest request;
-                    request.reqType = InsertRequest;
-                    request.tid = inputTr.tid;
                     if (setType == ReadSet) begin
-                        request.address = inputTr.readObjects[setIndex];
-                        request.isWrittenObject = False;
                         if (setIndex < fromInteger(objSetSize - 1)) begin
                             // Go to next read object.
                             setIndex <= setIndex + 1;
@@ -118,8 +113,6 @@ module mkRequestDistributor(RequestDistributor);
                             setType <= WriteSet;
                         end
                     end else begin
-                        request.address = inputTr.writeObjects[setIndex];
-                        request.isWrittenObject = True;
                         if (setIndex < fromInteger(objSetSize - 1)) begin
                             // Go to next write object.
                             setIndex <= setIndex + 1;
@@ -130,7 +123,11 @@ module mkRequestDistributor(RequestDistributor);
                             inputFifo.deq();
                         end
                     end
-                    return request;
+                    return tagged Rename {
+                        tid: inputTr.tid,
+                        address: setType == ReadSet ? inputTr.readObjects[setIndex] : inputTr.writeObjects[setIndex],
+                        isWrittenObject: setType == WriteSet
+                    };
                 endmethod
             endinterface
         );
@@ -217,7 +214,7 @@ module mkRenamer(Renamer);
     Reg#(RenamerBufferIndex) inputBufferEnd <- mkReg(0);
 
     // Connections from distributors to shards.
-    Vector#(NumberShards, Arbiter#(SizeRenamerBuffer, ShardRenameRequest, ShardRenameResponse)) shardArbiters;
+    Vector#(NumberShards, Arbiter#(SizeRenamerBuffer, ShardRequest, ShardRenameResponse)) shardArbiters;
     for (Integer i = 0; i < numShards; i = i + 1) begin
         let arb1 <- mkRoundRobin;
         shardArbiters[i] <- mkArbiter(arb1, 1);
