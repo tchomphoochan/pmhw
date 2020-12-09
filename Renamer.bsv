@@ -212,6 +212,9 @@ module mkRenamer(Renamer);
     // Shards.
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
 
+    // Response aggregators.
+    Vector#(SizeRenamerBuffer, ResponseAggregator) aggregators <- replicateM(mkResponseAggregator);
+
     // Connections from distributors to shards.
     Vector#(NumberShards, Arbiter#(SizeRenamerBuffer, ShardRequest, ShardRenameResponse)) shardArbiters;
     for (Integer i = 0; i < numShards; i = i + 1) begin
@@ -231,12 +234,6 @@ module mkRenamer(Renamer);
         for (Integer j = 0; j < numShards; j = j + 1) begin
             mkConnection(shardArbiters[j].users[i].response, transactionArbiters[i].users[j].request);
         end
-    end
-
-    // Output aggregators.
-    Vector#(SizeRenamerBuffer, ResponseAggregator) aggregators;
-    for (Integer i = 0; i < maxTransactions; i = i + 1) begin
-        aggregators[i] <- mkResponseAggregator;
         mkConnection(transactionArbiters[i].master.request, aggregators[i].request);
     end
 
