@@ -1,5 +1,7 @@
 #! /bin/env python3
 """Test script for BSV modules."""
+import os
+import signal
 import subprocess
 import sys
 from argparse import ArgumentParser
@@ -42,6 +44,7 @@ proc = subprocess.Popen(
     stderr=subprocess.STDOUT,
     text=True,
     bufsize=1,
+    preexec_fn=os.setsid,
 )
 assert proc.stdout is not None
 proc_output = proc.stdout
@@ -65,3 +68,5 @@ for i in range(len(expected)):
         passed += 1
 print("-" * 80)
 print(f"Passed {passed}/{len(expected)} tests.")
+
+os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
