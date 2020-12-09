@@ -212,9 +212,6 @@ module mkRenamer(Renamer);
     // Shards.
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
 
-    // Input buffer.
-    Reg#(RenamerBufferIndex) inputBufferEnd <- mkReg(0);
-
     // Connections from distributors to shards.
     Vector#(NumberShards, Arbiter#(SizeRenamerBuffer, ShardRequest, ShardRenameResponse)) shardArbiters;
     for (Integer i = 0; i < numShards; i = i + 1) begin
@@ -257,12 +254,11 @@ module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
-    // Add input transaction to (circular) buffer.
+    // Add input transaction to first open slot (distributor).
     interface Put request;
-        method Action put(InputTransaction it) if (distributorReadyFlags[inputBufferEnd + 1]);
-            distributors[inputBufferEnd + 1].request.put(it);
-            distributorReadyFlags[inputBufferEnd + 1] <= False;
-            inputBufferEnd <= inputBufferEnd + 1;
+        method Action put(InputTransaction it) if (findElem(True, readVReg(distributorReadyFlags)) matches tagged Valid .entryIndex);
+            distributors[entryIndex].request.put(it);
+            distributorReadyFlags[entryIndex] <= False;
         endmethod
     endinterface
 
