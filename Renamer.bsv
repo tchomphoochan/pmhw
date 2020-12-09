@@ -266,7 +266,7 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 // Renamer tests.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 4 NumberRenamerTests;
+typedef 5 NumberRenamerTests;
 
 Integer numTests = valueOf(NumberRenamerTests);
 
@@ -281,12 +281,14 @@ module mkRenamerTestbench();
         {'h000, 'h008, 'h010, 'h018, 'h020, 'h028, 'h030, 'h038},
         {'h840, 'h83E, 'h83C, 'h83A, 'h838, 'h836, 'h834, 'h832},
         {'h110, 'h111, 'h112, 'h113, 'h114, 'h115, 'h116, 'h117},
+        {'h100, 'h102, 'h104, 'h108, 'h10A, 'h10C, 'h10E, 'h110},
         {'h820, 'h101, 'h20C, 'h0E2, 'h388, 'h414, 'h6BB, 'h502}
     };
     ObjectAddress writes[numTests][objSetSize] = {
         {'h004, 'h008, 'h00C, 'h010, 'h014, 'h018, 'h01C, 'h020},
         {'h000, 'h001, 'h002, 'h003, 'h004, 'h005, 'h006, 'h007},
         {'h120, 'h121, 'h122, 'h123, 'h124, 'h125, 'h126, 'h127},
+        {'h001, 'h003, 'h005, 'h007, 'h010, 'h030, 'h050, 'h070},
         {'h310, 'h002, 'h202, 'hF10, 'h720, 'h101, 'h610, 'hC20}
     };
     Vector#(NumberRenamerTests, InputTransaction) testInputs = zipWith3(makeInputTr, genWith(fromInteger), arrayToVector(reads), arrayToVector(writes));
