@@ -206,6 +206,8 @@ module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     // Request distributors.
     Vector#(SizeRenamerBuffer, RequestDistributor) distributors <- replicateM(mkRequestDistributor);
+    Vector#(SizeRenamerBuffer, Reg#(Bool)) distributorReadyFlags <- replicateM(mkReg(True));
+    Reg#(RenamerBufferIndex) resultIndex <- mkReg(?);
 
     // Shards.
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
@@ -248,19 +250,30 @@ module mkRenamer(Renamer);
         mkConnection(aggregators[i].response, outputArbiter.users[i].request);
     end
 
+    rule updateResultIndex if (findElem(True, arb3.grant) matches tagged Valid .distributorId);
+        resultIndex <= pack(distributorId);
+    endrule
+
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     // Add input transaction to (circular) buffer.
     interface Put request;
-        method Action put(InputTransaction it);
+        method Action put(InputTransaction it) if (distributorReadyFlags[inputBufferEnd + 1]);
             distributors[inputBufferEnd + 1].request.put(it);
+            distributorReadyFlags[inputBufferEnd + 1] <= False;
             inputBufferEnd <= inputBufferEnd + 1;
         endmethod
     endinterface
 
-    // Return computed result (implemented inside arbiter).
-    interface Get response = outputArbiter.master.request;
+    // Return computed result.
+    interface Get response;
+        method ActionValue#(RenamedTransaction) get();
+            distributorReadyFlags[resultIndex] <= True;
+            let result <- outputArbiter.master.request.get();
+            return result;
+        endmethod
+    endinterface
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////
