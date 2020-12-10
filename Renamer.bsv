@@ -145,7 +145,11 @@ endmodule
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-typedef Server#(ShardRenameResponse, RenamedTransaction) ResponseAggregator;
+interface ResponseAggregator;
+    interface Put#(ShardRenameResponse) request;
+    interface Get#(RenamedTransaction) response;
+    interface Get#(RenamedTransaction) failure;
+endinterface
 
 module mkResponseAggregator(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
@@ -156,6 +160,7 @@ module mkResponseAggregator(ResponseAggregator);
     Reg#(ObjectSet) writeSet <- mkReg(0);
     Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
+    Reg#(Bool) success <- mkReg(True);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -170,24 +175,40 @@ module mkResponseAggregator(ResponseAggregator);
     interface Put request;
         method Action put(ShardRenameResponse response) if (!isDone());
             tid <= response.tid;
-            if (!response.success) begin
-                // TODO: mark transaction failed.
-            end else if (response.isWrittenObject) begin
-                writeSet <= writeSet | (1 << response.name);
+            // Increment request count.
+            if (response.isWrittenObject) begin
                 writtenObjectCount <= writtenObjectCount + 1;
             end else begin
-                readSet <= readSet | (1 << response.name);
                 readObjectCount <= readObjectCount + 1;
+            end
+            // Insert object into appropriate set or mark transaction failed.
+            if (!response.success) begin
+                success <= False;
+            end else if (response.isWrittenObject) begin
+                writeSet <= writeSet | (1 << response.name);
+            end else begin
+                readSet <= readSet | (1 << response.name);
             end
         endmethod
     endinterface
 
     interface Get response;
-        method ActionValue#(RenamedTransaction) get() if (isDone());
+        method ActionValue#(RenamedTransaction) get() if (isDone() && success);
             readSet <= 0;
             writeSet <= 0;
             readObjectCount <= 0;
             writtenObjectCount <= 0;
+            return RenamedTransaction{ tid: tid, readSet: readSet, writeSet: writeSet };
+        endmethod
+    endinterface
+
+    interface Get failure;
+        method ActionValue#(RenamedTransaction) get() if (isDone() && !success);
+            readSet <= 0;
+            writeSet <= 0;
+            readObjectCount <= 0;
+            writtenObjectCount <= 0;
+            success <= True;
             return RenamedTransaction{ tid: tid, readSet: readSet, writeSet: writeSet };
         endmethod
     endinterface
@@ -244,6 +265,9 @@ module mkRenamer(Renamer);
         mkConnection(aggregators[i].response, outputArbiter.users[i].request);
     end
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
     rule updateResultIndex if (findElem(True, arb3.grant) matches tagged Valid .distributorId);
         resultIndex <= pack(distributorId);
     endrule
