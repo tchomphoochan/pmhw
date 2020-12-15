@@ -77,12 +77,12 @@ Integer maxHashes = valueOf(NumberHashes);
 ////////////////////////////////////////////////////////////////////////////////
 // Return the shard index for a given address, which are the low order bits
 // preceding the key used by the shards.
-function ShardIndex getShard(ObjectAddress address);
+function ShardIndex getShard(Bit#(n) address) provisos (Min#(LogNumberLiveObjects, n, LogNumberLiveObjects));
     return address[logMaxLiveObjects - 1 : logMaxShardObjects];
 endfunction
 
 // Return the key for a given address used by the shards.
-function ShardKey getKey(Bit#(n) address) provisos (Add#(LogSizeShard, __, n));
+function ShardKey getKey(Bit#(n) address) provisos (Min#(LogSizeShard, n, LogSizeShard));
     return address[logMaxShardObjects - 1 : 0];
 endfunction
 
