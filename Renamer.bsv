@@ -58,18 +58,21 @@ Integer objSetSize = valueOf(NumberTransactionObjects);
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ///
-/// Helper module to distribute requests to shards.
+/// Helper modules to distribute requests to shards.
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-interface RequestDistributor;
-    interface Put#(InputTransaction) request;
+interface RequestDistributor#(type transaction_type);
+    interface Put#(transaction_type) request;
     interface Vector#(NumberShards, Get#(ShardRequest)) outputs;
 endinterface
 
+typedef RequestDistributor#(InputTransaction) RenameRequestDistributor;
+typedef RequestDistributor#(RenamedTransaction) DeleteRequestDistributor;
+
 typedef enum { ReadSet, WriteSet } SetType deriving (Bits, Eq, FShow);
 
-module mkRequestDistributor(RequestDistributor);
+module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
@@ -136,6 +139,86 @@ module mkRequestDistributor(RequestDistributor);
     interface outputs = map(makeOutputInterface, genVector());
 
     interface Put request = toPut(inputFifo);
+endmodule
+
+module mkDeleteRequestDistributor(DeleteRequestDistributor);
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Design elements.
+    ////////////////////////////////////////////////////////////////////////////////
+    Reg#(Maybe#(RenamedTransaction)) maybeCurrentTr <- mkReg(tagged Invalid);
+    Wire#(SetType) currentSet <- mkWire();
+    RWire#(ObjectName) maybeCurrentObj <- mkRWire();
+    PulseWire requestSent <- mkPulseWire();
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+    // Calculate current object, set the object is in, and shard corresponding to current object.
+    rule calculate if (maybeCurrentTr matches tagged Valid .currentTr);
+        let readObject = countZerosLSB(currentTr.readSet);
+        let writeObject = countZerosLSB(currentTr.writeSet);
+        if (readObject < fromInteger(maxLiveObjects)) begin
+            currentSet <= ReadSet;
+            maybeCurrentObj.wset(pack(truncate(readObject)));
+        end else if (writeObject < fromInteger(maxLiveObjects)) begin
+            // Read set empty, take object from write set.
+            currentSet <= WriteSet;
+            maybeCurrentObj.wset(pack(truncate(writeObject)));
+        end
+    endrule
+
+    // Remove current object from the transaction.
+    rule progress if (maybeCurrentTr matches tagged Valid .currentTr
+                      &&& maybeCurrentObj.wget() matches tagged Valid .currentObj
+                      &&& requestSent);
+        if (currentSet == ReadSet) begin
+            maybeCurrentTr <= tagged Valid RenamedTransaction {
+                tid: currentTr.tid,
+                readSet: currentTr.readSet & ~(1 << currentObj),
+                writeSet: currentTr.writeSet
+            };
+        end else begin
+            maybeCurrentTr <= tagged Valid RenamedTransaction {
+                tid: currentTr.tid,
+                readSet: currentTr.readSet,
+                writeSet: currentTr.writeSet & ~(1 << currentObj)
+            };
+        end
+    endrule
+
+    // Reset state when transaction becomes empty.
+    rule finish if (maybeCurrentTr matches tagged Valid .*
+                    &&& maybeCurrentObj.wget() matches tagged Invalid);
+        maybeCurrentTr <= tagged Invalid;
+    endrule
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Interface connections and methods.
+    ////////////////////////////////////////////////////////////////////////////////
+    function Get#(ShardRequest) makeOutputInterface(Integer i);
+        return (
+            interface Get
+                // One get method per shard.
+                // At most one of these is unblocked on each cycle.
+                method ActionValue#(ShardRequest) get() if (
+                    maybeCurrentTr matches tagged Valid .*
+                    &&& maybeCurrentObj.wget() matches tagged Valid .currentObj
+                    &&& getShard(currentObj) == fromInteger(i)
+                );
+                    requestSent.send();
+                    return tagged Delete { name: currentObj };
+                endmethod
+            endinterface
+        );
+    endfunction
+
+    interface outputs = map(makeOutputInterface, genVector());
+
+    interface Put request;
+        method Action put(RenamedTransaction newTr) if (maybeCurrentTr matches tagged Invalid);
+            maybeCurrentTr <= tagged Valid newTr;
+        endmethod
+    endinterface
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -225,8 +308,8 @@ module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    // Request distributors.
-    Vector#(SizeRenamerBuffer, RequestDistributor) distributors <- replicateM(mkRequestDistributor);
+    // Rename request distributors.
+    Vector#(SizeRenamerBuffer, RenameRequestDistributor) distributors <- replicateM(mkRenameRequestDistributor);
     Vector#(SizeRenamerBuffer, Reg#(Bool)) distributorReadyFlags <- replicateM(mkReg(True));
     Reg#(RenamerBufferIndex) resultIndex <- mkReg(?);
 
@@ -236,8 +319,11 @@ module mkRenamer(Renamer);
     // Response aggregators.
     Vector#(SizeRenamerBuffer, ResponseAggregator) aggregators <- replicateM(mkResponseAggregator);
 
+    // Failed transaction handler: routes objects back to the shards for deletion.
+    DeleteRequestDistributor failedTransactionHandler <- mkDeleteRequestDistributor();
+
     // Connections from distributors to shards.
-    Vector#(NumberShards, Arbiter#(SizeRenamerBuffer, ShardRequest, ShardRenameResponse)) shardArbiters;
+    Vector#(NumberShards, Arbiter#(TAdd#(SizeRenamerBuffer, 1), ShardRequest, ShardRenameResponse)) shardArbiters;
     for (Integer i = 0; i < numShards; i = i + 1) begin
         let arb1 <- mkRoundRobin;
         shardArbiters[i] <- mkArbiter(arb1, 1);
@@ -263,6 +349,19 @@ module mkRenamer(Renamer);
     Arbiter#(SizeRenamerBuffer, RenamedTransaction, void) outputArbiter <- mkArbiter(arb3, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].response, outputArbiter.users[i].request);
+    end
+
+    // Connections from aggregators to failed transaction handler.
+    let arb4 <- mkRoundRobin;
+    Arbiter#(SizeRenamerBuffer, RenamedTransaction, void) failedTransactionArbiter <- mkArbiter(arb4, 1);
+    for (Integer i = 0; i < maxTransactions; i = i + 1) begin
+        mkConnection(aggregators[i].failure, failedTransactionArbiter.users[i].request);
+    end
+    mkConnection(failedTransactionArbiter.master.request, failedTransactionHandler.request);
+
+    // Connections from failed transaction handler back to the shards.
+    for (Integer i = 0; i < numShards; i = i + 1) begin
+        mkConnection(failedTransactionHandler.outputs[i], shardArbiters[i].users[maxTransactions].request);
     end
 
     ////////////////////////////////////////////////////////////////////////////////
