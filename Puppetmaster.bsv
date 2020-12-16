@@ -3,6 +3,7 @@ import ClientServer::*;
 import GetPut::*;
 import Vector::*;
 
+import PmCore::*;
 import Renamer::*;
 import Scheduler::*;
 import Shard::*;

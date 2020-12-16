@@ -8,26 +8,25 @@ import BRAM::*;
 import ClientServer::*;
 import Vector::*;
 
-import Scheduler::*;
+import PmCore::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 64 LogMaxNumberTransactions;
-typedef 32 LogSizeMemory;
 typedef 2 LogNumberShards;
 typedef 3 LogNumberHashes;
 
 typedef TSub#(LogNumberLiveObjects, LogNumberShards) LogSizeShard;
+typedef TAdd#(1, LogNumberLiveObjects) ObjectCount;
 
 typedef TExp#(LogNumberShards) NumberShards;
 typedef TExp#(LogNumberHashes) NumberHashes;
 
-typedef Bit#(LogMaxNumberTransactions) TransactionId;
-typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogNumberShards) ShardIndex;
 typedef Bit#(LogNumberHashes) HashIndex;
 typedef Bit#(LogSizeShard) ShardKey;
+typedef Bit#(LogNumberLiveObjects) ObjectName;
+typedef Bit#(ObjectCount) ReferenceCounter;
 
 typedef struct {
     ReferenceCounter counter;

@@ -7,25 +7,21 @@ import ClientServer::*;
 import GetPut::*;
 import Vector::*;
 
+import PmCore::*;
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 10 LogNumberLiveObjects;
 typedef 3 LogSizeSchedulingPool;
 typedef 1 LogNumberComparators;
 
-typedef TAdd#(1, LogNumberLiveObjects) ObjectCount;
 typedef TMul#(2, NumberComparators) SizeComparisonPool;
 typedef TDiv#(SizeSchedulingPool, NumberComparators) NumberComparisonChunks;
 
-typedef TExp#(LogNumberLiveObjects) NumberLiveObjects;
 typedef TExp#(LogSizeSchedulingPool) SizeSchedulingPool;
 typedef TExp#(LogNumberComparators) NumberComparators;
 
-typedef Bit#(LogNumberLiveObjects) ObjectName;
 typedef Bit#(LogSizeSchedulingPool) SchedulingPoolIndex;
-typedef Bit#(ObjectCount) ReferenceCounter;
-typedef Bit#(NumberLiveObjects) ObjectSet;
 typedef Bit#(SizeSchedulingPool) ContainedTransactions;
 
 typedef Vector#(SizeSchedulingPool, TransactionSet) SchedulingPool;
@@ -48,8 +44,6 @@ typedef Server#(SchedulingRequest, SchedulingResponse) Scheduler;
 ////////////////////////////////////////////////////////////////////////////////
 /// Numeric constants.
 ////////////////////////////////////////////////////////////////////////////////
-Integer logMaxLiveObjects = valueOf(LogNumberLiveObjects);
-Integer maxLiveObjects = valueOf(NumberLiveObjects);
 Integer logNumComparators = valueOf(LogNumberComparators);
 Integer numComparators = valueOf(NumberComparators);
 Integer maxRounds = valueOf(LogSizeSchedulingPool);

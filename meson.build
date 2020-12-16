@@ -4,6 +4,16 @@ bsc = find_program('bsc')
 prog_python = import('python').find_installation('python3')
 builddir = meson.current_build_dir()
 
+pm_core_obj = custom_target('pm_core_obj',
+    input: 'PmCore.bsv',
+    output: ['PmCore.bo'],
+    command: [
+        bsc,
+        '-bdir', builddir,
+        '-aggressive-conditions',
+        '-sim',
+        '@INPUT@'])
+
 scheduler_obj = custom_target('scheduler_obj',
     input: 'Scheduler.bsv',
     output: ['Scheduler.bo', 'mkSchedulerTestbench.ba'],
@@ -13,7 +23,8 @@ scheduler_obj = custom_target('scheduler_obj',
         '-aggressive-conditions',
         '-sim',
         '-g', 'mkSchedulerTestbench',
-        '@INPUT@'])
+        '@INPUT@'],
+    depends: [pm_core_obj])
 
 scheduler = custom_target('scheduler',
     input: scheduler_obj,
@@ -27,7 +38,7 @@ scheduler = custom_target('scheduler',
         '-o', '@OUTPUT@'])
 
 memfile = custom_target('memfile',
-    input: ['make_memfile.py', 'Scheduler.bsv', 'Shard.bsv'],
+    input: ['make_memfile.py', 'PmCore.bsv', 'Shard.bsv'],
     output: 'mem.vmh',
     command: [
         prog_python,
@@ -46,7 +57,7 @@ shard_obj = custom_target('shard_obj',
         '-sim',
         '-g', 'mkShardTestbench',
         '@INPUT@'],
-    depends: [scheduler_obj, memfile])
+    depends: [pm_core_obj, memfile])
 
 shard = custom_target('shard',
     input: shard_obj,
@@ -69,7 +80,7 @@ renamer_obj = custom_target('renamer_obj',
         '-sim',
         '-g', 'mkRenamerTestbench',
         '@INPUT@'],
-    depends: [scheduler_obj, shard_obj])
+    depends: [pm_core_obj, shard_obj])
 
 renamer = custom_target('renamer',
     input: renamer_obj,
@@ -92,7 +103,7 @@ pm_obj = custom_target('pm_obj',
         '-sim',
         '-g', 'mkPuppetmasterTestbench',
         '@INPUT@'],
-    depends: [scheduler_obj, renamer_obj])
+    depends: [pm_core_obj, renamer_obj, scheduler_obj, shard_obj])
 
 pm = custom_target('pm',
     input: pm_obj,

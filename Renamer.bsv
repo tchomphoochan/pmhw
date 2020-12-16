@@ -10,35 +10,21 @@ import GetPut::*;
 import SpecialFIFOs::*;
 import Vector::*;
 
-import Scheduler::*;
+import PmCore::*;
 import Shard::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 3 LogNumberTransactionObjects;
 typedef 2 LogSizeRenamerBuffer;
 
 typedef TAdd#(1, LogNumberTransactionObjects) TransactionObjectCount;
 
-typedef TExp#(LogNumberTransactionObjects) NumberTransactionObjects;
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
 
 typedef Bit#(LogNumberTransactionObjects) TransactionObjectIndex;
 typedef Bit#(LogSizeRenamerBuffer) RenamerBufferIndex;
 typedef Bit#(TransactionObjectCount) TransactionObjectCounter;
-
-typedef struct {
-   TransactionId tid;
-   Vector#(NumberTransactionObjects, ObjectAddress) readObjects;
-   Vector#(NumberTransactionObjects, ObjectAddress) writeObjects;
-} InputTransaction deriving(Bits, Eq, FShow);
-
-typedef struct {
-    TransactionId tid;
-    ObjectSet readSet;
-    ObjectSet writeSet;
-} RenamedTransaction deriving(Bits, Eq, FShow);
 
 // Tells the arbiter that we don't need to route responses back.
 instance ArbRequestTC#(RenamedTransaction);
