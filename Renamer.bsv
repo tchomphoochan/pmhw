@@ -11,6 +11,7 @@ import SpecialFIFOs::*;
 import Vector::*;
 
 import PmCore::*;
+import PmIfc::*;
 import Shard::*;
 
 ////////////////////////////////////////////////////////////////////////////////

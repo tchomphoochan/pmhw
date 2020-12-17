@@ -9,6 +9,7 @@ import ClientServer::*;
 import Vector::*;
 
 import PmCore::*;
+import PmIfc::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.

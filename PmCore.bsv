@@ -4,16 +4,14 @@
 ////////////////////////////////////////////////////////////////////////////////
 import Vector::*;
 
-typedef 64 LogMaxNumberTransactions;
-typedef 32 LogSizeMemory;
+import PmIfc::*;
+
 typedef 10 LogNumberLiveObjects;
 typedef 3 LogNumberTransactionObjects;
 
 typedef TExp#(LogNumberLiveObjects) NumberLiveObjects;
 typedef TExp#(LogNumberTransactionObjects) NumberTransactionObjects;
 
-typedef Bit#(LogMaxNumberTransactions) TransactionId;
-typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(NumberLiveObjects) ObjectSet;
 
 typedef struct {
