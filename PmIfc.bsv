@@ -12,7 +12,7 @@ typedef struct {
     Bit#(1) valid;
     Bit#(1) write;
     ObjectAddress object;
-} Object;
+} Object deriving(Bits, Eq);
 
 interface PuppetmasterToHostIndication;
     method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
