@@ -59,6 +59,11 @@ typedef RequestDistributor#(RenamedTransaction) DeleteRequestDistributor;
 
 typedef enum { ReadSet, WriteSet } SetType deriving (Bits, Eq, FShow);
 
+typedef struct {
+    SetType objType;
+    ObjectName objName;
+} RenamedObject;
+
 module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
@@ -131,29 +136,17 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
-    Maybe#(ObjectName) maybeCurrentObj = case (maybeCurrentTr) matches
+    Maybe#(RenamedObject) maybeCurrentObj = case (maybeCurrentTr) matches
         tagged Valid .currentTr : (begin
             let readObject = countZerosLSB(currentTr.readSet);
             let writeObject = countZerosLSB(currentTr.writeSet);
             (readObject < fromInteger(maxLiveObjects) ?
-                tagged Valid pack(truncate(readObject)) :
+                tagged Valid RenamedObject { objType: ReadSet, objName: pack(truncate(readObject)) } :
                 writeObject < fromInteger(maxLiveObjects) ?
-                    tagged Valid pack(truncate(writeObject)) :
+                    tagged Valid RenamedObject { objType: WriteSet, objName: pack(truncate(writeObject)) } :
                     tagged Invalid);
         end);
         tagged Invalid : tagged Invalid;
-    endcase;
-    SetType currentSet = case (maybeCurrentTr) matches
-        tagged Valid .currentTr : (begin
-            let readObject = countZerosLSB(currentTr.readSet);
-            let writeObject = countZerosLSB(currentTr.writeSet);
-            (readObject < fromInteger(maxLiveObjects) ?
-                ReadSet :
-                writeObject < fromInteger(maxLiveObjects) ?
-                    WriteSet :
-                    ?);
-        end);
-        tagged Invalid : ?;
     endcase;
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -176,22 +169,21 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 method ActionValue#(ShardRequest) get() if (
                     maybeCurrentTr matches tagged Valid .currentTr
                     &&& maybeCurrentObj matches tagged Valid .currentObj
-                    &&& getShard(currentObj) == fromInteger(i)
+                    &&& getShard(currentObj.objName) == fromInteger(i)
                 );
-                    if (currentSet == ReadSet) begin
-                        maybeCurrentTr <= tagged Valid RenamedTransaction {
+                    case (currentObj.objType) matches
+                        ReadSet : maybeCurrentTr <= tagged Valid RenamedTransaction {
                             tid: currentTr.tid,
-                            readSet: currentTr.readSet & ~(1 << currentObj),
+                            readSet: currentTr.readSet & ~(1 << currentObj.objName),
                             writeSet: currentTr.writeSet
                         };
-                    end else begin
-                        maybeCurrentTr <= tagged Valid RenamedTransaction {
+                        WriteSet : maybeCurrentTr <= tagged Valid RenamedTransaction {
                             tid: currentTr.tid,
                             readSet: currentTr.readSet,
-                            writeSet: currentTr.writeSet & ~(1 << currentObj)
+                            writeSet: currentTr.writeSet & ~(1 << currentObj.objName)
                         };
-                    end
-                    return tagged Delete { name: currentObj };
+                    endcase
+                    return tagged Delete { name: currentObj.objName };
                 endmethod
             endinterface
         );
