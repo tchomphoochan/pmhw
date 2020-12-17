@@ -2,7 +2,7 @@
 import PmIfc::*;
 import Puppetmaster::*;
 
-module mkPmTop#(HostToPuppetmaster indication)(PmTop);
+module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
         Puppetmaster pm <- mkPuppetmaster();
         Reg#(Bit#(64)) count <- mkReg(0);
 

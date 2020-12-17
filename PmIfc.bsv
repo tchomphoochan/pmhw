@@ -13,7 +13,7 @@ typedef union tagged {
     ObjectAddress WriteObject;
 } Object;
 
-interface PuppetmasterToHost;
+interface PuppetmasterToHostIndication;
     method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
     method Action transactionFinished(TransactionId tid, Bit#(64) timestamp);
 endinterface

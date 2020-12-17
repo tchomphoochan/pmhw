@@ -1,7 +1,7 @@
 #include <map>
 #include <algorithm>
 #include "HostToPuppetmaster.h"
-#include "PuppetmasterToHost.h"
+#include "PuppetmasterToHostIndication.h"
 
 using namedspace std;
 
@@ -13,7 +13,7 @@ extern "C" {
 }
 
 HostToPuppetmasterProxy *fpga;
-PuppetmasterToHost *puppetmasterToHost;
+PuppetmasterToHostIndication *puppetmasterToHost;
 
 extern "C" void connectal_setup() {
         printf("Connectal setting up ...\n");
@@ -23,12 +23,12 @@ extern "C" void connectal_setup() {
         printf("Init the request to FPGA\n");
         fflush(stdout);
         
-        puppetmasterToHost = new PuppetmasterToHost(IfcNames_PuppetmasterToHostH2S);
+        puppetmasterToHost = new PuppetmasterToHostIndication(IfcNames_PuppetmasterToHostIndicationH2S);
         printf("Init the indication\n");
         fflush(stdout);
 }
 
-class PuppetmasterToHost : public PuppetmasterToHostWrapper
+class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper
 {
         private:
         map<int64_t,uint64_t> startTime; 
@@ -43,7 +43,7 @@ class PuppetmasterToHost : public PuppetmasterToHostWrapper
                 endTime[tid] = timestamp;
         }
         
-        PuppetmasterToHost(unsigned int id) : PuppetmasterToHostWrapper(id), startTime(), endTime() {
+        PuppetmasterToHostIndication(unsigned int id) : PuppetmasterToHostWrapperIndication(id), startTime(), endTime() {
         }
 };
 

@@ -2,7 +2,7 @@ CONNECTALDIR ?= connectal
 S2H_INTERFACES = \
 	HostToPuppetmaster:PmTop.request
 H2S_INTERFACES= \
-	PmTop:PuppetmasterToHost
+	PmTop:PuppetmasterToHostIndication
 BSVFILES += \
 	PmIfc.bsv \
 	PmTop.bsv \
