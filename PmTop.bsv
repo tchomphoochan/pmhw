@@ -42,7 +42,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
                         Object obj16
                         );
                 noAction;
-        endmethod
+	        endmethod
         
-endinterface
+	endinterface
 endmodule
