@@ -4,6 +4,7 @@ import GetPut::*;
 import Vector::*;
 
 import PmCore::*;
+import PmIfc::*;
 import Renamer::*;
 import Scheduler::*;
 import Shard::*;
