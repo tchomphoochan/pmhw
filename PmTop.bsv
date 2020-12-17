@@ -2,6 +2,10 @@
 import PmIfc::*;
 import Puppetmaster::*;
 
+interface PmTop; 
+        interface HostToPuppetmaster request;
+endinterface
+
 module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
         Puppetmaster pm <- mkPuppetmaster();
         Reg#(Bit#(64)) count <- mkReg(0);

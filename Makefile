@@ -5,7 +5,7 @@ H2S_INTERFACES= \
 	PmTop:PuppetmasterToHostIndication
 BSVFILES += \
 	PmIfc.bsv \
-	PmTop.bsv \
+	PmTop.bsv 
 BSVPATH += / \
 	$(CONNECTALDIR)/bsv
 CPPFILES += \
@@ -13,4 +13,6 @@ CPPFILES += \
 
 
 CONNECTALFLAGS += --cxxflags="-std=c++17"
+CONNECTALFLAGS += --nonstrict
+
 include $(CONNECTALDIR)/Makefile.connectal
