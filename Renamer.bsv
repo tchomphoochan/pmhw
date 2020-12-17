@@ -66,22 +66,16 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     FIFO#(InputTransaction) inputFifo <- mkBypassFIFO();
     Reg#(SetType) setType <- mkReg(ReadSet);
     Reg#(TransactionObjectIndex) setIndex <- mkReg(0);
-    Wire#(ShardIndex) shardIndex <- mkWire();
 
     ////////////////////////////////////////////////////////////////////////////////
-    /// Rules.
+    /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
-    // Calculate shard corresponding to current object.
-    rule progress;
+    ShardIndex shardIndex = begin
         InputTransaction inputTr = inputFifo.first();
-        if (setType == ReadSet) begin
-            let readObject = inputTr.readObjects[setIndex];
-            shardIndex <= getShard(readObject);
-        end else begin
-            let writtenObject = inputTr.writeObjects[setIndex];
-            shardIndex <= getShard(writtenObject);
-        end
-    endrule
+        let readObject = inputTr.readObjects[setIndex];
+        let writtenObject = inputTr.writeObjects[setIndex];
+        getShard(setType == ReadSet ? readObject : writtenObject);
+    end;
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -133,49 +127,41 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     Reg#(Maybe#(RenamedTransaction)) maybeCurrentTr <- mkReg(tagged Invalid);
-    Wire#(SetType) currentSet <- mkWire();
-    RWire#(ObjectName) maybeCurrentObj <- mkRWire();
-    PulseWire requestSent <- mkPulseWire();
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Functions.
+    ////////////////////////////////////////////////////////////////////////////////
+    Maybe#(ObjectName) maybeCurrentObj = case (maybeCurrentTr) matches
+        tagged Valid .currentTr : (begin
+            let readObject = countZerosLSB(currentTr.readSet);
+            let writeObject = countZerosLSB(currentTr.writeSet);
+            (readObject < fromInteger(maxLiveObjects) ?
+                tagged Valid pack(truncate(readObject)) :
+                writeObject < fromInteger(maxLiveObjects) ?
+                    tagged Valid pack(truncate(writeObject)) :
+                    tagged Invalid);
+        end);
+        tagged Invalid : tagged Invalid;
+    endcase;
+    SetType currentSet = case (maybeCurrentTr) matches
+        tagged Valid .currentTr : (begin
+            let readObject = countZerosLSB(currentTr.readSet);
+            let writeObject = countZerosLSB(currentTr.writeSet);
+            (readObject < fromInteger(maxLiveObjects) ?
+                ReadSet :
+                writeObject < fromInteger(maxLiveObjects) ?
+                    WriteSet :
+                    ?);
+        end);
+        tagged Invalid : ?;
+    endcase;
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-    // Calculate current object, set the object is in, and shard corresponding to current object.
-    rule calculate if (maybeCurrentTr matches tagged Valid .currentTr);
-        let readObject = countZerosLSB(currentTr.readSet);
-        let writeObject = countZerosLSB(currentTr.writeSet);
-        if (readObject < fromInteger(maxLiveObjects)) begin
-            currentSet <= ReadSet;
-            maybeCurrentObj.wset(pack(truncate(readObject)));
-        end else if (writeObject < fromInteger(maxLiveObjects)) begin
-            // Read set empty, take object from write set.
-            currentSet <= WriteSet;
-            maybeCurrentObj.wset(pack(truncate(writeObject)));
-        end
-    endrule
-
-    // Remove current object from the transaction.
-    rule progress if (maybeCurrentTr matches tagged Valid .currentTr
-                      &&& maybeCurrentObj.wget() matches tagged Valid .currentObj
-                      &&& requestSent);
-        if (currentSet == ReadSet) begin
-            maybeCurrentTr <= tagged Valid RenamedTransaction {
-                tid: currentTr.tid,
-                readSet: currentTr.readSet & ~(1 << currentObj),
-                writeSet: currentTr.writeSet
-            };
-        end else begin
-            maybeCurrentTr <= tagged Valid RenamedTransaction {
-                tid: currentTr.tid,
-                readSet: currentTr.readSet,
-                writeSet: currentTr.writeSet & ~(1 << currentObj)
-            };
-        end
-    endrule
-
     // Reset state when transaction becomes empty.
     rule finish if (maybeCurrentTr matches tagged Valid .*
-                    &&& maybeCurrentObj.wget() matches tagged Invalid);
+                    &&& maybeCurrentObj matches tagged Invalid);
         maybeCurrentTr <= tagged Invalid;
     endrule
 
@@ -188,11 +174,23 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRequest) get() if (
-                    maybeCurrentTr matches tagged Valid .*
-                    &&& maybeCurrentObj.wget() matches tagged Valid .currentObj
+                    maybeCurrentTr matches tagged Valid .currentTr
+                    &&& maybeCurrentObj matches tagged Valid .currentObj
                     &&& getShard(currentObj) == fromInteger(i)
                 );
-                    requestSent.send();
+                    if (currentSet == ReadSet) begin
+                        maybeCurrentTr <= tagged Valid RenamedTransaction {
+                            tid: currentTr.tid,
+                            readSet: currentTr.readSet & ~(1 << currentObj),
+                            writeSet: currentTr.writeSet
+                        };
+                    end else begin
+                        maybeCurrentTr <= tagged Valid RenamedTransaction {
+                            tid: currentTr.tid,
+                            readSet: currentTr.readSet,
+                            writeSet: currentTr.writeSet & ~(1 << currentObj)
+                        };
+                    end
                     return tagged Delete { name: currentObj };
                 endmethod
             endinterface
