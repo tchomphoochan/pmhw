@@ -57,10 +57,10 @@ endinterface
 typedef RequestDistributor#(InputTransaction) RenameRequestDistributor;
 typedef RequestDistributor#(RenamedTransaction) DeleteRequestDistributor;
 
-typedef enum { ReadSet, WriteSet } SetType deriving (Bits, Eq, FShow);
+typedef enum { ReadObject, WrittenObject } ObjectType deriving (Bits, Eq, FShow);
 
 typedef struct {
-    SetType objType;
+    ObjectType objType;
     ObjectName objName;
 } RenamedObject;
 
@@ -69,17 +69,17 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     FIFO#(InputTransaction) inputFifo <- mkBypassFIFO();
-    Reg#(SetType) setType <- mkReg(ReadSet);
-    Reg#(TransactionObjectIndex) setIndex <- mkReg(0);
+    Reg#(ObjectType) objType <- mkReg(ReadObject);
+    Reg#(TransactionObjectIndex) objIndex <- mkReg(0);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
     ShardIndex shardIndex = begin
         InputTransaction inputTr = inputFifo.first();
-        let readObject = inputTr.readObjects[setIndex];
-        let writtenObject = inputTr.writeObjects[setIndex];
-        getShard(setType == ReadSet ? readObject : writtenObject);
+        let readObject = inputTr.readObjects[objIndex];
+        let writtenObject = inputTr.writeObjects[objIndex];
+        getShard(objType == ReadObject ? readObject : writtenObject);
     end;
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -92,30 +92,30 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                 // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRequest) get() if (shardIndex == fromInteger(i));
                     InputTransaction inputTr = inputFifo.first();
-                    if (setType == ReadSet) begin
-                        if (setIndex < fromInteger(objSetSize - 1)) begin
+                    if (objType == ReadObject) begin
+                        if (objIndex < fromInteger(objSetSize - 1)) begin
                             // Go to next read object.
-                            setIndex <= setIndex + 1;
+                            objIndex <= objIndex + 1;
                         end else begin
-                            // No more read objects, go to first write object.
-                            setIndex <= 0;
-                            setType <= WriteSet;
+                            // No more read objects, go to first written object.
+                            objIndex <= 0;
+                            objType <= WrittenObject;
                         end
                     end else begin
-                        if (setIndex < fromInteger(objSetSize - 1)) begin
-                            // Go to next write object.
-                            setIndex <= setIndex + 1;
+                        if (objIndex < fromInteger(objSetSize - 1)) begin
+                            // Go to next written object.
+                            objIndex <= objIndex + 1;
                         end else begin
-                            // No more write objects, transaction is processed.
-                            setIndex <= 0;
-                            setType <= ReadSet;
+                            // No more written objects, transaction is processed.
+                            objIndex <= 0;
+                            objType <= ReadObject;
                             inputFifo.deq();
                         end
                     end
                     return tagged Rename {
                         tid: inputTr.tid,
-                        address: setType == ReadSet ? inputTr.readObjects[setIndex] : inputTr.writeObjects[setIndex],
-                        isWrittenObject: setType == WriteSet
+                        address: objType == ReadObject ? inputTr.readObjects[objIndex] : inputTr.writeObjects[objIndex],
+                        isWrittenObject: objType == WrittenObject
                     };
                 endmethod
             endinterface
@@ -141,9 +141,9 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
             let readObject = countZerosLSB(currentTr.readSet);
             let writeObject = countZerosLSB(currentTr.writeSet);
             (readObject < fromInteger(maxLiveObjects) ?
-                tagged Valid RenamedObject { objType: ReadSet, objName: pack(truncate(readObject)) } :
+                tagged Valid RenamedObject { objType: ReadObject, objName: pack(truncate(readObject)) } :
                 writeObject < fromInteger(maxLiveObjects) ?
-                    tagged Valid RenamedObject { objType: WriteSet, objName: pack(truncate(writeObject)) } :
+                    tagged Valid RenamedObject { objType: WrittenObject, objName: pack(truncate(writeObject)) } :
                     tagged Invalid);
         end);
         tagged Invalid : tagged Invalid;
@@ -172,12 +172,12 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                     &&& getShard(currentObj.objName) == fromInteger(i)
                 );
                     case (currentObj.objType) matches
-                        ReadSet : maybeCurrentTr <= tagged Valid RenamedTransaction {
+                        ReadObject : maybeCurrentTr <= tagged Valid RenamedTransaction {
                             tid: currentTr.tid,
                             readSet: currentTr.readSet & ~(1 << currentObj.objName),
                             writeSet: currentTr.writeSet
                         };
-                        WriteSet : maybeCurrentTr <= tagged Valid RenamedTransaction {
+                        WrittenObject : maybeCurrentTr <= tagged Valid RenamedTransaction {
                             tid: currentTr.tid,
                             readSet: currentTr.readSet,
                             writeSet: currentTr.writeSet & ~(1 << currentObj.objName)
