@@ -14,11 +14,11 @@ typedef union tagged {
 } Object;
 
 interface PuppetmasterToHost;
-    method Action transactionStarted(TransactionId tid);
-    method Action transactionFinished(TransactionId tid);
+    method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
+    method Action transactionFinished(TransactionId tid, Bit#(64) timestamp);
 endinterface
 
-interface Host2Puppetmaster;
+interface HostToPuppetmaster;
     method Action enqueueTransaction(
         TransactionId tid,
         Maybe#(Object) obj1,
@@ -39,3 +39,9 @@ interface Host2Puppetmaster;
         Maybe#(Object) obj16
     );
 endinterface
+
+interface PmTop; 
+        interface HostToPuppetmaster request;
+endinterface
+
+
