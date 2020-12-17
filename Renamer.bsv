@@ -131,32 +131,20 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(Maybe#(RenamedTransaction)) maybeCurrentTr <- mkReg(tagged Invalid);
+    let emptyTransaction = RenamedTransaction { tid: ?, readSet: 'b0, writeSet: 'b0 };
+    Reg#(RenamedTransaction) currentTr <- mkReg(emptyTransaction);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
-    Maybe#(RenamedObject) maybeCurrentObj = case (maybeCurrentTr) matches
-        tagged Valid .currentTr : (begin
-            let readObject = countZerosLSB(currentTr.readSet);
-            let writeObject = countZerosLSB(currentTr.writeSet);
-            (readObject < fromInteger(maxLiveObjects) ?
-                tagged Valid RenamedObject { objType: ReadObject, objName: pack(truncate(readObject)) } :
-                writeObject < fromInteger(maxLiveObjects) ?
-                    tagged Valid RenamedObject { objType: WrittenObject, objName: pack(truncate(writeObject)) } :
-                    tagged Invalid);
-        end);
-        tagged Invalid : tagged Invalid;
-    endcase;
-
-    ////////////////////////////////////////////////////////////////////////////////
-    /// Rules.
-    ////////////////////////////////////////////////////////////////////////////////
-    // Reset state when transaction becomes empty.
-    rule finish if (maybeCurrentTr matches tagged Valid .*
-                    &&& maybeCurrentObj matches tagged Invalid);
-        maybeCurrentTr <= tagged Invalid;
-    endrule
+    let readObject = countZerosLSB(currentTr.readSet);
+    let writtenObject = countZerosLSB(currentTr.writeSet);
+    Maybe#(RenamedObject) maybeCurrentObj = (
+        readObject < fromInteger(maxLiveObjects)    ? tagged Valid RenamedObject {
+            objType: ReadObject, objName: pack(truncate(readObject)) } :
+        writtenObject < fromInteger(maxLiveObjects) ? tagged Valid RenamedObject {
+            objType: WrittenObject, objName: pack(truncate(writtenObject)) } :
+                                                      tagged Invalid);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -167,17 +155,16 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRequest) get() if (
-                    maybeCurrentTr matches tagged Valid .currentTr
-                    &&& maybeCurrentObj matches tagged Valid .currentObj
+                    maybeCurrentObj matches tagged Valid .currentObj
                     &&& getShard(currentObj.objName) == fromInteger(i)
                 );
                     case (currentObj.objType) matches
-                        ReadObject : maybeCurrentTr <= tagged Valid RenamedTransaction {
+                        ReadObject : currentTr <= RenamedTransaction {
                             tid: currentTr.tid,
                             readSet: currentTr.readSet & ~(1 << currentObj.objName),
                             writeSet: currentTr.writeSet
                         };
-                        WrittenObject : maybeCurrentTr <= tagged Valid RenamedTransaction {
+                        WrittenObject : currentTr <= RenamedTransaction {
                             tid: currentTr.tid,
                             readSet: currentTr.readSet,
                             writeSet: currentTr.writeSet & ~(1 << currentObj.objName)
@@ -192,8 +179,8 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     interface outputs = map(makeOutputInterface, genVector());
 
     interface Put request;
-        method Action put(RenamedTransaction newTr) if (maybeCurrentTr matches tagged Invalid);
-            maybeCurrentTr <= tagged Valid newTr;
+        method Action put(RenamedTransaction newTr) if (maybeCurrentObj matches tagged Invalid);
+            currentTr <= newTr;
         endmethod
     endinterface
 endmodule
