@@ -26,5 +26,10 @@ typedef struct {
     ObjectSet writeSet;
 } RenamedTransaction deriving(Bits, Eq, FShow);
 
+typedef struct {
+    ObjectSet readSet;
+    ObjectSet writeSet;
+} SchedulerTransaction deriving(Bits, Eq, FShow);
+
 Integer logMaxLiveObjects = valueOf(LogNumberLiveObjects);
 Integer maxLiveObjects = valueOf(NumberLiveObjects);

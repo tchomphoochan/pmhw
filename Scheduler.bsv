@@ -38,8 +38,8 @@ typedef struct {
     ContainedTransactions indices;
 } TransactionSet deriving(Bits, Eq, FShow);
 
-typedef SchedulingPool SchedulingRequest;
-typedef TransactionSet SchedulingResponse;
+typedef Vector#(SizeSchedulingPool, SchedulerTransaction) SchedulingRequest;
+typedef ContainedTransactions SchedulingResponse;
 typedef Server#(SchedulingRequest, SchedulingResponse) Scheduler;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,6 +106,17 @@ module mkScheduler(Scheduler);
     Reg#(SchedulingPoolIndex) offset <- mkReg(0);
 
     ////////////////////////////////////////////////////////////////////////////////
+    /// Functions.
+    ////////////////////////////////////////////////////////////////////////////////
+    function TransactionSet transactionToSet(SchedulerTransaction tr, Integer i);
+        return TransactionSet {
+            readSet: tr.readSet,
+            writeSet: tr.writeSet,
+            indices: 1 << i
+        };
+    endfunction
+
+    ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
     rule doTournament if (isValid(trSets) && round < fromInteger(maxRounds));
@@ -141,7 +152,7 @@ module mkScheduler(Scheduler);
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
         method Action put(SchedulingRequest inputTransactions) if (!isValid(trSets));
-            trSets <= tagged Valid inputTransactions;
+            trSets <= tagged Valid zipWith(transactionToSet, inputTransactions, genVector);
             round <= 0;
             offset <= 0;
         endmethod
@@ -150,7 +161,7 @@ module mkScheduler(Scheduler);
     interface Get response;
         method ActionValue#(SchedulingResponse) get() if (isValid(trSets) && round == fromInteger(maxRounds));
             trSets <= tagged Invalid;
-            return fromMaybe(?, trSets)[0];
+            return fromMaybe(?, trSets)[0].indices;
         endmethod
     endinterface
 endmodule
@@ -166,66 +177,58 @@ module mkSchedulerTestbench();
     Vector#(NumberSchedulerTests, SchedulingRequest) testInputs = newVector;
     // Empty transactions.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[0][i] = TransactionSet{
+        testInputs[0][i] = SchedulerTransaction {
             readSet: 'b0,
-            writeSet: 'b0,
-            indices: 'b1 << i
+            writeSet: 'b0
         };
     end
     // Non-conflicting read-only transactions.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[1][i] = TransactionSet{
+        testInputs[1][i] = SchedulerTransaction {
             readSet: 'b1 << i,
-            writeSet: 'b0,
-            indices: 'b1 << i
+            writeSet: 'b0
         };
     end
     // Overlapping read-only transactions.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[2][i] = TransactionSet{
+        testInputs[2][i] = SchedulerTransaction {
             readSet: 'b1111 << i,
-            writeSet: 'b0,
-            indices: 'b1 << i
+            writeSet: 'b0
         };
     end
     // Non-conflicting read-write transactions.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[3][i] = TransactionSet{
+        testInputs[3][i] = SchedulerTransaction {
             readSet: 'b11 << (2 * i),
-            writeSet: 'b1 << (maxLiveObjects - i - 1),
-            indices: 'b1 << i
+            writeSet: 'b1 << (maxLiveObjects - i - 1)
         };
     end
     // Non-conflicting read-write transactions with overlapping reads.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[4][i] = TransactionSet{
+        testInputs[4][i] = SchedulerTransaction {
             readSet: 'b1111 << i,
-            writeSet: 'b1 << (maxLiveObjects - i - 1),
-            indices: 'b1 << i
+            writeSet: 'b1 << (maxLiveObjects - i - 1)
         };
     end
     // Transactions with read-write conflicts.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[5][i] = TransactionSet{
+        testInputs[5][i] = SchedulerTransaction {
             readSet: 'b11 << (2 * i),
-            writeSet: 'b100 << (2 * i),
-            indices: 'b1 << i
+            writeSet: 'b100 << (2 * i)
         };
     end
     // Transacions with write-write conflicts.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[6][i] = TransactionSet{
+        testInputs[6][i] = SchedulerTransaction {
             readSet: 'b1000 << i,
-            writeSet: 'b1 << (i % 3),
-            indices: 'b1 << i
+            writeSet: 'b1 << (i % 3)
         };
     end
     // Transactions with both conflicts.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[7][i] = TransactionSet{
+        testInputs[7][i] = SchedulerTransaction {
             readSet: 'b1010 << i,
-            writeSet: 'b101 << i,
-            indices: 'b1 << i
+            writeSet: 'b101 << i
         };
     end
 

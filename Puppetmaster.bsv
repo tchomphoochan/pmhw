@@ -26,16 +26,15 @@ module mkPuppetmaster(Puppetmaster);
         return tr.tid;
     endfunction
 
-    function TransactionSet transactionToSet(RenamedTransaction tr, Integer i);
-        return TransactionSet {
-            readSet: tr.readSet,
-            writeSet: tr.writeSet,
-            indices: 1 << i
-        };
-    endfunction
-
     function Maybe#(TransactionId) recoverTid(TransactionId tid, bit flag);
         return flag == 1'b1 ? tagged Valid tid : tagged Invalid;
+    endfunction
+
+    function SchedulerTransaction convertTransaction(RenamedTransaction tr);
+        return SchedulerTransaction {
+            readSet : tr.readSet,
+            writeSet : tr.writeSet
+        };
     endfunction
 
     // Put renamed transactions into a buffer.
@@ -50,7 +49,7 @@ module mkPuppetmaster(Puppetmaster);
         bufferIndex <= 0;
         let transactions = readVReg(buffer);
         trIds <= map(getTid, transactions);
-        scheduler.request.put(zipWith(transactionToSet, transactions, genVector));
+        scheduler.request.put(map(convertTransaction, transactions));
     endrule
 
     // Incoming transactions get forwarded to the renamer.
@@ -59,8 +58,8 @@ module mkPuppetmaster(Puppetmaster);
     // Recover scheduled transaction ids from scheduler response.
     interface Get response;
         method ActionValue#(PuppetmasterResponse) get();
-            let result <- scheduler.response.get();
-            return zipWith(recoverTid, trIds, unpack(result.indices));
+            let indices <- scheduler.response.get();
+            return zipWith(recoverTid, trIds, unpack(indices));
         endmethod
     endinterface
 
