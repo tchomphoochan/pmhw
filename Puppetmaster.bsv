@@ -138,6 +138,23 @@ typedef 4 NumberPuppetmasterTests;
 
 Integer numTests = valueOf(NumberPuppetmasterTests);
 
+typedef struct {
+    Maybe#(TransactionId) maybeTid;
+} PuppetStatus;
+
+instance FShow#(PuppetStatus);
+    function Fmt fshow(PuppetStatus status);
+        case (status.maybeTid) matches
+            { tagged Invalid } : return $format("--");
+            { tagged Valid .tid } : return $format("%2h", tid);
+        endcase
+    endfunction
+endinstance
+
+function PuppetStatus toStatus(Maybe#(TransactionId) maybeTid);
+    return PuppetStatus { maybeTid : maybeTid };
+endfunction
+
 module mkPuppetmasterTestbench();
     Puppetmaster myPuppetmaster <- mkPuppetmaster();
 
@@ -168,6 +185,7 @@ module mkPuppetmasterTestbench();
         cycle <= cycle + 1;
         let result <- myPuppetmaster.response.get();
         prevResult <= result;
-        if (prevResult != result) $display(fshow(result));
+        if (prevResult != result)
+            $display("%5d: ", cycle, fshow(map(toStatus, result)));
     endrule
 endmodule
