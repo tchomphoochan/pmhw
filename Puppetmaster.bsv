@@ -1,4 +1,9 @@
-// Top-level Puppetmaster module.
+////////////////////////////////////////////////////////////////////////////////
+//  Filename      : Puppetmaster.bsv
+//  Description   : Top-level module. Accepts a stream of trancactions and sends
+//                  them to puppets for execution in parallel, avoiding
+//                  conflicts between concurrently executing transactions.
+////////////////////////////////////////////////////////////////////////////////
 import ClientServer::*;
 import GetPut::*;
 import Vector::*;
@@ -9,19 +14,42 @@ import Renamer::*;
 import Scheduler::*;
 import Shard::*;
 
+////////////////////////////////////////////////////////////////////////////////
+/// Module interface.
+////////////////////////////////////////////////////////////////////////////////
 typedef InputTransaction PuppetmasterRequest;
 typedef Vector#(SizeSchedulingPool, Maybe#(TransactionId)) PuppetmasterResponse;
 typedef Server#(PuppetmasterRequest, PuppetmasterResponse) Puppetmaster;
 
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+///
+/// Puppetmaster implementation.
+///
+/// Takes a stream of incoming transactions and renames each of them. Once
+/// there are enough for a batch, it send that batch to the scheduler. Returns
+/// the indices of transactions which the scheduler says are OK to run.
+///
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 module mkPuppetmaster(Puppetmaster);
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Design elements.
+    ////////////////////////////////////////////////////////////////////////////////
+    // Stores renamed transactions while they are waiting to be sent to the scheduler.
     Vector#(SizeSchedulingPool, Reg#(RenamedTransaction)) buffer <- replicateM(mkReg(?));
+    // Points to the first empty slot in the buffer.
     Reg#(Bit#(TAdd#(LogSizeSchedulingPool, 1))) bufferIndex <- mkReg(0);
     // Transaction ids for converting the indices returned the scheduling step.
     Reg#(Vector#(SizeSchedulingPool, TransactionId)) trIds <- mkReg(?);
 
+    // Submodules.
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Functions.
+    ////////////////////////////////////////////////////////////////////////////////
     function TransactionId getTid(RenamedTransaction tr);
         return tr.tid;
     endfunction
@@ -37,6 +65,9 @@ module mkPuppetmaster(Puppetmaster);
         };
     endfunction
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
     // Put renamed transactions into a buffer.
     rule receive if (bufferIndex < fromInteger(valueOf(SizeSchedulingPool)));
         bufferIndex <= bufferIndex + 1;
@@ -52,6 +83,9 @@ module mkPuppetmaster(Puppetmaster);
         scheduler.request.put(map(convertTransaction, transactions));
     endrule
 
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Interface connections and methods.
+    ////////////////////////////////////////////////////////////////////////////////
     // Incoming transactions get forwarded to the renamer.
     interface Put request = renamer.request;
 
@@ -65,6 +99,9 @@ module mkPuppetmaster(Puppetmaster);
 
 endmodule
 
+////////////////////////////////////////////////////////////////////////////////
+// End-to-end puppetmaster tests.
+////////////////////////////////////////////////////////////////////////////////
 typedef 4 NumberPuppetmasterTests;
 
 Integer numTests = valueOf(NumberPuppetmasterTests);
