@@ -99,7 +99,7 @@ module mkScheduler(Scheduler);
     // Transaction sets. It is Valid only when there is a request being processed.
     // The number of "active" transaction sets is halved in each round. These are
     // stored contiguously, flushed to the left (starting at index 0).
-    Reg#(Maybe#(SchedulingPool)) trSets <- mkReg(tagged Invalid);
+    Reg#(Maybe#(SchedulingPool)) maybeTrSets <- mkReg(tagged Invalid);
     // Tournament round.
     Reg#(SchedulingPoolIndex) round <- mkReg(0);
     // Number of transactions that have already been merged in this round.
@@ -119,23 +119,23 @@ module mkScheduler(Scheduler);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-    rule doTournament if (isValid(trSets) && round < fromInteger(maxRounds));
-        SchedulingPool currentTrSets = fromMaybe(?, trSets);
+    rule doTournament if (maybeTrSets matches tagged Valid .trSets
+                          &&& round < fromInteger(maxRounds));
         // Extract transactions to be merged, starting at offset. rotateBy rotates
         // to the right, so we compute the offset from the other end of the vector.
         SchedulingPoolIndex revOffset = fromInteger(maxScheduledObjects - 1) - offset + 1;
-        SchedulingPool rotatedTrSets = rotateBy(currentTrSets, unpack(revOffset));
+        SchedulingPool rotatedTrSets = rotateBy(trSets, unpack(revOffset));
         ComparisonPool activeTrSets = take(rotatedTrSets);
         // Merge transactions pairwise.
         MergedComparisonPool mergedTrSets = mapPairs(mergeTransactionSets, id, activeTrSets);
         // Split original vector into chunks and replace chunk corresponding
         // to these transactions in the next round.
-        Vector#(NumberComparisonChunks, MergedComparisonPool) chunks = toChunks(currentTrSets);
+        Vector#(NumberComparisonChunks, MergedComparisonPool) chunks = toChunks(trSets);
         SchedulingPoolIndex chunkIndex = (offset >> logNumComparators) >> 1;
         chunks[chunkIndex] = mergedTrSets;
         // Concatenate chunks and update state.
         SchedulingPool newTrSets = concat(chunks);
-        trSets <= tagged Valid newTrSets;
+        maybeTrSets <= tagged Valid newTrSets;
         // Compute next offset and round.
         // newOffset = (offset + 2*numComparators) % (SizeSchedulingPool / 2^round)
         SchedulingPoolIndex numMergedTr = fromInteger((numComparators * 2) % maxScheduledObjects);
@@ -151,17 +151,19 @@ module mkScheduler(Scheduler);
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
-        method Action put(SchedulingRequest inputTransactions) if (!isValid(trSets));
-            trSets <= tagged Valid zipWith(transactionToSet, inputTransactions, genVector);
+        method Action put(SchedulingRequest req) if (!isValid(maybeTrSets));
+            maybeTrSets <= tagged Valid zipWith(transactionToSet, req, genVector);
             round <= 0;
             offset <= 0;
         endmethod
     endinterface
 
     interface Get response;
-        method ActionValue#(SchedulingResponse) get() if (isValid(trSets) && round == fromInteger(maxRounds));
-            trSets <= tagged Invalid;
-            return fromMaybe(?, trSets)[0].indices;
+        method ActionValue#(SchedulingResponse) get() if (
+                maybeTrSets matches tagged Valid .trSets
+                &&& round == fromInteger(maxRounds));
+            maybeTrSets <= tagged Invalid;
+            return trSets[0].indices;
         endmethod
     endinterface
 endmodule
