@@ -10,6 +10,7 @@ import Vector::*;
 
 import PmCore::*;
 import PmIfc::*;
+import Puppets::*;
 import Renamer::*;
 import Scheduler::*;
 import Shard::*;
@@ -17,9 +18,19 @@ import Shard::*;
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
+typedef 4 LogNumberPuppets;
+
+typedef TExp#(LogNumberPuppets) NumberPuppets;
+
 typedef InputTransaction PuppetmasterRequest;
-typedef Vector#(SizeSchedulingPool, Maybe#(TransactionId)) PuppetmasterResponse;
+typedef Vector#(NumberPuppets, Maybe#(TransactionId)) PuppetmasterResponse;
 typedef Server#(PuppetmasterRequest, PuppetmasterResponse) Puppetmaster;
+
+////////////////////////////////////////////////////////////////////////////////
+/// Numeric constants.
+////////////////////////////////////////////////////////////////////////////////
+Integer transactionTime = 100;
+Integer maxPendingTransactions = 16;
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -42,20 +53,21 @@ module mkPuppetmaster(Puppetmaster);
     Reg#(Bit#(TAdd#(LogSizeSchedulingPool, 1))) bufferIndex <- mkReg(0);
     // Transaction ids for converting the indices returned the scheduling step.
     Reg#(Vector#(SizeSchedulingPool, TransactionId)) trIds <- mkReg(?);
+    // Intermediate storage for scheduling result.
+    Reg#(ContainedTransactions) pendingTransactions <- mkReg(0);
+    // Status of each puppet: executing a transaction or idle.
+    Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) runningTransactions <- mkReg(replicate(tagged Invalid));
 
     // Submodules.
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
+    Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkTimedPuppet(transactionTime));
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
     function TransactionId getTid(RenamedTransaction tr);
         return tr.tid;
-    endfunction
-
-    function Maybe#(TransactionId) recoverTid(TransactionId tid, bit flag);
-        return flag == 1'b1 ? tagged Valid tid : tagged Invalid;
     endfunction
 
     function SchedulerTransaction convertTransaction(RenamedTransaction tr);
@@ -69,18 +81,44 @@ module mkPuppetmaster(Puppetmaster);
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
     // Put renamed transactions into a buffer.
-    rule receive if (bufferIndex < fromInteger(valueOf(SizeSchedulingPool)));
+    rule getRenamed if (bufferIndex < fromInteger(valueOf(SizeSchedulingPool)));
         bufferIndex <= bufferIndex + 1;
         let result <- renamer.response.get();
         buffer[bufferIndex] <= result;
     endrule
 
     // When buffer is full, send scheduling request.
-    rule process if (bufferIndex == fromInteger(valueOf(SizeSchedulingPool)));
+    rule doSchedule if (bufferIndex == fromInteger(valueOf(SizeSchedulingPool)));
         bufferIndex <= 0;
         let transactions = readVReg(buffer);
         trIds <= map(getTid, transactions);
         scheduler.request.put(map(convertTransaction, transactions));
+    endrule
+
+    // Retrieve indices of scheduled transacions.
+    rule getScheduled if (pendingTransactions == 0);
+        let scheduled <- scheduler.response.get();
+        pendingTransactions <= scheduled;
+    endrule
+
+    // Send first (lowest-index) transaction to first idle puppet.
+    // For the rest of the puppets, detect if running transaction has finished.
+    rule updatePuppets if (
+            findElem(tagged Invalid, runningTransactions) matches tagged Valid .puppetIndex
+            &&& pendingTransactions != 0);
+        SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTransactions)));
+        let startedTransactionId = trIds[trIndex];
+        pendingTransactions <= pendingTransactions & ~(1 << trIndex);
+        Vector#(NumberPuppets, Maybe#(TransactionId)) newTrs;
+        for (Integer i = 0; i < valueOf(NumberPuppets); i = i + 1) begin
+            if (fromInteger(i) == puppetIndex) begin
+                puppets[i].start(startedTransactionId);
+                newTrs[i] = tagged Valid startedTransactionId;
+            end else begin
+                newTrs[i] = (puppets[i].isDone() ? tagged Invalid : runningTransactions[i]);
+            end
+        end
+        runningTransactions <= newTrs;
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -89,13 +127,7 @@ module mkPuppetmaster(Puppetmaster);
     // Incoming transactions get forwarded to the renamer.
     interface Put request = renamer.request;
 
-    // Recover scheduled transaction ids from scheduler response.
-    interface Get response;
-        method ActionValue#(PuppetmasterResponse) get();
-            let indices <- scheduler.response.get();
-            return zipWith(recoverTid, trIds, unpack(indices));
-        endmethod
-    endinterface
+    interface Get response = toGet(runningTransactions);
 
 endmodule
 
