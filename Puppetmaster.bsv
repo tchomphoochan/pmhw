@@ -156,6 +156,8 @@ module mkPuppetmasterTestbench();
     end
 
     Reg#(UInt#(TAdd#(TLog#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool)), 1))) counter <- mkReg(0);
+    Reg#(UInt#(32)) cycle <- mkReg(0);
+    Reg#(PuppetmasterResponse) prevResult <- mkReg(?);
 
     rule feed if (counter < fromInteger(numTests * maxScheduledObjects));
         counter <= counter + 1;
@@ -163,7 +165,9 @@ module mkPuppetmasterTestbench();
     endrule
 
     rule stream;
+        cycle <= cycle + 1;
         let result <- myPuppetmaster.response.get();
-        $display(fshow(result));
+        prevResult <= result;
+        if (prevResult != result) $display(fshow(result));
     endrule
 endmodule
