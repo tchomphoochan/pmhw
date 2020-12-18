@@ -173,22 +173,22 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRequest) get() if (
-                   maybeCurrentObj matches tagged Valid .currentObj
-                   &&& getShard(currentObj.objName) == fromInteger(i)
+                    maybeCurrentObj matches tagged Valid .currentObj
+                    &&& getShard(currentObj.objName) == fromInteger(i)
                 );
-                   case (currentObj.objType) matches
-                       ReadObject : currentTr <= RenamedTransaction {
-                           tid: currentTr.tid,
-                           readSet: currentTr.readSet & ~(1 << currentObj.objName),
-                           writeSet: currentTr.writeSet
-                       };
-                       WrittenObject : currentTr <= RenamedTransaction {
-                           tid: currentTr.tid,
-                           readSet: currentTr.readSet,
-                           writeSet: currentTr.writeSet & ~(1 << currentObj.objName)
-                       };
-                   endcase
-                   return tagged Delete { name: currentObj.objName };
+                    case (currentObj.objType) matches
+                        ReadObject : currentTr <= RenamedTransaction {
+                            tid: currentTr.tid,
+                            readSet: currentTr.readSet & ~(1 << currentObj.objName),
+                            writeSet: currentTr.writeSet
+                        };
+                        WrittenObject : currentTr <= RenamedTransaction {
+                            tid: currentTr.tid,
+                            readSet: currentTr.readSet,
+                            writeSet: currentTr.writeSet & ~(1 << currentObj.objName)
+                        };
+                    endcase
+                    return tagged Delete { name: currentObj.objName };
                 endmethod
             endinterface
         );
