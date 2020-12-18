@@ -5,6 +5,7 @@ import SpecialFIFOs::*;
 import Vector::*;
 
 import PmCore::*;
+import PmIfc::*;
 
 interface Puppet;
     method Action start(TransactionId tid);

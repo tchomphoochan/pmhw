@@ -114,7 +114,7 @@ puppets_obj = custom_target('puppets_obj',
         '-aggressive-conditions',
         '-sim',
         '@INPUT@'],
-    depends: [pm_core_obj])
+    depends: [pm_core_obj, pm_ifc_obj])
 
 pm_obj = custom_target('pm_obj',
     input: 'Puppetmaster.bsv',
