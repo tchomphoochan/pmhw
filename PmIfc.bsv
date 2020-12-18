@@ -8,34 +8,40 @@ typedef 32 LogSizeMemory;
 typedef Bit#(LogMaxNumberTransactions) TransactionId;
 typedef Bit#(LogSizeMemory) ObjectAddress;
 
-typedef union tagged {
-    ObjectAddress ReadObject;
-    ObjectAddress WriteObject;
-} Object;
+typedef struct {
+    Bit#(1) valid;
+    Bit#(1) write;
+    ObjectAddress object;
+} Object deriving(Bits, Eq);
 
-interface PuppetmasterToHost;
-    method Action transactionStarted(TransactionId tid);
-    method Action transactionFinished(TransactionId tid);
+interface PuppetmasterToHostIndication;
+    method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
+    method Action transactionFinished(TransactionId tid, Bit#(64) timestamp);
 endinterface
 
-interface Host2Puppetmaster;
+interface HostToPuppetmaster;
     method Action enqueueTransaction(
         TransactionId tid,
-        Maybe#(Object) obj1,
-        Maybe#(Object) obj2,
-        Maybe#(Object) obj3,
-        Maybe#(Object) obj4,
-        Maybe#(Object) obj5,
-        Maybe#(Object) obj6,
-        Maybe#(Object) obj7,
-        Maybe#(Object) obj8,
-        Maybe#(Object) obj9,
-        Maybe#(Object) obj10,
-        Maybe#(Object) obj11,
-        Maybe#(Object) obj12,
-        Maybe#(Object) obj13,
-        Maybe#(Object) obj14,
-        Maybe#(Object) obj15,
-        Maybe#(Object) obj16
+        Object obj1,
+        Object obj2,
+        Object obj3,
+        Object obj4,
+        Object obj5,
+        Object obj6,
+        Object obj7,
+        Object obj8,
+        Object obj9,
+        Object obj10,
+        Object obj11,
+        Object obj12,
+        Object obj13,
+        Object obj14,
+        Object obj15,
+        Object obj16
     );
 endinterface
+
+interface PmTop; 
+        interface HostToPuppetmaster request;
+endinterface
+
