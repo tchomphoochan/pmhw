@@ -16,9 +16,27 @@ typedef Server#(PuppetmasterRequest, PuppetmasterResponse) Puppetmaster;
 module mkPuppetmaster(Puppetmaster);
     Vector#(SizeSchedulingPool, Reg#(RenamedTransaction)) buffer <- replicateM(mkReg(?));
     Reg#(Bit#(TAdd#(LogSizeSchedulingPool, 1))) bufferIndex <- mkReg(0);
+    // Transaction ids for converting the indices returned the scheduling step.
+    Reg#(Vector#(SizeSchedulingPool, TransactionId)) trIds <- mkReg(?);
 
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
+
+    function TransactionId getTid(RenamedTransaction tr);
+        return tr.tid;
+    endfunction
+
+    function TransactionSet transactionToSet(RenamedTransaction tr, Integer i);
+        return TransactionSet {
+            readSet: tr.readSet,
+            writeSet: tr.writeSet,
+            indices: 1 << i
+        };
+    endfunction
+
+    function Maybe#(TransactionId) recoverTid(TransactionId tid, bit flag);
+        return flag == 1'b1 ? tagged Valid tid : tagged Invalid;
+    endfunction
 
     // Put renamed transactions into a buffer.
     rule receive if (bufferIndex < fromInteger(valueOf(SizeSchedulingPool)));
@@ -30,13 +48,21 @@ module mkPuppetmaster(Puppetmaster);
     // When buffer is full, send scheduling request.
     rule process if (bufferIndex == fromInteger(valueOf(SizeSchedulingPool)));
         bufferIndex <= 0;
-        scheduler.request.put(readVReg(buffer));
+        let transactions = readVReg(buffer);
+        trIds <= map(getTid, transactions);
+        scheduler.request.put(zipWith(transactionToSet, transactions, genVector));
     endrule
 
     // Incoming transactions get forwarded to the renamer.
     interface Put request = renamer.request;
 
-    interface Get response = scheduler.response;
+    // Recover scheduled transaction ids from scheduler response.
+    interface Get response;
+        method ActionValue#(PuppetmasterResponse) get();
+            let result <- scheduler.response.get();
+            return zipWith(recoverTid, trIds, unpack(result.indices));
+        endmethod
+    endinterface
 
 endmodule
 

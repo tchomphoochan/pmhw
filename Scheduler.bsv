@@ -38,8 +38,8 @@ typedef struct {
     ContainedTransactions indices;
 } TransactionSet deriving(Bits, Eq, FShow);
 
-typedef Vector#(SizeSchedulingPool, RenamedTransaction) SchedulingRequest;
-typedef Vector#(SizeSchedulingPool, Maybe#(TransactionId)) SchedulingResponse;
+typedef SchedulingPool SchedulingRequest;
+typedef TransactionSet SchedulingResponse;
 typedef Server#(SchedulingRequest, SchedulingResponse) Scheduler;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -104,23 +104,6 @@ module mkScheduler(Scheduler);
     Reg#(SchedulingPoolIndex) round <- mkReg(0);
     // Number of transactions that have already been merged in this round.
     Reg#(SchedulingPoolIndex) offset <- mkReg(0);
-    // Transaction ids. Used for converting the internal ids back at the end.
-    Reg#(Vector#(SizeSchedulingPool, TransactionId)) trIds <- mkReg(?);
-
-    ////////////////////////////////////////////////////////////////////////////////
-    /// Functions.
-    ////////////////////////////////////////////////////////////////////////////////
-    function TransactionSet transactionToSet(RenamedTransaction tr, Integer i);
-        return TransactionSet {
-            readSet: tr.readSet,
-            writeSet: tr.writeSet,
-            indices: 1 << i
-        };
-    endfunction
-
-    function TransactionId getTid(RenamedTransaction tr);
-        return tr.tid;
-    endfunction
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
@@ -158,8 +141,7 @@ module mkScheduler(Scheduler);
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
         method Action put(SchedulingRequest inputTransactions) if (!isValid(trSets));
-            trSets <= tagged Valid zipWith(transactionToSet, inputTransactions, genVector);
-            trIds <= map(getTid, inputTransactions);
+            trSets <= tagged Valid inputTransactions;
             round <= 0;
             offset <= 0;
         endmethod
@@ -168,16 +150,7 @@ module mkScheduler(Scheduler);
     interface Get response;
         method ActionValue#(SchedulingResponse) get() if (isValid(trSets) && round == fromInteger(maxRounds));
             trSets <= tagged Invalid;
-            let result = fromMaybe(?, trSets)[0];
-            SchedulingResponse response = replicate(tagged Invalid);
-            Integer index = 0;
-            for (Integer i = 0; i < valueOf(SizeSchedulingPool); i = i + 1) begin
-                if (result.indices[i] == 1'b1) begin
-                    response[index] = tagged Valid trIds[i];
-                    index = index + 1;
-                end
-            end
-            return response;
+            return fromMaybe(?, trSets)[0];
         endmethod
     endinterface
 endmodule
@@ -193,66 +166,66 @@ module mkSchedulerTestbench();
     Vector#(NumberSchedulerTests, SchedulingRequest) testInputs = newVector;
     // Empty transactions.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[0][i] = RenamedTransaction {
-            tid: fromInteger(i),
+        testInputs[0][i] = TransactionSet{
             readSet: 'b0,
-            writeSet: 'b0
+            writeSet: 'b0,
+            indices: 'b1 << i
         };
     end
     // Non-conflicting read-only transactions.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[1][i] = RenamedTransaction {
-            tid: fromInteger(i),
+        testInputs[1][i] = TransactionSet{
             readSet: 'b1 << i,
-            writeSet: 'b0
+            writeSet: 'b0,
+            indices: 'b1 << i
         };
     end
     // Overlapping read-only transactions.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[2][i] = RenamedTransaction {
-            tid: fromInteger(i),
+        testInputs[2][i] = TransactionSet{
             readSet: 'b1111 << i,
-            writeSet: 'b0
+            writeSet: 'b0,
+            indices: 'b1 << i
         };
     end
     // Non-conflicting read-write transactions.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[3][i] = RenamedTransaction {
-            tid: fromInteger(i),
+        testInputs[3][i] = TransactionSet{
             readSet: 'b11 << (2 * i),
-            writeSet: 'b1 << (maxLiveObjects - i - 1)
+            writeSet: 'b1 << (maxLiveObjects - i - 1),
+            indices: 'b1 << i
         };
     end
     // Non-conflicting read-write transactions with overlapping reads.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[4][i] = RenamedTransaction {
-            tid: fromInteger(i),
+        testInputs[4][i] = TransactionSet{
             readSet: 'b1111 << i,
-            writeSet: 'b1 << (maxLiveObjects - i - 1)
+            writeSet: 'b1 << (maxLiveObjects - i - 1),
+            indices: 'b1 << i
         };
     end
     // Transactions with read-write conflicts.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[5][i] = RenamedTransaction {
-            tid: fromInteger(i),
+        testInputs[5][i] = TransactionSet{
             readSet: 'b11 << (2 * i),
-            writeSet: 'b100 << (2 * i)
+            writeSet: 'b100 << (2 * i),
+            indices: 'b1 << i
         };
     end
     // Transacions with write-write conflicts.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[6][i] = RenamedTransaction {
-            tid: fromInteger(i),
+        testInputs[6][i] = TransactionSet{
             readSet: 'b1000 << i,
-            writeSet: 'b1 << (i % 3)
+            writeSet: 'b1 << (i % 3),
+            indices: 'b1 << i
         };
     end
     // Transactions with both conflicts.
     for (Integer i=0; i < maxScheduledObjects; i = i + 1) begin
-        testInputs[7][i] = RenamedTransaction {
-            tid: fromInteger(i),
+        testInputs[7][i] = TransactionSet{
             readSet: 'b1010 << i,
-            writeSet: 'b101 << i
+            writeSet: 'b101 << i,
+            indices: 'b1 << i
         };
     end
 
