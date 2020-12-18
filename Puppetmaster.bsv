@@ -68,31 +68,28 @@ endmodule
 
 typedef 4 NumberPuppetmasterTests;
 
+Integer numTests = valueOf(NumberPuppetmasterTests);
+
 module mkPuppetmasterTestbench();
     Puppetmaster myPuppetmaster <- mkPuppetmaster();
 
     Vector#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool), PuppetmasterRequest) testInputs = newVector;
-    for (Integer i = 0; i < valueOf(NumberPuppetmasterTests) * maxScheduledObjects; i = i + 1) begin
+    for (Integer i = 0; i < numTests * maxScheduledObjects; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
-            testInputs[i].readObjects[j] = case (i % valueOf(NumberPuppetmasterTests)) matches
-                0 : (fromInteger(i) * fromInteger(objSetSize) * 2 + fromInteger(j) * 2);
-                1 : (fromInteger(i) * fromInteger(objSetSize) * 2 + fromInteger(j) * 2);
-                2 : (fromInteger(i) * fromInteger(objSetSize) * 2 + fromInteger(j) * 2);
-                3 : (fromInteger(i) * fromInteger(objSetSize) * 2 + fromInteger(j) * 2);
-            endcase;
-            testInputs[i].writeObjects[j] = case (i % valueOf(NumberPuppetmasterTests)) matches
-                0 : (fromInteger(i) * fromInteger(objSetSize) * 2 + fromInteger(j) * 2 + 1);
-                1 : (fromInteger(objSetSize) * 2 + fromInteger(j) * 2 + 1);
-                2 : ((fromInteger(i) * fromInteger(objSetSize) * 2 + fromInteger(j) * 2 + 1) % (fromInteger(maxScheduledObjects) * fromInteger(objSetSize) * 2 - 2));
-                3 : (fromInteger(i % 2) * fromInteger(objSetSize) * 2 + fromInteger(j) * 2 + 1);
-            endcase;
+            testInputs[i].readObjects[j] = fromInteger(i * objSetSize * 2 + j * 2);
+            testInputs[i].writeObjects[j] = fromInteger(case (i % numTests) matches
+                0 : (i * objSetSize * 2 + j * 2 + 1);
+                1 : ((i - i % 2) * objSetSize * 2 + j * 2 + 1);
+                2 : ((i * objSetSize * 2 + j * 2 + 1) % (maxScheduledObjects * objSetSize * 2 - 2));
+                3 : ((i % 2) * objSetSize * 2 + j * 2 + 1);
+            endcase);
         end
     end
 
     Reg#(UInt#(TAdd#(TLog#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool)), 1))) counter <- mkReg(0);
 
-    rule feed if (counter < fromInteger(valueOf(NumberPuppetmasterTests) * maxScheduledObjects));
+    rule feed if (counter < fromInteger(numTests * maxScheduledObjects));
         counter <= counter + 1;
         myPuppetmaster.request.put(testInputs[counter]);
     endrule
