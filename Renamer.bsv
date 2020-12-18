@@ -62,8 +62,8 @@ typedef enum { ReadObject, WrittenObject } ObjectType deriving (Bits, Eq, FShow)
 typedef struct {
     ObjectType objType;
     ObjectName objName;
-} RenamedObject;
-
+} RenamedObject deriving (Bits,Eq);
+(* synthesize *)
 module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
@@ -127,6 +127,29 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     interface Put request = toPut(inputFifo);
 endmodule
 
+
+
+
+// Local fix to speed up compilation of the module below
+// changed the code:
+//    (
+//        readObject < fromInteger(maxLiveObjects)    ? tagged Valid RenamedObject {
+//            objType: ReadObject, objName: pack(truncate(readObject)) } :
+//        writtenObject < fromInteger(maxLiveObjects) ? tagged Valid RenamedObject {
+//            objType: WrittenObject, objName: pack(truncate(writtenObject)) } :
+//                                                      tagged Invalid);
+// into a noinline function
+
+(* noinline *)
+function Maybe#(RenamedObject) computeObj(UInt#(TAdd#(1,LogNumberLiveObjects)) readObject, UInt#(TAdd#(1,LogNumberLiveObjects)) writtenObject);
+    if (readObject < fromInteger(maxLiveObjects))
+        return (tagged Valid RenamedObject {objType: ReadObject, objName: pack(truncate(readObject)) });
+    else if (writtenObject < fromInteger(maxLiveObjects))
+            return (tagged Valid RenamedObject {objType: WrittenObject, objName: pack(truncate(writtenObject)) });
+        else return (tagged Invalid);
+endfunction
+
+(* synthesize *)
 module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
@@ -139,12 +162,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     let readObject = countZerosLSB(currentTr.readSet);
     let writtenObject = countZerosLSB(currentTr.writeSet);
-    Maybe#(RenamedObject) maybeCurrentObj = (
-        readObject < fromInteger(maxLiveObjects)    ? tagged Valid RenamedObject {
-            objType: ReadObject, objName: pack(truncate(readObject)) } :
-        writtenObject < fromInteger(maxLiveObjects) ? tagged Valid RenamedObject {
-            objType: WrittenObject, objName: pack(truncate(writtenObject)) } :
-                                                      tagged Invalid);
+    Maybe#(RenamedObject) maybeCurrentObj = computeObj(readObject, writtenObject); 
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -155,22 +173,22 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRequest) get() if (
-                    maybeCurrentObj matches tagged Valid .currentObj
-                    &&& getShard(currentObj.objName) == fromInteger(i)
+                   maybeCurrentObj matches tagged Valid .currentObj
+                   &&& getShard(currentObj.objName) == fromInteger(i)
                 );
-                    case (currentObj.objType) matches
-                        ReadObject : currentTr <= RenamedTransaction {
-                            tid: currentTr.tid,
-                            readSet: currentTr.readSet & ~(1 << currentObj.objName),
-                            writeSet: currentTr.writeSet
-                        };
-                        WrittenObject : currentTr <= RenamedTransaction {
-                            tid: currentTr.tid,
-                            readSet: currentTr.readSet,
-                            writeSet: currentTr.writeSet & ~(1 << currentObj.objName)
-                        };
-                    endcase
-                    return tagged Delete { name: currentObj.objName };
+                   case (currentObj.objType) matches
+                       ReadObject : currentTr <= RenamedTransaction {
+                           tid: currentTr.tid,
+                           readSet: currentTr.readSet & ~(1 << currentObj.objName),
+                           writeSet: currentTr.writeSet
+                       };
+                       WrittenObject : currentTr <= RenamedTransaction {
+                           tid: currentTr.tid,
+                           readSet: currentTr.readSet,
+                           writeSet: currentTr.writeSet & ~(1 << currentObj.objName)
+                       };
+                   endcase
+                   return tagged Delete { name: currentObj.objName };
                 endmethod
             endinterface
         );
