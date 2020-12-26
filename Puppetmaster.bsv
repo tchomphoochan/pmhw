@@ -51,8 +51,6 @@ module mkPuppetmaster(Puppetmaster);
     Vector#(SizeSchedulingPool, Reg#(RenamedTransaction)) buffer <- replicateM(mkReg(?));
     // Points to the first empty slot in the buffer.
     Reg#(Bit#(TAdd#(LogSizeSchedulingPool, 1))) bufferIndex <- mkReg(0);
-    // Transaction ids for converting the indices returned the scheduling step.
-    Reg#(Vector#(SizeSchedulingPool, TransactionId)) trIds <- mkReg(?);
     // Intermediate storage for scheduling result.
     Reg#(ContainedTransactions) pendingTrFlags <- mkReg(0);
     // Status of each puppet: executing a transaction or idle.
@@ -66,10 +64,6 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
-    function TransactionId getTid(RenamedTransaction tr);
-        return tr.tid;
-    endfunction
-
     function SchedulerTransaction convertTransaction(RenamedTransaction tr);
         return SchedulerTransaction {
             readSet : tr.readSet,
@@ -88,10 +82,8 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     // When buffer is full, send scheduling request.
-    rule doSchedule if (bufferIndex == fromInteger(maxScheduledObjects));
-        bufferIndex <= 0;
+    rule doSchedule if (bufferIndex == fromInteger(maxScheduledObjects) && pendingTrFlags == 0);
         let transactions = readVReg(buffer);
-        trIds <= map(getTid, transactions);
         scheduler.request.put(map(convertTransaction, transactions));
     endrule
 
@@ -106,9 +98,16 @@ module mkPuppetmaster(Puppetmaster);
     rule updatePuppets if (
             findElem(tagged Invalid, runningTransactions) matches tagged Valid .puppetIndex
             &&& pendingTrFlags != 0);
+        // Find first scheduled transaction and remove from pending set.
         SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
-        let startedTransactionId = trIds[trIndex];
+        let startedTransactionId = buffer[trIndex].tid;
         pendingTrFlags <= pendingTrFlags & ~(1 << trIndex);
+        // Move last transaction in buffer to replace transaction being started.
+        if (0 < bufferIndex) begin
+            buffer[trIndex] <= buffer[bufferIndex - 1];
+            bufferIndex <= bufferIndex - 1;
+        end
+        // Start transaction on idle puppet and query running puppets.
         Vector#(NumberPuppets, Maybe#(TransactionId)) newTrs;
         for (Integer i = 0; i < valueOf(NumberPuppets); i = i + 1) begin
             if (fromInteger(i) == puppetIndex) begin
