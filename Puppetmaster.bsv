@@ -54,7 +54,8 @@ module mkPuppetmaster(Puppetmaster);
     // Intermediate storage for scheduling result.
     Reg#(ContainedTransactions) pendingTrFlags <- mkReg(0);
     // Status of each puppet: executing a transaction or idle.
-    Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) runningTransactions <- mkReg(replicate(tagged Invalid));
+    Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) runningTransactions <-
+        mkReg(replicate(tagged Invalid));
 
     // Submodules.
     let renamer <- mkRenamer();
@@ -82,7 +83,8 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     // When buffer is full, send scheduling request.
-    rule doSchedule if (bufferIndex == fromInteger(maxScheduledObjects) && pendingTrFlags == 0);
+    rule doSchedule if (bufferIndex == fromInteger(maxScheduledObjects)
+            && pendingTrFlags == 0);
         let transactions = readVReg(buffer);
         scheduler.request.put(map(convertTransaction, transactions));
     endrule
@@ -96,7 +98,8 @@ module mkPuppetmaster(Puppetmaster);
     // Send first (lowest-index) transaction to first idle puppet.
     // For the rest of the puppets, detect if running transaction has finished.
     rule updatePuppets if (
-            findElem(tagged Invalid, runningTransactions) matches tagged Valid .puppetIndex
+            findElem(tagged Invalid, runningTransactions)
+            matches tagged Valid .puppetIndex
             &&& pendingTrFlags != 0);
         // Find first scheduled transaction and remove from pending set.
         SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
@@ -113,9 +116,10 @@ module mkPuppetmaster(Puppetmaster);
             if (fromInteger(i) == puppetIndex) begin
                 puppets[i].start(startedTransactionId);
                 newTrs[i] = tagged Valid startedTransactionId;
-            end else begin
-                newTrs[i] = (puppets[i].isDone() ? tagged Invalid : runningTransactions[i]);
-            end
+            end else if (puppets[i].isDone())
+                    newTrs[i] = tagged Invalid;
+                else
+                    newTrs[i] = runningTransactions[i];
         end
         runningTransactions <= newTrs;
     endrule
@@ -157,7 +161,8 @@ endfunction
 module mkPuppetmasterTestbench();
     Puppetmaster myPuppetmaster <- mkPuppetmaster();
 
-    Vector#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool), PuppetmasterRequest) testInputs = newVector;
+    Vector#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool), PuppetmasterRequest)
+        testInputs = newVector;
     for (Integer i = 0; i < numTests * maxScheduledObjects; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
@@ -165,13 +170,15 @@ module mkPuppetmasterTestbench();
             testInputs[i].writeObjects[j] = fromInteger(case (i % numTests) matches
                 0 : (i * objSetSize * 2 + j * 2 + 1);
                 1 : ((i - i % 2) * objSetSize * 2 + j * 2 + 1);
-                2 : ((i * objSetSize * 2 + j * 2 + 1) % (maxScheduledObjects * objSetSize * 2 - 2));
+                2 : ((i * objSetSize * 2 + j * 2 + 1)
+                     % (maxScheduledObjects * objSetSize * 2 - 2));
                 3 : ((i % 2) * objSetSize * 2 + j * 2 + 1);
             endcase);
         end
     end
 
-    Reg#(UInt#(TAdd#(TLog#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool)), 1))) counter <- mkReg(0);
+    Reg#(UInt#(TAdd#(TLog#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool)), 1)))
+        counter <- mkReg(0);
     Reg#(UInt#(32)) cycle <- mkReg(0);
     Reg#(PuppetmasterResponse) prevResult <- mkReg(?);
 
