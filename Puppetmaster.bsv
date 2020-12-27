@@ -48,11 +48,12 @@ module mkPuppetmaster(Puppetmaster);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     // Stores renamed transactions while they are waiting to be sent to the scheduler.
-    Vector#(SizeSchedulingPool, Reg#(RenamedTransaction)) buffer <- replicateM(mkReg(?));
+    Vector#(TSub#(SizeSchedulingPool, 1), Reg#(RenamedTransaction)) buffer <-
+        replicateM(mkReg(?));
     // Points to the first empty slot in the buffer.
-    Reg#(Bit#(TAdd#(LogSizeSchedulingPool, 1))) bufferIndex <- mkReg(0);
+    Reg#(SchedulingPoolIndex) bufferIndex <- mkReg(0);
     // Intermediate storage for scheduling result.
-    Reg#(ContainedTransactions) pendingTrFlags <- mkReg(0);
+    Reg#(Bit#(TSub#(SizeSchedulingPool, 1))) pendingTrFlags <- mkReg(0);
     // Status of each puppet: executing a transaction or idle.
     Reg#(Vector#(NumberPuppets, Maybe#(RenamedTransaction))) runningTransactions <-
         mkReg(replicate(tagged Invalid));
@@ -79,27 +80,52 @@ module mkPuppetmaster(Puppetmaster);
         endcase
     endfunction
 
+    function Maybe#(TransactionId) extractTid(TransactionId tid, bit flag);
+        case (flag) matches
+            1'b0 : return tagged Invalid;
+            1'b1 : return tagged Valid tid;
+        endcase
+    endfunction
+
+    function SchedulerTransaction maybeTrUnion(
+            Vector#(vsize, Maybe#(RenamedTransaction)) vec);
+        SchedulerTransaction result;
+        result.readSet = 0;
+        result.writeSet =  0;
+        for (Integer i = 0; i < valueOf(vsize); i = i + 1) begin
+            if (vec[i] matches tagged Valid .tr) begin
+                result.readSet = result.readSet | tr.readSet;
+                result.writeSet = result.writeSet | tr.writeSet;
+            end
+        end
+        return result;
+    endfunction
+
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
     // Put renamed transactions into a buffer.
-    rule getRenamed if (bufferIndex < fromInteger(maxScheduledObjects));
+    rule getRenamed if (bufferIndex < fromInteger(maxScheduledObjects - 1));
         bufferIndex <= bufferIndex + 1;
         let result <- renamer.response.get();
         buffer[bufferIndex] <= result;
     endrule
 
     // When buffer is full, send scheduling request.
-    rule doSchedule if (bufferIndex == fromInteger(maxScheduledObjects)
+    rule doSchedule if (bufferIndex == fromInteger(maxScheduledObjects - 1)
             && pendingTrFlags == 0);
+        let runningTrSet = maybeTrUnion(runningTransactions);
         let transactions = readVReg(buffer);
-        scheduler.request.put(map(convertTransaction, transactions));
+        let converted = map(convertTransaction, transactions);
+        let toSchedule = cons(runningTrSet, converted);
+        scheduler.request.put(toSchedule);
     endrule
 
     // Retrieve indices of scheduled transacions.
     rule getScheduled if (pendingTrFlags == 0);
         let scheduled <- scheduler.response.get();
-        pendingTrFlags <= scheduled;
+        // Lowest bit corresponds to the currently running transactions, so remove it.
+        pendingTrFlags <= scheduled[maxRounds - 1 : 1];
     endrule
 
     // Send first (lowest-index) transaction to first idle puppet.
