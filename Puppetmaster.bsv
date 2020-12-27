@@ -54,7 +54,7 @@ module mkPuppetmaster(Puppetmaster);
     // Intermediate storage for scheduling result.
     Reg#(ContainedTransactions) pendingTrFlags <- mkReg(0);
     // Status of each puppet: executing a transaction or idle.
-    Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) runningTransactions <-
+    Reg#(Vector#(NumberPuppets, Maybe#(RenamedTransaction))) runningTransactions <-
         mkReg(replicate(tagged Invalid));
 
     // Submodules.
@@ -70,6 +70,13 @@ module mkPuppetmaster(Puppetmaster);
             readSet : tr.readSet,
             writeSet : tr.writeSet
         };
+    endfunction
+
+    function Maybe#(TransactionId) maybeGetTid(Maybe#(RenamedTransaction) maybeTr);
+        case (maybeTr) matches
+            tagged Valid .tr : return tagged Valid tr.tid;
+            tagged Invalid : return tagged Invalid;
+        endcase
     endfunction
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -103,7 +110,7 @@ module mkPuppetmaster(Puppetmaster);
             &&& pendingTrFlags != 0);
         // Find first scheduled transaction and remove from pending set.
         SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
-        let startedTransactionId = buffer[trIndex].tid;
+        let startedTransaction = buffer[trIndex];
         pendingTrFlags <= pendingTrFlags & ~(1 << trIndex);
         // Move last transaction in buffer to replace transaction being started.
         if (0 < bufferIndex) begin
@@ -111,11 +118,11 @@ module mkPuppetmaster(Puppetmaster);
             bufferIndex <= bufferIndex - 1;
         end
         // Start transaction on idle puppet and query running puppets.
-        Vector#(NumberPuppets, Maybe#(TransactionId)) newTrs;
+        Vector#(NumberPuppets, Maybe#(RenamedTransaction)) newTrs;
         for (Integer i = 0; i < valueOf(NumberPuppets); i = i + 1) begin
             if (fromInteger(i) == puppetIndex) begin
-                puppets[i].start(startedTransactionId);
-                newTrs[i] = tagged Valid startedTransactionId;
+                puppets[i].start(startedTransaction.tid);
+                newTrs[i] = tagged Valid startedTransaction;
             end else if (puppets[i].isDone())
                     newTrs[i] = tagged Invalid;
                 else
@@ -130,7 +137,7 @@ module mkPuppetmaster(Puppetmaster);
     // Incoming transactions get forwarded to the renamer.
     interface Put request = renamer.request;
 
-    interface Get response = toGet(runningTransactions);
+    interface Get response = toGet(map(maybeGetTid, runningTransactions));
 
 endmodule
 
