@@ -13,17 +13,18 @@ interface Puppet;
 endinterface
 
 module mkTimedPuppet#(Integer delay)(Puppet);
-    Array#(Reg#(UInt#(32))) elapsed <- mkCReg(2, 0);
+    Array#(Reg#(UInt#(32))) timeLeft <- mkCReg(2, 0);
 
-    rule incTime if (elapsed[1] < fromInteger(delay));
-        elapsed[1] <= elapsed[1] + 1;
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule incTime if (0 < timeLeft[0]);
+        timeLeft[0] <= timeLeft[0] - 1;
     endrule
 
     method Action start(TransactionId tid);
-        elapsed[0] <= 0;
+        timeLeft[1] <= fromInteger(delay);
     endmethod
 
     method Bool isDone();
-        return elapsed[1] == fromInteger(delay);
+        return timeLeft[1] == 0;
     endmethod
 endmodule

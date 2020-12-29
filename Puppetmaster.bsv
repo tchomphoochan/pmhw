@@ -54,9 +54,8 @@ module mkPuppetmaster(Puppetmaster);
     Reg#(SchedulingPoolIndex) bufferIndex <- mkReg(0);
     // Intermediate storage for scheduling result.
     Reg#(Bit#(TSub#(SizeSchedulingPool, 1))) pendingTrFlags <- mkReg(0);
-    // Status of each puppet: executing a transaction or idle.
-    Reg#(Vector#(NumberPuppets, Maybe#(RenamedTransaction))) runningTransactions <-
-        mkReg(replicate(tagged Invalid));
+    // Last transaction sent to each puppet.
+    Reg#(Vector#(NumberPuppets, RenamedTransaction)) startedTrs <- mkReg(?);
 
     // Submodules.
     let renamer <- mkRenamer();
@@ -101,6 +100,17 @@ module mkPuppetmaster(Puppetmaster);
         return result;
     endfunction
 
+    function Maybe#(RenamedTransaction) extractTr(RenamedTransaction tr, Bool isDone);
+        case (isDone) matches
+            True : return tagged Invalid;
+            False : return tagged Valid tr;
+        endcase
+    endfunction
+
+    function Bool getDone(Puppet puppet) = puppet.isDone();
+
+    let runningTransactions = zipWith(extractTr, startedTrs, map(getDone, puppets));
+
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
@@ -128,11 +138,9 @@ module mkPuppetmaster(Puppetmaster);
         pendingTrFlags <= scheduled[maxRounds - 1 : 1];
     endrule
 
-    // Send first (lowest-index) transaction to first idle puppet.
-    // For the rest of the puppets, detect if running transaction has finished.
-    rule updatePuppets if (
-            findElem(tagged Invalid, runningTransactions)
-            matches tagged Valid .puppetIndex
+    // Send first (lowest-index) pending transaction to first idle puppet.
+    rule sendTransaction if (
+            findElem(True, map(getDone, puppets)) matches tagged Valid .puppetIndex
             &&& pendingTrFlags != 0);
         // Find first scheduled transaction and remove from pending set.
         SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
@@ -143,18 +151,9 @@ module mkPuppetmaster(Puppetmaster);
             buffer[trIndex] <= buffer[bufferIndex - 1];
             bufferIndex <= bufferIndex - 1;
         end
-        // Start transaction on idle puppet and query running puppets.
-        Vector#(NumberPuppets, Maybe#(RenamedTransaction)) newTrs;
-        for (Integer i = 0; i < valueOf(NumberPuppets); i = i + 1) begin
-            if (fromInteger(i) == puppetIndex) begin
-                puppets[i].start(startedTransaction.tid);
-                newTrs[i] = tagged Valid startedTransaction;
-            end else if (puppets[i].isDone())
-                    newTrs[i] = tagged Invalid;
-                else
-                    newTrs[i] = runningTransactions[i];
-        end
-        runningTransactions <= newTrs;
+        // Start transaction on idle puppet.
+        startedTrs[puppetIndex] <= startedTransaction;
+        puppets[puppetIndex].start(startedTransaction.tid);
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -215,13 +214,17 @@ module mkPuppetmasterTestbench();
     Reg#(UInt#(32)) cycle <- mkReg(0);
     Reg#(PuppetmasterResponse) prevResult <- mkReg(?);
 
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+
     rule feed if (counter < fromInteger(numTests * maxScheduledObjects));
         counter <= counter + 1;
         myPuppetmaster.request.put(testInputs[counter]);
     endrule
 
     rule stream;
-        cycle <= cycle + 1;
         let result <- myPuppetmaster.response.get();
         prevResult <= result;
         if (prevResult != result)
