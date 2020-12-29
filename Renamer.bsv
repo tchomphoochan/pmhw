@@ -29,8 +29,8 @@ typedef Bit#(TransactionObjectCount) TransactionObjectCounter;
 
 // Tells the arbiter that we don't need to route responses back.
 instance ArbRequestTC#(RenamedTransaction);
-   function Bool isReadRequest(a x) = False;
-   function Bool isWriteRequest(a x) = True;
+    function Bool isReadRequest(a x) = False;
+    function Bool isWriteRequest(a x) = True;
 endinstance
 
 typedef Server#(InputTransaction, RenamedTransaction) Renamer;
