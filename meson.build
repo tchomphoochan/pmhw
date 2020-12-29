@@ -138,3 +138,14 @@ pm = custom_target('pm',
         '-sim',
         '-e', '@OUTPUT@',
         '-o', '@OUTPUT@'])
+
+pm_top_obj = custom_target('pm_top_obj',
+    input: 'PmTop.bsv',
+    output: ['PmTop.bo'],
+    command: [
+        bsc,
+        '-bdir', builddir,
+        '-aggressive-conditions',
+        '-sim',
+        '@INPUT@'],
+    depends: [pm_core_obj, pm_ifc_obj, pm_obj])
