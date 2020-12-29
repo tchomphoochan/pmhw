@@ -1,4 +1,3 @@
-PROJECTDIR ?= build.verilator
 CONNECTALDIR ?= connectal
 S2H_INTERFACES = \
 	HostToPuppetmaster:PmTop.request
