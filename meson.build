@@ -137,7 +137,8 @@ pm = custom_target('pm',
         '-simdir', builddir,
         '-sim',
         '-e', '@OUTPUT@',
-        '-o', '@OUTPUT@'])
+        '-o', '@OUTPUT@'],
+    build_by_default: true)
 
 pm_top_obj = custom_target('pm_top_obj',
     input: 'PmTop.bsv',
