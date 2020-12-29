@@ -13,22 +13,13 @@ endinterface
 
 module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
     Puppetmaster pm <- mkPuppetmaster();
-    Reg#(Bit#(64)) count <- mkReg(0);
-    Reg#(PuppetmasterResponse) prevResult <- mkReg(?);
-
-    rule tick;
-        count <= count + 1;
-    endrule
 
     rule receiveResponseFromPm;
         let result <- pm.response.get();
-        for (Integer i = 0; i < valueOf(NumberPuppets); i = i + 1) begin
-            case (tuple2(prevResult[i], result[i])) matches
-                {tagged Invalid, tagged Valid .tid} : indication.transactionStarted(tid, count);
-                {tagged Valid .tid, tagged Invalid} : indication.transactionFinished(tid, count);
-            endcase
-        end
-        prevResult <= result;
+        case (result.status) matches
+            Started : indication.transactionStarted(result.id, result.timestamp);
+            Finished : indication.transactionFinished(result.id, result.timestamp);
+        endcase
     endrule
 
     interface HostToPuppetmaster request;

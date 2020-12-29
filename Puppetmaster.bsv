@@ -4,6 +4,7 @@
 //                  them to puppets for execution in parallel, avoiding
 //                  conflicts between concurrently executing transactions.
 ////////////////////////////////////////////////////////////////////////////////
+import Arbitrate::*;
 import ClientServer::*;
 import GetPut::*;
 import Vector::*;
@@ -23,8 +24,25 @@ typedef 4 LogNumberPuppets;
 typedef TExp#(LogNumberPuppets) NumberPuppets;
 
 typedef InputTransaction PuppetmasterRequest;
-typedef Vector#(NumberPuppets, Maybe#(TransactionId)) PuppetmasterResponse;
-typedef Server#(PuppetmasterRequest, PuppetmasterResponse) Puppetmaster;
+
+typedef enum { Started, Finished } TransactionStatus deriving (Bits, Eq, FShow);
+
+typedef struct {
+    TransactionId id;
+    TransactionStatus status;
+    Bit#(64) timestamp;
+} PuppetmasterResponse deriving (Bits, Eq, FShow);
+
+instance ArbRequestTC#(PuppetmasterResponse);
+    function Bool isReadRequest(a x) = False;
+    function Bool isWriteRequest(a x) = True;
+endinstance
+
+interface Puppetmaster;
+    interface Put#(PuppetmasterRequest) request;
+    interface Get#(PuppetmasterResponse) response;
+    method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
+endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Numeric constants.
@@ -56,6 +74,13 @@ module mkPuppetmaster(Puppetmaster);
     Reg#(Bit#(TSub#(SizeSchedulingPool, 1))) pendingTrFlags <- mkReg(0);
     // Last transaction sent to each puppet.
     Reg#(Vector#(NumberPuppets, RenamedTransaction)) startedTrs <- mkReg(?);
+    // Arbiter to serialize status messages.
+    let arb <- mkRoundRobin;
+    Arbiter#(NumberPuppets, PuppetmasterResponse, void) msgArbiter <- mkArbiter(arb, 1);
+    // Clock.
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+    // Store previous puppet state to detect when transactions finish running.
+    Reg#(Vector#(NumberPuppets, Bool)) prevPuppetDoneFlags <- mkReg(replicate(True));
 
     // Submodules.
     let renamer <- mkRenamer();
@@ -109,11 +134,17 @@ module mkPuppetmaster(Puppetmaster);
 
     function Bool getDone(Puppet puppet) = puppet.isDone();
 
-    let runningTransactions = zipWith(extractTr, startedTrs, map(getDone, puppets));
+    let puppetDoneFlags = map(getDone, puppets);
+    let runningTransactions = zipWith(extractTr, startedTrs, puppetDoneFlags);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+
     // Put renamed transactions into a buffer.
     rule getRenamed if (bufferIndex < fromInteger(maxScheduledObjects - 1));
         bufferIndex <= bufferIndex + 1;
@@ -144,7 +175,6 @@ module mkPuppetmaster(Puppetmaster);
             &&& pendingTrFlags != 0);
         // Find first scheduled transaction and remove from pending set.
         SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
-        let startedTransaction = buffer[trIndex];
         pendingTrFlags <= pendingTrFlags & ~(1 << trIndex);
         // Move last transaction in buffer to replace transaction being started.
         if (0 < bufferIndex) begin
@@ -152,8 +182,26 @@ module mkPuppetmaster(Puppetmaster);
             bufferIndex <= bufferIndex - 1;
         end
         // Start transaction on idle puppet.
+        let startedTransaction = buffer[trIndex];
         startedTrs[puppetIndex] <= startedTransaction;
         puppets[puppetIndex].start(startedTransaction.tid);
+    endrule
+
+    rule sendMessages;
+        for (Integer i = 0; i < valueOf(NumberPuppets); i = i + 1) begin
+            case (tuple2(prevPuppetDoneFlags[i], puppetDoneFlags[i])) matches
+                {True, False} : msgArbiter.users[i].request.put(PuppetmasterResponse {
+                    id: startedTrs[i].tid,
+                    status: Started,
+                    timestamp: cycle
+                });
+                {False, True} : msgArbiter.users[i].request.put(PuppetmasterResponse {
+                    id: startedTrs[i].tid,
+                    status: Finished,
+                    timestamp: cycle
+                });
+            endcase
+        end
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -162,7 +210,9 @@ module mkPuppetmaster(Puppetmaster);
     // Incoming transactions get forwarded to the renamer.
     interface Put request = renamer.request;
 
-    interface Get response = toGet(map(maybeGetTid, runningTransactions));
+    interface Get response = msgArbiter.master.request;
+    
+    method pollPuppets = map(maybeGetTid, runningTransactions);
 
 endmodule
 
@@ -212,7 +262,7 @@ module mkPuppetmasterTestbench();
     Reg#(UInt#(TAdd#(TLog#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool)), 1)))
         counter <- mkReg(0);
     Reg#(UInt#(32)) cycle <- mkReg(0);
-    Reg#(PuppetmasterResponse) prevResult <- mkReg(?);
+    Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) prevResult <- mkReg(?);
 
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
@@ -225,7 +275,7 @@ module mkPuppetmasterTestbench();
     endrule
 
     rule stream;
-        let result <- myPuppetmaster.response.get();
+        let result = myPuppetmaster.pollPuppets();
         prevResult <= result;
         if (prevResult != result)
             $display("%5d: ", cycle, fshow(map(toStatus, result)));
