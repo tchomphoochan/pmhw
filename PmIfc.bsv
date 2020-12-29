@@ -42,6 +42,6 @@ interface HostToPuppetmaster;
 endinterface
 
 interface PmTop; 
-        interface HostToPuppetmaster request;
+    interface HostToPuppetmaster request;
 endinterface
 
