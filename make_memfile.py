@@ -2,11 +2,18 @@
 import math
 import sys
 
+
+def getline(file):
+    global line
+    line = file.readline()
+    return line
+
+
 params = {}
 
 for fname in sys.argv[1:-1]:
     with open(fname, "rt") as infile:
-        while (line := infile.readline()) :
+        while getline(infile):
             words = line.strip(" ;\n").split()
             if len(words) != 3 or words[0] != "typedef":
                 continue

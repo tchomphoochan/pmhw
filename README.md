@@ -1,5 +1,5 @@
 To compile and run Puppetmaster in Bluesim:
-- install Python 3.8
+- install Python 3.5 or newer
 - install meson
 - install ninja
 - install bsc
