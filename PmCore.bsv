@@ -18,14 +18,15 @@ typedef Bit#(LogNumberLiveObjects) ObjectName;
 typedef Bit#(LogTransactionObjectCount) TransactionObjectCounter;
 typedef Bit#(NumberLiveObjects) ObjectSet;
 
+typedef Vector#(NumberTransactionObjects, ObjectAddress) InputObjects;
 typedef Vector#(NumberTransactionObjects, ObjectName) RenamedObjects;
 
 typedef enum { ReadObject, WrittenObject } ObjectType deriving (Bits, Eq, FShow);
 
 typedef struct {
    TransactionId tid;
-   Vector#(NumberTransactionObjects, ObjectAddress) readObjects;
-   Vector#(NumberTransactionObjects, ObjectAddress) writeObjects;
+   InputObjects readObjects;
+   InputObjects writtenObjects;
 } InputTransaction deriving(Bits, Eq, FShow);
 
 typedef struct {

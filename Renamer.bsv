@@ -77,7 +77,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     ShardIndex shardIndex = begin
         InputTransaction inputTr = inputFifo.first();
         let readObject = inputTr.readObjects[objIndex];
-        let writtenObject = inputTr.writeObjects[objIndex];
+        let writtenObject = inputTr.writtenObjects[objIndex];
         getShard(objType == ReadObject ? readObject : writtenObject);
     end;
 
@@ -113,7 +113,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                     end
                     return tagged Rename ShardRenameRequest {
                         tid: inputTr.tid,
-                        address: objType == ReadObject ? inputTr.readObjects[objIndex] : inputTr.writeObjects[objIndex],
+                        address: objType == ReadObject ? inputTr.readObjects[objIndex] : inputTr.writtenObjects[objIndex],
                         type_: objType
                     };
                 endmethod
@@ -376,7 +376,7 @@ typedef 5 NumberRenamerTests;
 Integer numTests = valueOf(NumberRenamerTests);
 
 function InputTransaction makeInputTr(TransactionId i, ObjectAddress r[], ObjectAddress w[]);
-    return InputTransaction{tid: i, readObjects: arrayToVector(r), writeObjects: arrayToVector(w)};
+    return InputTransaction{tid: i, readObjects: arrayToVector(r), writtenObjects: arrayToVector(w)};
 endfunction
 
 module mkRenamerTestbench();

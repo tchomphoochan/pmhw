@@ -47,13 +47,13 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
                 obj13, obj14, obj15, obj16
             };
             Vector#(8, ObjectAddress) readObjects = newVector;
-            Vector#(8, ObjectAddress) writeObjects = newVector;
+            Vector#(8, ObjectAddress) writtenObjects = newVector;
             Integer readIndex = 0;
             Integer writeIndex = 0;
             for (Integer i = 0; i < 16; i = i + 1) begin
                 let obj = allObjects[i];
                 if (obj.write == 1) begin
-                    writeObjects[writeIndex] = obj.object;
+                    writtenObjects[writeIndex] = obj.object;
                     writeIndex = writeIndex + 1;
                 end else begin
                     readObjects[readIndex] = obj.object;
@@ -63,7 +63,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
             pm.request.put(InputTransaction {
                 tid: tid,
                 readObjects: readObjects,
-                writeObjects: writeObjects
+                writtenObjects: writtenObjects
             });
 	    endmethod
 	endinterface
