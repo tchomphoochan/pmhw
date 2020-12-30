@@ -47,7 +47,7 @@ endinterface
 ////////////////////////////////////////////////////////////////////////////////
 /// Numeric constants.
 ////////////////////////////////////////////////////////////////////////////////
-Integer transactionTime = 100;
+Integer transactionTime = 2000;
 Integer maxPendingTransactions = 16;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -249,13 +249,12 @@ module mkPuppetmasterTestbench();
     for (Integer i = 0; i < numTests * maxScheduledObjects; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
-            testInputs[i].readObjects[j] = fromInteger(i * objSetSize * 2 + j * 2);
-            testInputs[i].writtenObjects[j] = fromInteger(case (i % numTests) matches
-                0 : (i * objSetSize * 2 + j * 2 + 1);
-                1 : ((i - i % 2) * objSetSize * 2 + j * 2 + 1);
-                2 : ((i * objSetSize * 2 + j * 2 + 1)
-                     % (maxScheduledObjects * objSetSize * 2 - 2));
-                3 : ((i % 2) * objSetSize * 2 + j * 2 + 1);
+            testInputs[i].readObjects[j] = fromInteger(objSetSize * i * 2 + j * 2);
+            testInputs[i].writtenObjects[j] = fromInteger(case (i % 4) matches
+                0 : (objSetSize * i           * 2 + j * 2 + 1);  // conflict with none
+                1 : (objSetSize * (i - i % 2) * 2 + j * 2 + 1);  // conflict with 1 each
+                2 : (objSetSize * (i % 2)     * 2 + j * 2 + 1);  // conflict with half
+                3 : (objSetSize               * 2 + j * 2 + 1);  // conflict with all
             endcase);
         end
     end
