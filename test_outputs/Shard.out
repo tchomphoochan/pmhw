@@ -1,14 +1,14 @@
-ShardRenameResponse { success: True, tid: 'h0000000000000001, name: 'h000, type_: ReadObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000001, name: 'h205, type_: WrittenObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000001, name: 'h006, type_: ReadObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000001, name: 'h301, type_: ReadObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000002, name: 'h006, type_: WrittenObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000001, name: 'h007, type_: ReadObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000003, name: 'h008, type_: ReadObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000004, name: 'h009, type_: ReadObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000005, name: 'h00a, type_: ReadObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000006, name: 'h00b, type_: WrittenObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000007, name: 'h00c, type_: ReadObject }
-ShardRenameResponse { success: False, tid: 'h0000000000000008, name: 'h00c, type_: ReadObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000008, name: 'h00b, type_: ReadObject }
-ShardRenameResponse { success: True, tid: 'h0000000000000009, name: 'h006, type_: ReadObject }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000001, address: 'h00000000, type_: ReadObject }, name: tagged Valid 'h000 }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000001, address: 'h00000205, type_: WrittenObject }, name: tagged Valid 'h205 }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000001, address: 'ha0000406, type_: ReadObject }, name: tagged Valid 'h006 }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000001, address: 'h00000300, type_: ReadObject }, name: tagged Valid 'h301 }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000002, address: 'ha0000406, type_: WrittenObject }, name: tagged Valid 'h006 }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000001, address: 'hb0000406, type_: ReadObject }, name: tagged Valid 'h007 }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000003, address: 'hc0000406, type_: ReadObject }, name: tagged Valid 'h008 }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000004, address: 'hd0000406, type_: ReadObject }, name: tagged Valid 'h009 }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000005, address: 'he0000406, type_: ReadObject }, name: tagged Valid 'h00a }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000006, address: 'hf0000406, type_: WrittenObject }, name: tagged Valid 'h00b }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000007, address: 'hf0000806, type_: ReadObject }, name: tagged Valid 'h00c }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000008, address: 'hf0000c06, type_: ReadObject }, name: tagged Invalid  }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000008, address: 'hf0000c06, type_: ReadObject }, name: tagged Valid 'h00b }
+ShardRenameResponse { request: ShardRenameRequest { tid: 'h0000000000000009, address: 'ha0000006, type_: ReadObject }, name: tagged Valid 'h006 }

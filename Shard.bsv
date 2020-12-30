@@ -34,22 +34,24 @@ typedef struct {
     ObjectAddress objectId;
 } RenameTableEntry deriving(Bits, Eq, FShow);
 
+typedef struct {
+    TransactionId tid;
+    ObjectAddress address;
+    ObjectType type_;
+} ShardRenameRequest deriving(Bits, Eq, FShow);
+
+typedef struct {
+    ObjectName name;
+} ShardDeleteRequest deriving(Bits, Eq, FShow);
+
 typedef union tagged {
-    struct {
-        TransactionId tid;
-        ObjectAddress address;
-        ObjectType type_;
-    } Rename;
-    struct {
-        ObjectName name;
-    } Delete;
+    ShardRenameRequest Rename;
+    ShardDeleteRequest Delete;
 } ShardRequest deriving(Bits, Eq, FShow);
 
 typedef struct {
-    Bool success;
-    TransactionId tid;
-    ObjectName name;
-    ObjectType type_;
+    ShardRenameRequest request;
+    Maybe#(ObjectName) name;
 } ShardRenameResponse deriving(Bits, Eq, FShow);
 
 typedef Server#(ShardRequest, ShardRenameResponse) Shard;
@@ -97,7 +99,8 @@ endfunction
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-(* synthesize *)
+
+(* descending_urgency = "doRename, startRename, endDelete, startDelete" *)
 module mkShard(Shard);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
@@ -106,50 +109,46 @@ module mkShard(Shard);
     cfg.loadFormat = tagged Hex "mem.vmh";
     BRAM2Port#(ShardKey, RenameTableEntry) bram <- mkBRAM2Server(cfg);
 
-    Reg#(ShardRequest) req <- mkReg(?);
-    Reg#(ShardRenameResponse) resp <- mkReg(?);
+    // Currently processed request.
+    Reg#(Maybe#(ShardRequest)) maybeReq <- mkReg(tagged Invalid);
+    // Last name tried.
+    Reg#(ShardKey) lastKey <- mkReg(?);
+    // Number of hash functions used.
     Reg#(HashIndex) tries <- mkReg(0);
-    Reg#(Bool) isAddressValid <- mkReg(False);
-    Reg#(Bool) isReadInProgress <- mkReg(False);
-    Reg#(Bool) isRenameDone <- mkReg(False);
+    // True if response is ready.
+    Reg#(Bool) isDone <- mkReg(False);
+    // True if rename was successful.
+    Reg#(Bool) isSuccess <- mkReg(?);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Helper functions.
     ////////////////////////////////////////////////////////////////////////////////
     // Computes hash function h_i(x) = (x + i) % b.
     // x: address, i: offset (tries), b: base (SizeShard)
-    function ShardKey getNextName();
-        return getKey(req.Rename.address + zeroExtend(tries));
+    function ShardKey getNextKey(ShardRenameRequest req);
+        return getKey(req.address + zeroExtend(tries));
     endfunction
 
-    function ShardRenameResponse makeShardResponse();
-        return ShardRenameResponse{
-            success: True,
-            tid: req.Rename.tid,
-            name: {getShard(req.Rename.address), getNextName()},
-            type_: req.Rename.type_
-        };
+    function ObjectName keyToName(ShardRenameRequest req, ShardKey key);
+        return {getShard(req.address), key};
     endfunction
 
-    function BRAMRequest#(ShardKey, RenameTableEntry) makeNextReadRequest();
+    function BRAMRequest#(ShardKey, RenameTableEntry) makeReadRequest(ShardKey bramAddr);
         return BRAMRequest{
             write: False,
             responseOnWrite: False,
-            address: req matches tagged Delete .r ? getKey(r.name) : getNextName(),
+            address: bramAddr,
             datain: ?
         };
     endfunction
 
-    function BRAMRequest#(ShardKey, RenameTableEntry) makeWriteRequest(RenameTableEntry entry);
-        let newEntry = RenameTableEntry{
-            counter: req matches tagged Rename .* ? entry.counter + 1 : entry.counter - 1,
-            objectId: req matches tagged Rename .r ? r.address : entry.objectId
-        };
+    function BRAMRequest#(ShardKey, RenameTableEntry) makeWriteRequest(
+            ShardKey bramAddr, RenameTableEntry entry);
         return BRAMRequest{
             write: True,
             responseOnWrite: False,
-            address: getKey(req matches tagged Delete .r ? r.name : resp.name),
-            datain: newEntry
+            address: bramAddr,
+            datain: entry
         };
     endfunction
 
@@ -158,64 +157,78 @@ module mkShard(Shard);
     ////////////////////////////////////////////////////////////////////////////////
     // This rule is needed because doRename is blocked before the first read
     // request gets sent to the BRAM.
-    rule startRename if (isAddressValid && !isRenameDone && !isReadInProgress &&& req matches tagged Rename .*);
-        resp <= makeShardResponse();
+    rule startRename if (maybeReq matches tagged Valid .sreq
+                         &&& sreq matches tagged Rename .req &&& !isDone);
+        lastKey <= getNextKey(req);
         tries <= tries + 1;
-        isReadInProgress <= True;
-        bram.portA.request.put(makeNextReadRequest());
+        bram.portA.request.put(makeReadRequest(getNextKey(req)));
     endrule
 
-    rule doRename if (isAddressValid && !isRenameDone && isReadInProgress &&& req matches tagged Rename .request);
+    rule doRename if (maybeReq matches tagged Valid .sreq
+                      &&& sreq matches tagged Rename .req &&& !isDone);
         RenameTableEntry entry <- bram.portA.response.get();
-        if (entry.counter == 0 || entry.counter < fromInteger(maxLiveObjects) && entry.objectId == request.address) begin
-            // Sucessful rename request: found empty slot or non-full existing entry for the object.
-            isAddressValid <= False;
-            isReadInProgress <= False;
-            isRenameDone <= True;
-            bram.portA.request.put(makeWriteRequest(entry));
-        end else if (entry.counter == fromInteger(maxLiveObjects) && entry.objectId == request.address || tries == fromInteger(maxHashes - 1)) begin
+        if (entry.counter == 0 || entry.counter < fromInteger(maxLiveObjects)
+                && entry.objectId == req.address) begin
+            // Sucessful rename request: found empty slot or non-full existing entry.
+            isDone <= True;
+            isSuccess <= True;
+            let newEntry = RenameTableEntry {
+                counter: entry.counter + 1,
+                objectId: req.address
+            };
+            bram.portA.request.put(makeWriteRequest(lastKey, newEntry));
+        end else if (entry.counter == fromInteger(maxLiveObjects)
+                     && entry.objectId == req.address
+                     || tries == fromInteger(maxHashes - 1)) begin
             // Rename request failed: slot is full or hash functions exhausted.
-            let newResp = resp;
-            newResp.success = False;
-            resp <= newResp;
-            isAddressValid <= False;
-            isReadInProgress <= False;
-            isRenameDone <= True;
+            isDone <= True;
+            isSuccess <= False;
         end else begin
             // Try next hash function (next offset).
-            resp <= makeShardResponse();
+            lastKey <= getNextKey(req);
             tries <= tries + 1;
-            bram.portA.request.put(makeNextReadRequest());
+            bram.portA.request.put(makeReadRequest(getNextKey(req)));
         end
     endrule
 
-    rule startDelete (isAddressValid && !isRenameDone && !isReadInProgress &&& req matches tagged Delete .*);
-        isReadInProgress <= True;
-        bram.portA.request.put(makeNextReadRequest());
+    rule startDelete (maybeReq matches tagged Valid .sreq
+                      &&& sreq matches tagged Delete .req &&& !isDone);
+        bram.portA.request.put(makeReadRequest(getKey(req.name)));
     endrule
 
-    rule endDelete (isAddressValid && !isRenameDone && isReadInProgress &&& req matches tagged Delete .request);
+    rule endDelete (maybeReq matches tagged Valid .sreq
+                    &&& sreq matches tagged Delete .req &&& !isDone);
         RenameTableEntry entry <- bram.portA.response.get();
-        isAddressValid <= False;
-        isReadInProgress <= False;
-        bram.portA.request.put(makeWriteRequest(entry));
+        maybeReq <= tagged Invalid;
+        let newEntry = RenameTableEntry {
+            counter: entry.counter - 1,
+            objectId: entry.objectId
+        };
+        bram.portA.request.put(makeWriteRequest(getKey(req.name), newEntry));
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
-        method Action put(ShardRequest request) if (!isAddressValid);
-            req <= request;
+        method Action put(ShardRequest request) if (!isValid(maybeReq));
+            maybeReq <= tagged Valid request;
             tries <= 0;
-            isAddressValid <= True;
         endmethod
     endinterface
 
     interface Get response;
-        method ActionValue#(ShardRenameResponse) get() if (isRenameDone);
-            isRenameDone <= False;
-            return resp;
+        method ActionValue#(ShardRenameResponse) get() if (
+                maybeReq matches tagged Valid .sreq
+                &&& sreq matches tagged Rename .req &&& isDone);
+            maybeReq <= tagged Invalid;
+            isDone <= False;
+            let name = keyToName(req, lastKey);
+            if (isSuccess) begin
+                return ShardRenameResponse { request: req, name: tagged Valid name };
+            end else begin
+                return ShardRenameResponse { request: req, name: tagged Invalid };
+            end
         endmethod
     endinterface
 endmodule
@@ -225,27 +238,35 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 typedef 17 NumberShardTests;
 
+function ShardRequest makeRenameReq(TransactionId id, ObjectAddress addr, ObjectType t);
+    return tagged Rename ShardRenameRequest {tid: id, address: addr, type_: t};
+endfunction
+
+function ShardRequest makeDeleteReq(ObjectName name);
+    return tagged Delete ShardDeleteRequest {name: name};
+endfunction
+
 module mkShardTestbench();
     Shard myShard <- mkShard();
 
     Vector#(NumberShardTests, ShardRequest) testInputs;
-    testInputs[0] = tagged Rename {tid: 64'h1, address: 32'h00000000, type_: ReadObject};
-    testInputs[1] = tagged Rename {tid: 64'h1, address: 32'h00000205, type_: WrittenObject};
-    testInputs[2] = tagged Rename {tid: 64'h1, address: 32'hA0000406, type_: ReadObject};
-    testInputs[3] = tagged Rename {tid: 64'h1, address: 32'h00000300, type_: ReadObject};
-    testInputs[4] = tagged Rename {tid: 64'h2, address: 32'hA0000406, type_: WrittenObject};
-    testInputs[5] = tagged Rename {tid: 64'h1, address: 32'hB0000406, type_: ReadObject};
-    testInputs[6] = tagged Rename {tid: 64'h3, address: 32'hC0000406, type_: ReadObject};
-    testInputs[7] = tagged Rename {tid: 64'h4, address: 32'hD0000406, type_: ReadObject};
-    testInputs[8] = tagged Rename {tid: 64'h5, address: 32'hE0000406, type_: ReadObject};
-    testInputs[9] = tagged Rename {tid: 64'h6, address: 32'hF0000406, type_: WrittenObject};
-    testInputs[10] = tagged Rename {tid: 64'h7, address: 32'hF0000806, type_: ReadObject};
-    testInputs[11] = tagged Rename {tid: 64'h8, address: 32'hF0000C06, type_: ReadObject};
-    testInputs[12] = tagged Delete {name: 10'h00B};
-    testInputs[13] = tagged Rename {tid: 64'h8, address: 32'hF0000C06, type_: ReadObject};
-    testInputs[14] = tagged Delete {name: 10'h006};
-    testInputs[15] = tagged Delete {name: 10'h006};
-    testInputs[16] = tagged Rename {tid: 64'h9, address: 32'hA0000006, type_: ReadObject};
+    testInputs[0] = makeRenameReq(64'h1, 32'h00000000, ReadObject);
+    testInputs[1] = makeRenameReq(64'h1, 32'h00000205, WrittenObject);
+    testInputs[2] = makeRenameReq(64'h1, 32'hA0000406, ReadObject);
+    testInputs[3] = makeRenameReq(64'h1, 32'h00000300, ReadObject);
+    testInputs[4] = makeRenameReq(64'h2, 32'hA0000406, WrittenObject);
+    testInputs[5] = makeRenameReq(64'h1, 32'hB0000406, ReadObject);
+    testInputs[6] = makeRenameReq(64'h3, 32'hC0000406, ReadObject);
+    testInputs[7] = makeRenameReq(64'h4, 32'hD0000406, ReadObject);
+    testInputs[8] = makeRenameReq(64'h5, 32'hE0000406, ReadObject);
+    testInputs[9] = makeRenameReq(64'h6, 32'hF0000406, WrittenObject);
+    testInputs[10] = makeRenameReq(64'h7, 32'hF0000806, ReadObject);
+    testInputs[11] = makeRenameReq(64'h8, 32'hF0000C06, ReadObject);
+    testInputs[12] = makeDeleteReq(10'h00B);
+    testInputs[13] = makeRenameReq(64'h8, 32'hF0000C06, ReadObject);
+    testInputs[14] = makeDeleteReq(10'h006);
+    testInputs[15] = makeDeleteReq(10'h006);
+    testInputs[16] = makeRenameReq(64'h9, 32'hA0000006, ReadObject);
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 

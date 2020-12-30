@@ -110,7 +110,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                             inputFifo.deq();
                         end
                     end
-                    return tagged Rename {
+                    return tagged Rename ShardRenameRequest {
                         tid: inputTr.tid,
                         address: objType == ReadObject ? inputTr.readObjects[objIndex] : inputTr.writeObjects[objIndex],
                         type_: objType
@@ -186,7 +186,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                             writeSet: currentTr.writeSet & ~(1 << currentObj.objName)
                         };
                     endcase
-                    return tagged Delete { name: currentObj.objName };
+                    return tagged Delete ShardDeleteRequest { name: currentObj.objName };
                 endmethod
             endinterface
         );
@@ -237,21 +237,21 @@ module mkResponseAggregator(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
         method Action put(ShardRenameResponse response) if (!isDone());
-            tid <= response.tid;
+            tid <= response.request.tid;
             // Increment request count.
-            case (response.type_) matches
+            case (response.request.type_) matches
                 ReadObject: readObjectCount <= readObjectCount + 1;
                 WrittenObject: writtenObjectCount <= writtenObjectCount + 1;
             endcase
             // Insert object into appropriate set or mark transaction failed.
-            if (!response.success) begin
-                success <= False;
-            end else begin
-                case (response.type_) matches
-                    ReadObject: readSet <= readSet | (1 << response.name);
-                    WrittenObject: writeSet <= writeSet | (1 << response.name);
-                endcase
-            end
+            case (response.name) matches
+                tagged Invalid : success <= False;
+                tagged Valid .name :
+                    case (response.request.type_) matches
+                        ReadObject: readSet <= readSet | (1 << name);
+                        WrittenObject: writeSet <= writeSet | (1 << name);
+                    endcase
+            endcase
         endmethod
     endinterface
 
