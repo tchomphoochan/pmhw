@@ -38,7 +38,7 @@ typedef union tagged {
     struct {
         TransactionId tid;
         ObjectAddress address;
-        Bool isWrittenObject;
+        ObjectType type_;
     } Rename;
     struct {
         ObjectName name;
@@ -49,7 +49,7 @@ typedef struct {
     Bool success;
     TransactionId tid;
     ObjectName name;
-    Bool isWrittenObject;
+    ObjectType type_;
 } ShardRenameResponse deriving(Bits, Eq, FShow);
 
 typedef Server#(ShardRequest, ShardRenameResponse) Shard;
@@ -127,7 +127,7 @@ module mkShard(Shard);
             success: True,
             tid: req.Rename.tid,
             name: {getShard(req.Rename.address), getNextName()},
-            isWrittenObject: req.Rename.isWrittenObject
+            type_: req.Rename.type_
         };
     endfunction
 
@@ -229,23 +229,23 @@ module mkShardTestbench();
     Shard myShard <- mkShard();
 
     Vector#(NumberShardTests, ShardRequest) testInputs;
-    testInputs[0] = tagged Rename {tid: 64'h1, address: 32'h00000000, isWrittenObject: False};
-    testInputs[1] = tagged Rename {tid: 64'h1, address: 32'h00000205, isWrittenObject: True};
-    testInputs[2] = tagged Rename {tid: 64'h1, address: 32'hA0000406, isWrittenObject: False};
-    testInputs[3] = tagged Rename {tid: 64'h1, address: 32'h00000300, isWrittenObject: False};
-    testInputs[4] = tagged Rename {tid: 64'h2, address: 32'hA0000406, isWrittenObject: True};
-    testInputs[5] = tagged Rename {tid: 64'h1, address: 32'hB0000406, isWrittenObject: False};
-    testInputs[6] = tagged Rename {tid: 64'h3, address: 32'hC0000406, isWrittenObject: False};
-    testInputs[7] = tagged Rename {tid: 64'h4, address: 32'hD0000406, isWrittenObject: False};
-    testInputs[8] = tagged Rename {tid: 64'h5, address: 32'hE0000406, isWrittenObject: False};
-    testInputs[9] = tagged Rename {tid: 64'h6, address: 32'hF0000406, isWrittenObject: True};
-    testInputs[10] = tagged Rename {tid: 64'h7, address: 32'hF0000806, isWrittenObject: False};
-    testInputs[11] = tagged Rename {tid: 64'h8, address: 32'hF0000C06, isWrittenObject: False};
+    testInputs[0] = tagged Rename {tid: 64'h1, address: 32'h00000000, type_: ReadObject};
+    testInputs[1] = tagged Rename {tid: 64'h1, address: 32'h00000205, type_: WrittenObject};
+    testInputs[2] = tagged Rename {tid: 64'h1, address: 32'hA0000406, type_: ReadObject};
+    testInputs[3] = tagged Rename {tid: 64'h1, address: 32'h00000300, type_: ReadObject};
+    testInputs[4] = tagged Rename {tid: 64'h2, address: 32'hA0000406, type_: WrittenObject};
+    testInputs[5] = tagged Rename {tid: 64'h1, address: 32'hB0000406, type_: ReadObject};
+    testInputs[6] = tagged Rename {tid: 64'h3, address: 32'hC0000406, type_: ReadObject};
+    testInputs[7] = tagged Rename {tid: 64'h4, address: 32'hD0000406, type_: ReadObject};
+    testInputs[8] = tagged Rename {tid: 64'h5, address: 32'hE0000406, type_: ReadObject};
+    testInputs[9] = tagged Rename {tid: 64'h6, address: 32'hF0000406, type_: WrittenObject};
+    testInputs[10] = tagged Rename {tid: 64'h7, address: 32'hF0000806, type_: ReadObject};
+    testInputs[11] = tagged Rename {tid: 64'h8, address: 32'hF0000C06, type_: ReadObject};
     testInputs[12] = tagged Delete {name: 10'h00B};
-    testInputs[13] = tagged Rename {tid: 64'h8, address: 32'hF0000C06, isWrittenObject: False};
+    testInputs[13] = tagged Rename {tid: 64'h8, address: 32'hF0000C06, type_: ReadObject};
     testInputs[14] = tagged Delete {name: 10'h006};
     testInputs[15] = tagged Delete {name: 10'h006};
-    testInputs[16] = tagged Rename {tid: 64'h9, address: 32'hA0000006, isWrittenObject: False};
+    testInputs[16] = tagged Rename {tid: 64'h9, address: 32'hA0000006, type_: ReadObject};
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 

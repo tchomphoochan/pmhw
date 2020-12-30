@@ -57,8 +57,6 @@ endinterface
 typedef RequestDistributor#(InputTransaction) RenameRequestDistributor;
 typedef RequestDistributor#(RenamedTransaction) DeleteRequestDistributor;
 
-typedef enum { ReadObject, WrittenObject } ObjectType deriving (Bits, Eq, FShow);
-
 typedef struct {
     ObjectType objType;
     ObjectName objName;
@@ -115,7 +113,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                     return tagged Rename {
                         tid: inputTr.tid,
                         address: objType == ReadObject ? inputTr.readObjects[objIndex] : inputTr.writeObjects[objIndex],
-                        isWrittenObject: objType == WrittenObject
+                        type_: objType
                     };
                 endmethod
             endinterface
@@ -241,18 +239,18 @@ module mkResponseAggregator(ResponseAggregator);
         method Action put(ShardRenameResponse response) if (!isDone());
             tid <= response.tid;
             // Increment request count.
-            if (response.isWrittenObject) begin
-                writtenObjectCount <= writtenObjectCount + 1;
-            end else begin
-                readObjectCount <= readObjectCount + 1;
-            end
+            case (response.type_) matches
+                ReadObject: readObjectCount <= readObjectCount + 1;
+                WrittenObject: writtenObjectCount <= writtenObjectCount + 1;
+            endcase
             // Insert object into appropriate set or mark transaction failed.
             if (!response.success) begin
                 success <= False;
-            end else if (response.isWrittenObject) begin
-                writeSet <= writeSet | (1 << response.name);
             end else begin
-                readSet <= readSet | (1 << response.name);
+                case (response.type_) matches
+                    ReadObject: readSet <= readSet | (1 << response.name);
+                    WrittenObject: writeSet <= writeSet | (1 << response.name);
+                endcase
             end
         endmethod
     endinterface

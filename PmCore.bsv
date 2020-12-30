@@ -14,6 +14,8 @@ typedef TExp#(LogNumberTransactionObjects) NumberTransactionObjects;
 
 typedef Bit#(NumberLiveObjects) ObjectSet;
 
+typedef enum { ReadObject, WrittenObject } ObjectType deriving (Bits, Eq, FShow);
+
 typedef struct {
    TransactionId tid;
    Vector#(NumberTransactionObjects, ObjectAddress) readObjects;
