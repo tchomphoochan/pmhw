@@ -19,16 +19,17 @@ import Shard::*;
 ////////////////////////////////////////////////////////////////////////////////
 typedef 2 LogSizeRenamerBuffer;
 
-typedef TAdd#(1, LogNumberTransactionObjects) TransactionObjectCount;
-
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
 
 typedef Bit#(LogNumberTransactionObjects) TransactionObjectIndex;
 typedef Bit#(LogSizeRenamerBuffer) RenamerBufferIndex;
-typedef Bit#(TransactionObjectCount) TransactionObjectCounter;
 
 // Tells the arbiter that we don't need to route responses back.
 instance ArbRequestTC#(RenamedTransaction);
+    function Bool isReadRequest(a x) = False;
+    function Bool isWriteRequest(a x) = True;
+endinstance
+instance ArbRequestTC#(FailedTransaction);
     function Bool isReadRequest(a x) = False;
     function Bool isWriteRequest(a x) = True;
 endinstance
@@ -55,13 +56,13 @@ interface RequestDistributor#(type transaction_type);
 endinterface
 
 typedef RequestDistributor#(InputTransaction) RenameRequestDistributor;
-typedef RequestDistributor#(RenamedTransaction) DeleteRequestDistributor;
+typedef RequestDistributor#(FailedTransaction) DeleteRequestDistributor;
 
 typedef struct {
     ObjectType objType;
     ObjectName objName;
 } RenamedObject deriving (Bits,Eq);
-(* synthesize *)
+
 module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
@@ -125,42 +126,24 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     interface Put request = toPut(inputFifo);
 endmodule
 
-
-
-
-// Local fix to speed up compilation of the module below
-// changed the code:
-//    (
-//        readObject < fromInteger(maxLiveObjects)    ? tagged Valid RenamedObject {
-//            objType: ReadObject, objName: pack(truncate(readObject)) } :
-//        writtenObject < fromInteger(maxLiveObjects) ? tagged Valid RenamedObject {
-//            objType: WrittenObject, objName: pack(truncate(writtenObject)) } :
-//                                                      tagged Invalid);
-// into a noinline function
-
-(* noinline *)
-function Maybe#(RenamedObject) computeObj(UInt#(TAdd#(1,LogNumberLiveObjects)) readObject, UInt#(TAdd#(1,LogNumberLiveObjects)) writtenObject);
-    if (readObject < fromInteger(maxLiveObjects))
-        return (tagged Valid RenamedObject {objType: ReadObject, objName: pack(truncate(readObject)) });
-    else if (writtenObject < fromInteger(maxLiveObjects))
-            return (tagged Valid RenamedObject {objType: WrittenObject, objName: pack(truncate(writtenObject)) });
-        else return (tagged Invalid);
-endfunction
-
-(* synthesize *)
 module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    let emptyTransaction = RenamedTransaction { tid: ?, readSet: 'b0, writeSet: 'b0 };
-    Reg#(RenamedTransaction) currentTr <- mkReg(emptyTransaction);
+    let emptyTransaction = FailedTransaction { readObjectCount: 0, writtenObjectCount: 0 };
+    Reg#(FailedTransaction) currentTr <- mkReg(emptyTransaction);
 
     ////////////////////////////////////////////////////////////////////////////////
-    /// Functions.
+    /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
-    let readObject = countZerosLSB(currentTr.readSet);
-    let writtenObject = countZerosLSB(currentTr.writeSet);
-    Maybe#(RenamedObject) maybeCurrentObj = computeObj(readObject, writtenObject); 
+    let done = currentTr.readObjectCount == 0 && currentTr.writtenObjectCount == 0;
+    let currentObj = currentTr.readObjectCount != 0 ?
+        RenamedObject {
+            objType: ReadObject,
+            objName: currentTr.readObjects[currentTr.readObjectCount - 1] } :
+        RenamedObject {
+            objType: WrittenObject,
+            objName: currentTr.writtenObjects[currentTr.writtenObjectCount - 1] };
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -171,20 +154,12 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRequest) get() if (
-                    maybeCurrentObj matches tagged Valid .currentObj
-                    &&& getShard(currentObj.objName) == fromInteger(i)
-                );
+                        !done &&& getShard(currentObj.objName) == fromInteger(i));
                     case (currentObj.objType) matches
-                        ReadObject : currentTr <= RenamedTransaction {
-                            tid: currentTr.tid,
-                            readSet: currentTr.readSet & ~(1 << currentObj.objName),
-                            writeSet: currentTr.writeSet
-                        };
-                        WrittenObject : currentTr <= RenamedTransaction {
-                            tid: currentTr.tid,
-                            readSet: currentTr.readSet,
-                            writeSet: currentTr.writeSet & ~(1 << currentObj.objName)
-                        };
+                        ReadObject :
+                            currentTr.readObjectCount <= currentTr.readObjectCount - 1;
+                        WrittenObject :
+                            currentTr.writtenObjectCount <= currentTr.writtenObjectCount - 1;
                     endcase
                     return tagged Delete ShardDeleteRequest { name: currentObj.objName };
                 endmethod
@@ -195,7 +170,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     interface outputs = map(makeOutputInterface, genVector());
 
     interface Put request;
-        method Action put(RenamedTransaction newTr) if (maybeCurrentObj matches tagged Invalid);
+        method Action put(FailedTransaction newTr) if (done);
             currentTr <= newTr;
         endmethod
     endinterface
@@ -211,7 +186,7 @@ endmodule
 interface ResponseAggregator;
     interface Put#(ShardRenameResponse) request;
     interface Get#(RenamedTransaction) response;
-    interface Get#(RenamedTransaction) failure;
+    interface Get#(FailedTransaction) failure;
 endinterface
 
 module mkResponseAggregator(ResponseAggregator);
@@ -219,15 +194,31 @@ module mkResponseAggregator(ResponseAggregator);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     Reg#(TransactionId) tid <- mkReg(?);
+    Reg#(RenamedObjects) readObjects <- mkReg(?);
+    Reg#(RenamedObjects) writtenObjects <- mkReg(?);
     Reg#(ObjectSet) readSet <- mkReg(0);
     Reg#(ObjectSet) writeSet <- mkReg(0);
     Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
-    Reg#(Bool) success <- mkReg(True);
+    Reg#(TransactionObjectCounter) validReadObjectCount <- mkReg(0);
+    Reg#(TransactionObjectCounter) validWrittenObjectCount <- mkReg(0);
 
     ////////////////////////////////////////////////////////////////////////////////
-    /// Functions.
+    /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
+    let success = readObjectCount == validReadObjectCount
+                  && writtenObjectCount == validWrittenObjectCount;
+
+    let resetState =
+        action
+            readSet <= 0;
+            writeSet <= 0;
+            readObjectCount <= 0;
+            writtenObjectCount <= 0;
+            validReadObjectCount <= 0;
+            validWrittenObjectCount <= 0;
+        endaction;
+
     function Bool isDone();
         return readObjectCount == fromInteger(objSetSize) && writtenObjectCount == fromInteger(objSetSize);
     endfunction
@@ -243,36 +234,41 @@ module mkResponseAggregator(ResponseAggregator);
                 ReadObject: readObjectCount <= readObjectCount + 1;
                 WrittenObject: writtenObjectCount <= writtenObjectCount + 1;
             endcase
-            // Insert object into appropriate set or mark transaction failed.
-            case (response.name) matches
-                tagged Invalid : success <= False;
-                tagged Valid .name :
-                    case (response.request.type_) matches
-                        ReadObject: readSet <= readSet | (1 << name);
-                        WrittenObject: writeSet <= writeSet | (1 << name);
-                    endcase
-            endcase
+            // If successful, insert object into appropriate set.
+            if (response.name matches tagged Valid .name) begin
+                case (response.request.type_) matches
+                    ReadObject: begin
+                        validReadObjectCount <= validReadObjectCount + 1;
+                        readObjects[validReadObjectCount] <= name;
+                        readSet <= readSet | (1 << name);
+                    end
+                    WrittenObject: begin
+                        validWrittenObjectCount <= validWrittenObjectCount + 1;
+                        writtenObjects[validWrittenObjectCount] <= name;
+                        writeSet <= writeSet | (1 << name);
+                    end
+                endcase
+            end
         endmethod
     endinterface
 
     interface Get response;
         method ActionValue#(RenamedTransaction) get() if (isDone() && success);
-            readSet <= 0;
-            writeSet <= 0;
-            readObjectCount <= 0;
-            writtenObjectCount <= 0;
+            resetState();
             return RenamedTransaction{ tid: tid, readSet: readSet, writeSet: writeSet };
         endmethod
     endinterface
 
     interface Get failure;
-        method ActionValue#(RenamedTransaction) get() if (isDone() && !success);
-            readSet <= 0;
-            writeSet <= 0;
-            readObjectCount <= 0;
-            writtenObjectCount <= 0;
-            success <= True;
-            return RenamedTransaction{ tid: tid, readSet: readSet, writeSet: writeSet };
+        method ActionValue#(FailedTransaction) get() if (isDone() && !success);
+            resetState();
+            return FailedTransaction {
+                tid: tid,
+                readObjects: readObjects,
+                writtenObjects: writtenObjects,
+                readObjectCount: validReadObjectCount,
+                writtenObjectCount: validWrittenObjectCount
+            };
         endmethod
     endinterface
 endmodule
@@ -333,7 +329,7 @@ module mkRenamer(Renamer);
 
     // Connections from aggregators to failed transaction handler.
     let arb4 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, RenamedTransaction, void) failedTransactionArbiter <- mkArbiter(arb4, 1);
+    Arbiter#(SizeRenamerBuffer, FailedTransaction, void) failedTransactionArbiter <- mkArbiter(arb4, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].failure, failedTransactionArbiter.users[i].request);
     end

@@ -26,7 +26,6 @@ typedef TExp#(LogNumberHashes) NumberHashes;
 typedef Bit#(LogNumberShards) ShardIndex;
 typedef Bit#(LogNumberHashes) HashIndex;
 typedef Bit#(LogSizeShard) ShardKey;
-typedef Bit#(LogNumberLiveObjects) ObjectName;
 typedef Bit#(ObjectCount) ReferenceCounter;
 
 typedef struct {
