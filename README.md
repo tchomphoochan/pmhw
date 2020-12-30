@@ -18,4 +18,6 @@ To compile and run Connectal wrapper (in Verilator):
   or `make gen.verilator && make -C verilator`
   or `make build.verilator`
 - copy `mem.vmh` from `build` to `verilator`
-- (inside `verilator`) `make run`
+- `make run.verilator`
+  or `make -C verilator run`
+  or (inside `verilator`) `make run`
