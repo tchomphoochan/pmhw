@@ -29,14 +29,21 @@ parser.add_argument(
     choices=tests,
     help="name of the interface that the module under testing implements",
 )
+parser.add_argument(
+    "-d",
+    "--directory",
+    metavar="dir",
+    help="look for tested binaries in dir",
+    default=os.getcwd(),
+)
 args = parser.parse_args()
 
 # Run test.
-proc_dir = cur_dir / "build"
+proc_dir = Path(args.directory)
 module_name = f"mk{args.module}Testbench"
 proc_path = proc_dir / module_name
 if not proc_path.is_file():
-    sys.exit(f"Module executable {module_name} not found.")
+    sys.exit(f"Module executable {proc_path} not found.")
 proc = subprocess.Popen(
     [proc_path],
     cwd=proc_dir,
