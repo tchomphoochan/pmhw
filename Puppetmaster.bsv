@@ -189,6 +189,7 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     rule sendMessages;
+        prevPuppetDoneFlags <= puppetDoneFlags;
         for (Integer i = 0; i < valueOf(NumberPuppets); i = i + 1) begin
             case (tuple2(prevPuppetDoneFlags[i], puppetDoneFlags[i])) matches
                 {True, False} : msgArbiter.users[i].request.put(PuppetmasterResponse {
