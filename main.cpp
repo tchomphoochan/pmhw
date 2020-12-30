@@ -72,5 +72,6 @@ int main() {
             (Object){1, 1, 653}, (Object){1, 1, 445}, (Object){1, 1, 43},
             (Object){1, 1, 4});
     }
+    while(1);
     return 0;
 }
