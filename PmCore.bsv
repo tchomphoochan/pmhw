@@ -50,3 +50,4 @@ typedef struct {
 
 Integer logMaxLiveObjects = valueOf(LogNumberLiveObjects);
 Integer maxLiveObjects = valueOf(NumberLiveObjects);
+Integer objSetSize = valueOf(NumberTransactionObjects);
