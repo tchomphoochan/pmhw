@@ -4,8 +4,7 @@ S2H_INTERFACES = \
 H2S_INTERFACES= \
 	PmTop:PuppetmasterToHostIndication
 BSVFILES += \
-	PmIfc.bsv \
-	PmTop.bsv 
+	PmIfc.bsv
 BSVPATH += / \
 	$(CONNECTALDIR)/bsv
 CPPFILES += \
