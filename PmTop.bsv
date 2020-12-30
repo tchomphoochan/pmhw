@@ -68,3 +68,50 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
 	    endmethod
 	endinterface
 endmodule
+
+module mkTestIndication(PuppetmasterToHostIndication);
+    method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
+        $display("Started %2h at %6d", tid, timestamp);
+    endmethod
+
+    method Action transactionFinished(TransactionId tid, Bit#(64) timestamp);
+        $display("Finished %2h at %6d", tid, timestamp);
+    endmethod
+endmodule
+
+module mkPmTopTestbench();
+    let myIndication <- mkTestIndication();
+    PmTop myPmTop <- mkPmTop(myIndication);
+
+    Vector#(64, Vector#(16, Object)) testInputs = newVector;
+    for (Integer i = 0; i < 64; i = i + 1) begin
+        for (Integer j = 0; j < objSetSize; j = j + 1) begin
+            testInputs[i][2 * j] = Object {
+                valid: 1,
+                write: 0,
+                object: fromInteger(objSetSize * i * 2 + j * 2)
+            };
+            testInputs[i][2 * j + 1] = Object {
+                valid: 1,
+                write: 1,
+                object: fromInteger(case (i % 4) matches
+                    0 : (objSetSize * i           * 2 + j * 2 + 1);  // conflict with none
+                    1 : (objSetSize * (i - i % 2) * 2 + j * 2 + 1);  // conflict with 1 each
+                    2 : (objSetSize * (i % 2)     * 2 + j * 2 + 1);  // conflict with half
+                    3 : (objSetSize               * 2 + j * 2 + 1);  // conflict with all
+                endcase)
+            };
+        end
+    end
+
+    Reg#(Bit#(32)) testIndex <- mkReg(0);
+
+    rule feed if (testIndex < 64);
+        testIndex <= testIndex + 1;
+        let objs = testInputs[testIndex];
+        myPmTop.request.enqueueTransaction(
+            extend(testIndex), objs[0], objs[1], objs[2], objs[3], objs[4], objs[5],
+            objs[6], objs[7], objs[8], objs[9], objs[10], objs[11], objs[12], objs[13],
+            objs[14], objs[15]);
+    endrule
+endmodule

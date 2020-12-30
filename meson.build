@@ -148,5 +148,18 @@ pm_top_obj = custom_target('pm_top_obj',
         '-bdir', builddir,
         '-aggressive-conditions',
         '-sim',
+        '-g', 'mkPmTopTestbench',
+        '+RTS', '-Ksize', '-RTS',
         '@INPUT@'],
     depends: [pm_core_obj, pm_ifc_obj, pm_obj])
+
+pm_top = custom_target('pm_top',
+    input: pm_top_obj,
+    output: 'mkPmTopTestbench',
+    command: [
+        bsc,
+        '-bdir', builddir,
+        '-simdir', builddir,
+        '-sim',
+        '-e', '@OUTPUT@',
+        '-o', '@OUTPUT@'])
