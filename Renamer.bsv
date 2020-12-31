@@ -175,19 +175,20 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(FailedRename) req <- mkReg(defaultValue);
+    Reg#(FailedRename) req[2] <- mkCReg(2, defaultValue);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
-    let done = req.readObjectCount == 0 && req.writtenObjectCount == 0;
-    let currentObj = req.readObjectCount != 0 ?
+    let done0 = req[0].readObjectCount == 0 && req[0].writtenObjectCount == 0;
+    let done1 = req[1].readObjectCount == 0 && req[1].writtenObjectCount == 0;
+    let currentObj = req[0].readObjectCount != 0 ?
         RenamedObject {
             objType: ReadObject,
-            objName: req.renamedTr.readObjects[req.readObjectCount - 1] } :
+            objName: req[0].renamedTr.readObjects[req[0].readObjectCount - 1] } :
         RenamedObject {
             objType: WrittenObject,
-            objName: req.renamedTr.writtenObjects[req.writtenObjectCount - 1] };
+            objName: req[0].renamedTr.writtenObjects[req[0].writtenObjectCount - 1] };
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -198,10 +199,10 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRequest) get() if (
-                        !done &&& getShard(currentObj.objName) == fromInteger(i));
+                        !done0 &&& getShard(currentObj.objName) == fromInteger(i));
                     case (currentObj.objType) matches
-                        ReadObject : req.readObjectCount <= req.readObjectCount - 1;
-                        WrittenObject : req.writtenObjectCount <= req.writtenObjectCount - 1;
+                        ReadObject : req[0].readObjectCount <= req[0].readObjectCount - 1;
+                        WrittenObject : req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
                     endcase
                     return tagged Delete ShardDeleteRequest { name: currentObj.objName };
                 endmethod
@@ -212,12 +213,12 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     interface outputs = map(makeOutputInterface, genVector());
 
     interface Put request;
-        method Action put(FailedRename failedRename) if (done);
-            req <= failedRename;
+        method Action put(FailedRename failedRename) if (done1);
+            req[1] <= failedRename;
         endmethod
     endinterface
 
-    method Bool canPut = done;
+    method Bool canPut = done1;
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////
