@@ -92,10 +92,15 @@ Integer maxTransactions = valueOf(SizeRenamerBuffer);
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+interface Signal;
+    method Action send();
+endinterface
+
 interface RequestDistributor#(type req_type);
     interface Put#(req_type) request;
     interface Vector#(NumberShards, Get#(ShardRequest)) outputs;
     method Bool canPut();
+    interface Signal free;
 endinterface
 
 typedef RequestDistributor#(InputTransaction) RenameRequestDistributor;
@@ -113,6 +118,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     FIFO#(InputTransaction) inputFifo <- mkBypassFIFO();
     Reg#(ObjectType) objType <- mkReg(ReadObject);
     Reg#(TransactionObjectIndex) objIndex <- mkReg(0);
+    Reg#(Bool) isReady <- mkReg(True); 
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -166,9 +172,20 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
 
     interface outputs = map(makeOutputInterface, genVector());
 
-    interface Put request = toPut(inputFifo);
+    interface Put request;
+        method Action put(InputTransaction inputTr);
+            isReady <= False;
+            inputFifo.enq(inputTr);
+        endmethod
+    endinterface
 
-    method Bool canPut() = False;
+    method Bool canPut() = isReady;
+
+    interface Signal free;
+        method Action send();
+            isReady <= True;
+        endmethod
+    endinterface
 endmodule
 
 module mkDeleteRequestDistributor(DeleteRequestDistributor);
@@ -219,6 +236,10 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     endinterface
 
     method Bool canPut = done1;
+
+    interface Signal free;
+        method Action send() = noAction;
+    endinterface
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -234,7 +255,7 @@ interface ResponseAggregator;
     interface Get#(FailedRename) failure;
 endinterface
 
-module mkResponseAggregator(ResponseAggregator);
+module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
@@ -306,6 +327,7 @@ module mkResponseAggregator(ResponseAggregator);
     interface Get response;
         method ActionValue#(RenamerResponse) get() if (isDone() && success);
             resetState();
+            renamedSignal.send();
             return RenamerResponse { 
                 renamedTr: renamedTr,
                 schedulerTr: SchedulerTransaction { readSet: readSet, writeSet: writeSet }
@@ -339,8 +361,6 @@ module mkRenamer(Renamer);
     // Rename request distributors.
     Vector#(SizeRenamerBuffer, RenameRequestDistributor) renameDistributors <-
         replicateM(mkRenameRequestDistributor);
-    Vector#(SizeRenamerBuffer, Reg#(Bool)) distributorReadyFlags <- replicateM(mkReg(True));
-    Reg#(RenamerBufferIndex) resultIndex <- mkReg(?);
 
     // Delete request distributors.
     Vector#(SizeRenamerBuffer, DeleteRequestDistributor) deleteDistributors <-
@@ -350,7 +370,10 @@ module mkRenamer(Renamer);
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
 
     // Response aggregators.
-    Vector#(SizeRenamerBuffer, ResponseAggregator) aggregators <- replicateM(mkResponseAggregator);
+    Vector#(SizeRenamerBuffer, ResponseAggregator) aggregators;
+    for (Integer i = 0; i < maxTransactions; i = i + 1) begin
+        aggregators[i] <- mkResponseAggregator(renameDistributors[i].free);
+    end
 
     // Failed transaction handler: routes objects back to the shards for deletion.
     DeleteRequestDistributor failedTransactionHandler <- mkDeleteRequestDistributor();
@@ -401,16 +424,9 @@ module mkRenamer(Renamer);
     end
 
     ////////////////////////////////////////////////////////////////////////////////
-    /// Rules.
-    ////////////////////////////////////////////////////////////////////////////////
-    rule updateResultIndex if (findElem(True, arb3.grant) matches tagged Valid .distributorId);
-        resultIndex <= pack(distributorId);
-    endrule
-
-    ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
-    function Bool getCanPut(DeleteRequestDistributor drd) = drd.canPut();
+    function Bool getCanPut(RequestDistributor#(a) rd) = rd.canPut();
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -418,9 +434,8 @@ module mkRenamer(Renamer);
     // Add input transaction to first open slot (distributor).
     interface Put renameRequest;
         method Action put(RenamerRenameRequest req) if (
-                findElem(True, readVReg(distributorReadyFlags)) matches tagged Valid .index);
+                findElem(True, map(getCanPut, renameDistributors)) matches tagged Valid .index);
             renameDistributors[index].request.put(req.inputTr);
-            distributorReadyFlags[index] <= False;
         endmethod
     endinterface
 
@@ -439,7 +454,6 @@ module mkRenamer(Renamer);
     // Return computed result.
     interface Get response;
         method ActionValue#(RenamerResponse) get();
-            distributorReadyFlags[resultIndex] <= True;
             let result <- outputArbiter.master.request.get();
             return result;
         endmethod
