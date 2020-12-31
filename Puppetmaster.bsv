@@ -90,10 +90,10 @@ module mkPuppetmaster(Puppetmaster);
     Arbiter#(NumberPuppets, PuppetmasterResponse, void) msgArbiter <- mkArbiter(arb1, 1);
     // Arbiter to serialize transaction deletion requests.
     let arb2 <- mkRoundRobin;
-    Arbiter#(NumberPuppets, RenamerRequest, void) reqArbiter <- mkArbiter(arb2, 1);
+    Arbiter#(NumberPuppets, RenamerDeleteRequest, void) reqArbiter <- mkArbiter(arb2, 1);
 
     // Connect deletion request arbiter to renamer.
-    mkConnection(reqArbiter.master.request, renamer.request);
+    mkConnection(reqArbiter.master.request, renamer.deleteRequest);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -187,7 +187,9 @@ module mkPuppetmaster(Puppetmaster);
                         status: Started,
                         timestamp: cycle
                     });
-                    reqArbiter.users[i].request.put(tagged Delete sentToPuppet[i].renamedTr);
+                    reqArbiter.users[i].request.put(RenamerDeleteRequest {
+                        renamedTr: sentToPuppet[i].renamedTr
+                    });
                 end
                 {True, False} : begin
                     msgArbiter.users[i].request.put(PuppetmasterResponse {
@@ -206,7 +208,7 @@ module mkPuppetmaster(Puppetmaster);
     // Incoming transactions get forwarded to the renamer.
     interface Put request;
         method Action put(InputTransaction inputTr);
-            renamer.request.put(tagged Rename inputTr);
+            renamer.renameRequest.put(RenamerRenameRequest { inputTr: inputTr });
         endmethod
     endinterface
 
