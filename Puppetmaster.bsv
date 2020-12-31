@@ -71,7 +71,7 @@ module mkPuppetmaster(Puppetmaster);
     Vector#(TSub#(SizeSchedulingPool, 1), Reg#(RenamerResponse)) buffer <-
         replicateM(mkReg(?));
     // Points to the first empty slot in the buffer.
-    Reg#(SchedulingPoolIndex) bufferIndex <- mkReg(0);
+    Reg#(SchedulingPoolIndex) bufferIndex[2] <- mkCReg(2, 0);
     // Intermediate storage for scheduling result.
     Reg#(Bit#(TSub#(SizeSchedulingPool, 1))) pendingTrFlags <- mkReg(0);
     // Last transaction sent to each puppet.
@@ -135,14 +135,14 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     // Put renamed transactions into a buffer.
-    rule getRenamed if (bufferIndex < fromInteger(maxScheduledObjects - 1));
-        bufferIndex <= bufferIndex + 1;
+    rule getRenamed if (bufferIndex[1] < fromInteger(maxScheduledObjects - 1));
+        bufferIndex[1] <= bufferIndex[1] + 1;
         let result <- renamer.response.get();
-        buffer[bufferIndex] <= result;
+        buffer[bufferIndex[1]] <= result;
     endrule
 
     // When buffer is full, send scheduling request.
-    rule doSchedule if (bufferIndex == fromInteger(maxScheduledObjects - 1)
+    rule doSchedule if (bufferIndex[1] == fromInteger(maxScheduledObjects - 1)
             && pendingTrFlags == 0);
         let sentTransactions = map(getSchedTr, sentToPuppet);
         let runningTransactions = zipWith(maybeFromBool, sentTransactions, puppetFlags);
@@ -167,9 +167,9 @@ module mkPuppetmaster(Puppetmaster);
         SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
         pendingTrFlags <= pendingTrFlags & ~(1 << trIndex);
         // Move last transaction in buffer to replace transaction being started.
-        if (0 < bufferIndex) begin
-            buffer[trIndex] <= buffer[bufferIndex - 1];
-            bufferIndex <= bufferIndex - 1;
+        if (0 < bufferIndex[0]) begin
+            buffer[trIndex] <= buffer[bufferIndex[0] - 1];
+            bufferIndex[0] <= bufferIndex[0] - 1;
         end
         // Start transaction on idle puppet.
         let started = buffer[trIndex];
