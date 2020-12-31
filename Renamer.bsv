@@ -17,6 +17,21 @@ import Shard::*;
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
+typedef union tagged {
+    InputTransaction Rename;
+    RenamedTransaction Delete;
+} RenamerRequest deriving (Bits, Eq, FShow);
+
+typedef struct {
+    RenamedTransaction renamedTr;
+    SchedulerTransaction schedulerTr;
+} RenamerResponse deriving (Bits, Eq, FShow);
+
+typedef Server#(RenamerRequest, RenamerResponse) Renamer;
+
+////////////////////////////////////////////////////////////////////////////////
+/// Internal types.
+////////////////////////////////////////////////////////////////////////////////
 typedef 3 LogSizeRenamerBuffer;
 
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
@@ -24,17 +39,29 @@ typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
 typedef Bit#(LogNumberTransactionObjects) TransactionObjectIndex;
 typedef Bit#(LogSizeRenamerBuffer) RenamerBufferIndex;
 
-// Tells the arbiter that we don't need to route responses back.
-instance ArbRequestTC#(RenamedTransaction);
-    function Bool isReadRequest(a x) = False;
-    function Bool isWriteRequest(a x) = True;
-endinstance
-instance ArbRequestTC#(FailedTransaction);
-    function Bool isReadRequest(a x) = False;
-    function Bool isWriteRequest(a x) = True;
+typedef struct {
+    RenamedTransaction renamedTr;
+    TransactionObjectCounter readObjectCount;
+    TransactionObjectCounter writtenObjectCount;
+} FailedRename deriving(Bits, Eq, FShow);
+
+instance DefaultValue#(FailedRename);
+    defaultValue = FailedRename {renamedTr: ?, readObjectCount: 0, writtenObjectCount: 0};
 endinstance
 
-typedef Server#(InputTransaction, RenamedTransaction) Renamer;
+// Tells the arbiter that we don't need to route responses back.
+instance ArbRequestTC#(RenamerRequest);
+    function Bool isReadRequest(a x) = False;
+    function Bool isWriteRequest(a x) = True;
+endinstance
+instance ArbRequestTC#(RenamerResponse);
+    function Bool isReadRequest(a x) = False;
+    function Bool isWriteRequest(a x) = True;
+endinstance
+instance ArbRequestTC#(FailedRename);
+    function Bool isReadRequest(a x) = False;
+    function Bool isWriteRequest(a x) = True;
+endinstance
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Numeric constants.
@@ -48,13 +75,14 @@ Integer maxTransactions = valueOf(SizeRenamerBuffer);
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-interface RequestDistributor#(type transaction_type);
-    interface Put#(transaction_type) request;
+interface RequestDistributor#(type req_type);
+    interface Put#(req_type) request;
     interface Vector#(NumberShards, Get#(ShardRequest)) outputs;
+    method Bool canPut();
 endinterface
 
 typedef RequestDistributor#(InputTransaction) RenameRequestDistributor;
-typedef RequestDistributor#(FailedTransaction) DeleteRequestDistributor;
+typedef RequestDistributor#(FailedRename) DeleteRequestDistributor;
 
 typedef struct {
     ObjectType objType;
@@ -122,26 +150,27 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     interface outputs = map(makeOutputInterface, genVector());
 
     interface Put request = toPut(inputFifo);
+
+    method Bool canPut() = False;
 endmodule
 
 module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    let emptyTransaction = FailedTransaction { readObjectCount: 0, writtenObjectCount: 0 };
-    Reg#(FailedTransaction) currentTr <- mkReg(emptyTransaction);
+    Reg#(FailedRename) req <- mkReg(defaultValue);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
-    let done = currentTr.readObjectCount == 0 && currentTr.writtenObjectCount == 0;
-    let currentObj = currentTr.readObjectCount != 0 ?
+    let done = req.readObjectCount == 0 && req.writtenObjectCount == 0;
+    let currentObj = req.readObjectCount != 0 ?
         RenamedObject {
             objType: ReadObject,
-            objName: currentTr.readObjects[currentTr.readObjectCount - 1] } :
+            objName: req.renamedTr.readObjects[req.readObjectCount - 1] } :
         RenamedObject {
             objType: WrittenObject,
-            objName: currentTr.writtenObjects[currentTr.writtenObjectCount - 1] };
+            objName: req.renamedTr.writtenObjects[req.writtenObjectCount - 1] };
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -154,10 +183,8 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 method ActionValue#(ShardRequest) get() if (
                         !done &&& getShard(currentObj.objName) == fromInteger(i));
                     case (currentObj.objType) matches
-                        ReadObject :
-                            currentTr.readObjectCount <= currentTr.readObjectCount - 1;
-                        WrittenObject :
-                            currentTr.writtenObjectCount <= currentTr.writtenObjectCount - 1;
+                        ReadObject : req.readObjectCount <= req.readObjectCount - 1;
+                        WrittenObject : req.writtenObjectCount <= req.writtenObjectCount - 1;
                     endcase
                     return tagged Delete ShardDeleteRequest { name: currentObj.objName };
                 endmethod
@@ -168,10 +195,12 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     interface outputs = map(makeOutputInterface, genVector());
 
     interface Put request;
-        method Action put(FailedTransaction newTr) if (done);
-            currentTr <= newTr;
+        method Action put(FailedRename failedRename) if (done);
+            req <= failedRename;
         endmethod
     endinterface
+
+    method Bool canPut = done;
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -183,8 +212,8 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 interface ResponseAggregator;
     interface Put#(ShardRenameResponse) request;
-    interface Get#(RenamedTransaction) response;
-    interface Get#(FailedTransaction) failure;
+    interface Get#(RenamerResponse) response;
+    interface Get#(FailedRename) failure;
 endinterface
 
 module mkResponseAggregator(ResponseAggregator);
@@ -221,6 +250,12 @@ module mkResponseAggregator(ResponseAggregator);
         return readObjectCount == fromInteger(objSetSize) && writtenObjectCount == fromInteger(objSetSize);
     endfunction
 
+    let renamedTr = RenamedTransaction {
+        tid: tid,
+        readObjects: readObjects,
+        writtenObjects: writtenObjects
+    };
+
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
@@ -251,19 +286,20 @@ module mkResponseAggregator(ResponseAggregator);
     endinterface
 
     interface Get response;
-        method ActionValue#(RenamedTransaction) get() if (isDone() && success);
+        method ActionValue#(RenamerResponse) get() if (isDone() && success);
             resetState();
-            return RenamedTransaction{ tid: tid, readSet: readSet, writeSet: writeSet };
+            return RenamerResponse { 
+                renamedTr: renamedTr,
+                schedulerTr: SchedulerTransaction { readSet: readSet, writeSet: writeSet }
+            };
         endmethod
     endinterface
 
     interface Get failure;
-        method ActionValue#(FailedTransaction) get() if (isDone() && !success);
+        method ActionValue#(FailedRename) get() if (isDone() && !success);
             resetState();
-            return FailedTransaction {
-                tid: tid,
-                readObjects: readObjects,
-                writtenObjects: writtenObjects,
+            return FailedRename {
+                renamedTr : renamedTr,
                 readObjectCount: validReadObjectCount,
                 writtenObjectCount: validWrittenObjectCount
             };
@@ -283,9 +319,14 @@ module mkRenamer(Renamer);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     // Rename request distributors.
-    Vector#(SizeRenamerBuffer, RenameRequestDistributor) distributors <- replicateM(mkRenameRequestDistributor);
+    Vector#(SizeRenamerBuffer, RenameRequestDistributor) renameDistributors <-
+        replicateM(mkRenameRequestDistributor);
     Vector#(SizeRenamerBuffer, Reg#(Bool)) distributorReadyFlags <- replicateM(mkReg(True));
     Reg#(RenamerBufferIndex) resultIndex <- mkReg(?);
+
+    // Delete request distributors.
+    Vector#(SizeRenamerBuffer, DeleteRequestDistributor) deleteDistributors <-
+        replicateM(mkDeleteRequestDistributor);
 
     // Shards.
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
@@ -297,12 +338,13 @@ module mkRenamer(Renamer);
     DeleteRequestDistributor failedTransactionHandler <- mkDeleteRequestDistributor();
 
     // Connections from distributors to shards.
-    Vector#(NumberShards, Arbiter#(TAdd#(SizeRenamerBuffer, 1), ShardRequest, ShardRenameResponse)) shardArbiters;
+    Vector#(NumberShards, Arbiter#(TAdd#(TMul#(2, SizeRenamerBuffer), 1), ShardRequest, ShardRenameResponse)) shardArbiters;
     for (Integer i = 0; i < numShards; i = i + 1) begin
         let arb1 <- mkRoundRobin;
         shardArbiters[i] <- mkArbiter(arb1, 1);
         for (Integer j = 0; j < maxTransactions; j = j + 1) begin
-            mkConnection(distributors[j].outputs[i], shardArbiters[i].users[j].request);
+            mkConnection(renameDistributors[j].outputs[i], shardArbiters[i].users[j].request);
+            mkConnection(deleteDistributors[j].outputs[i], shardArbiters[i].users[maxTransactions + j].request);
         end
         mkConnection(shardArbiters[i].master, shards[i]);
     end
@@ -320,14 +362,14 @@ module mkRenamer(Renamer);
 
     // Connections from aggregators to output.
     let arb3 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, RenamedTransaction, void) outputArbiter <- mkArbiter(arb3, 1);
+    Arbiter#(SizeRenamerBuffer, RenamerResponse, void) outputArbiter <- mkArbiter(arb3, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].response, outputArbiter.users[i].request);
     end
 
     // Connections from aggregators to failed transaction handler.
     let arb4 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, FailedTransaction, void) failedTransactionArbiter <- mkArbiter(arb4, 1);
+    Arbiter#(SizeRenamerBuffer, FailedRename, void) failedTransactionArbiter <- mkArbiter(arb4, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].failure, failedTransactionArbiter.users[i].request);
     end
@@ -335,7 +377,9 @@ module mkRenamer(Renamer);
 
     // Connections from failed transaction handler back to the shards.
     for (Integer i = 0; i < numShards; i = i + 1) begin
-        mkConnection(failedTransactionHandler.outputs[i], shardArbiters[i].users[maxTransactions].request);
+        mkConnection(
+            failedTransactionHandler.outputs[i],
+            shardArbiters[i].users[2 * maxTransactions].request);
     end
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -346,19 +390,41 @@ module mkRenamer(Renamer);
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
+    /// Functions and function-like variables.
+    ////////////////////////////////////////////////////////////////////////////////
+    function Bool getCanPut(DeleteRequestDistributor drd) = drd.canPut();
+
+    ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     // Add input transaction to first open slot (distributor).
+    // TODO: this method currently only accepts a request if there are both free rename
+    //       request distributors and delete request distributors. If we want to proceed
+    //       with e.g. a rename request when all of the delete distributors are busy, it
+    //       needs to be split into two methods.
     interface Put request;
-        method Action put(InputTransaction it) if (findElem(True, readVReg(distributorReadyFlags)) matches tagged Valid .entryIndex);
-            distributors[entryIndex].request.put(it);
-            distributorReadyFlags[entryIndex] <= False;
+        method Action put(RenamerRequest req) if (
+                findElem(True, readVReg(distributorReadyFlags)) matches tagged Valid .iRename
+                &&& findElem(True, map(getCanPut, deleteDistributors)) matches tagged Valid .iDelete);
+            case (req) matches
+                tagged Rename .inputTr : begin
+                    renameDistributors[iRename].request.put(inputTr);
+                    distributorReadyFlags[iRename] <= False;
+                end
+                tagged Delete .renamedTr : begin
+                    deleteDistributors[iDelete].request.put(FailedRename {
+                        renamedTr: renamedTr,
+                        readObjectCount: fromInteger(objSetSize),
+                        writtenObjectCount: fromInteger(objSetSize)
+                    });
+                end
+            endcase
         endmethod
     endinterface
 
     // Return computed result.
     interface Get response;
-        method ActionValue#(RenamedTransaction) get();
+        method ActionValue#(RenamerResponse) get();
             distributorReadyFlags[resultIndex] <= True;
             let result <- outputArbiter.master.request.get();
             return result;
@@ -373,8 +439,12 @@ typedef 5 NumberRenamerTests;
 
 Integer numTests = valueOf(NumberRenamerTests);
 
-function InputTransaction makeInputTr(TransactionId i, ObjectAddress r[], ObjectAddress w[]);
-    return InputTransaction{tid: i, readObjects: arrayToVector(r), writtenObjects: arrayToVector(w)};
+function RenamerRequest makeRenameReq(TransactionId i, ObjectAddress r[], ObjectAddress w[]);
+    return tagged Rename InputTransaction {
+        tid: i,
+        readObjects: arrayToVector(r),
+        writtenObjects: arrayToVector(w)
+    };
 endfunction
 
 module mkRenamerTestbench();
@@ -394,7 +464,8 @@ module mkRenamerTestbench();
         {'h001, 'h003, 'h005, 'h007, 'h010, 'h030, 'h050, 'h070},
         {'h310, 'h002, 'h202, 'hF10, 'h720, 'h101, 'h610, 'hC20}
     };
-    Vector#(NumberRenamerTests, InputTransaction) testInputs = zipWith3(makeInputTr, genWith(fromInteger), arrayToVector(reads), arrayToVector(writes));
+    Vector#(NumberRenamerTests, RenamerRequest) testInputs = zipWith3(
+        makeRenameReq, genWith(fromInteger), arrayToVector(reads), arrayToVector(writes));
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 

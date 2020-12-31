@@ -24,24 +24,16 @@ typedef Vector#(NumberTransactionObjects, ObjectName) RenamedObjects;
 typedef enum { ReadObject, WrittenObject } ObjectType deriving (Bits, Eq, FShow);
 
 typedef struct {
-   TransactionId tid;
-   InputObjects readObjects;
-   InputObjects writtenObjects;
+    TransactionId tid;
+    InputObjects readObjects;
+    InputObjects writtenObjects;
 } InputTransaction deriving(Bits, Eq, FShow);
 
 typedef struct {
     TransactionId tid;
-    ObjectSet readSet;
-    ObjectSet writeSet;
+    RenamedObjects readObjects;
+    RenamedObjects writtenObjects;
 } RenamedTransaction deriving(Bits, Eq, FShow);
-
-typedef struct {
-   TransactionId tid;
-   RenamedObjects readObjects;
-   RenamedObjects writtenObjects;
-   TransactionObjectCounter readObjectCount;
-   TransactionObjectCounter writtenObjectCount;
-} FailedTransaction deriving(Bits, Eq, FShow);
 
 typedef struct {
     ObjectSet readSet;

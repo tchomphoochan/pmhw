@@ -6,6 +6,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 import Arbitrate::*;
 import ClientServer::*;
+import Connectable::*;
 import GetPut::*;
 import Vector::*;
 
@@ -67,76 +68,63 @@ module mkPuppetmaster(Puppetmaster);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     // Stores renamed transactions while they are waiting to be sent to the scheduler.
-    Vector#(TSub#(SizeSchedulingPool, 1), Reg#(RenamedTransaction)) buffer <-
+    Vector#(TSub#(SizeSchedulingPool, 1), Reg#(RenamerResponse)) buffer <-
         replicateM(mkReg(?));
     // Points to the first empty slot in the buffer.
     Reg#(SchedulingPoolIndex) bufferIndex <- mkReg(0);
     // Intermediate storage for scheduling result.
     Reg#(Bit#(TSub#(SizeSchedulingPool, 1))) pendingTrFlags <- mkReg(0);
     // Last transaction sent to each puppet.
-    Reg#(Vector#(NumberPuppets, RenamedTransaction)) startedTrs <- mkReg(?);
-    // Arbiter to serialize status messages.
-    let arb <- mkRoundRobin;
-    Arbiter#(NumberPuppets, PuppetmasterResponse, void) msgArbiter <- mkArbiter(arb, 1);
+    Reg#(Vector#(NumberPuppets, RenamerResponse)) sentToPuppet <- mkReg(?);
     // Clock.
     Reg#(Bit#(64)) cycle <- mkReg(0);
     // Store previous puppet state to detect when transactions finish running.
-    Reg#(Vector#(NumberPuppets, Bool)) prevPuppetDoneFlags <- mkReg(replicate(True));
+    Reg#(Vector#(NumberPuppets, Bool)) prevPuppetFlags <- mkReg(replicate(False));
 
     // Submodules.
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
     Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkTimedPuppet(transactionTime));
+    // Arbiter to serialize status messages.
+    let arb1 <- mkRoundRobin;
+    Arbiter#(NumberPuppets, PuppetmasterResponse, void) msgArbiter <- mkArbiter(arb1, 1);
+    // Arbiter to serialize transaction deletion requests.
+    let arb2 <- mkRoundRobin;
+    Arbiter#(NumberPuppets, RenamerRequest, void) reqArbiter <- mkArbiter(arb2, 1);
+
+    // Connect deletion request arbiter to renamer.
+    mkConnection(reqArbiter.master.request, renamer.request);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
-    function SchedulerTransaction convertTransaction(RenamedTransaction tr);
-        return SchedulerTransaction {
-            readSet : tr.readSet,
-            writeSet : tr.writeSet
-        };
-    endfunction
+    function Maybe#(a) maybeFromBool(a value, Bool flag) =
+        flag ? tagged Valid value : tagged Invalid;
 
-    function Maybe#(TransactionId) maybeGetTid(Maybe#(RenamedTransaction) maybeTr);
-        case (maybeTr) matches
-            tagged Valid .tr : return tagged Valid tr.tid;
-            tagged Invalid : return tagged Invalid;
-        endcase
-    endfunction
+    function Maybe#(a) maybeFromBit(a value, bit flag) =
+        flag == 1'b1 ? tagged Valid value : tagged Invalid;
 
-    function Maybe#(TransactionId) extractTid(TransactionId tid, bit flag);
-        case (flag) matches
-            1'b0 : return tagged Invalid;
-            1'b1 : return tagged Valid tid;
-        endcase
-    endfunction
+    function SchedulerTransaction getSchedTr(RenamerResponse resp) = resp.schedulerTr;
+
+    function TransactionId getTid(RenamerResponse resp) = resp.renamedTr.tid;
+
+    function Bool getPuppetFlag(Puppet puppet) = !puppet.isDone();
+
+    let puppetFlags = map(getPuppetFlag, puppets);
 
     function SchedulerTransaction maybeTrUnion(
-            Vector#(vsize, Maybe#(RenamedTransaction)) vec);
+            Vector#(vsize, Maybe#(SchedulerTransaction)) maybeTrs);
         SchedulerTransaction result;
         result.readSet = 0;
         result.writeSet =  0;
         for (Integer i = 0; i < valueOf(vsize); i = i + 1) begin
-            if (vec[i] matches tagged Valid .tr) begin
+            if (maybeTrs[i] matches tagged Valid .tr) begin
                 result.readSet = result.readSet | tr.readSet;
                 result.writeSet = result.writeSet | tr.writeSet;
             end
         end
         return result;
     endfunction
-
-    function Maybe#(RenamedTransaction) extractTr(RenamedTransaction tr, Bool isDone);
-        case (isDone) matches
-            True : return tagged Invalid;
-            False : return tagged Valid tr;
-        endcase
-    endfunction
-
-    function Bool getDone(Puppet puppet) = puppet.isDone();
-
-    let puppetDoneFlags = map(getDone, puppets);
-    let runningTransactions = zipWith(extractTr, startedTrs, puppetDoneFlags);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
@@ -156,9 +144,11 @@ module mkPuppetmaster(Puppetmaster);
     // When buffer is full, send scheduling request.
     rule doSchedule if (bufferIndex == fromInteger(maxScheduledObjects - 1)
             && pendingTrFlags == 0);
+        let sentTransactions = map(getSchedTr, sentToPuppet);
+        let runningTransactions = zipWith(maybeFromBool, sentTransactions, puppetFlags);
         let runningTrSet = maybeTrUnion(runningTransactions);
         let transactions = readVReg(buffer);
-        let converted = map(convertTransaction, transactions);
+        let converted = map(getSchedTr, transactions);
         let toSchedule = cons(runningTrSet, converted);
         scheduler.request.put(toSchedule);
     endrule
@@ -171,8 +161,7 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     // Send first (lowest-index) pending transaction to first idle puppet.
-    rule sendTransaction if (
-            findElem(True, map(getDone, puppets)) matches tagged Valid .puppetIndex
+    rule sendTransaction if (findElem(False, puppetFlags) matches tagged Valid .puppetIndex
             &&& pendingTrFlags != 0);
         // Find first scheduled transaction and remove from pending set.
         SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
@@ -183,25 +172,30 @@ module mkPuppetmaster(Puppetmaster);
             bufferIndex <= bufferIndex - 1;
         end
         // Start transaction on idle puppet.
-        let startedTransaction = buffer[trIndex];
-        startedTrs[puppetIndex] <= startedTransaction;
-        puppets[puppetIndex].start(startedTransaction.tid);
+        let started = buffer[trIndex];
+        sentToPuppet[puppetIndex] <= started;
+        puppets[puppetIndex].start(started.renamedTr.tid);
     endrule
 
     rule sendMessages;
-        prevPuppetDoneFlags <= puppetDoneFlags;
+        prevPuppetFlags <= puppetFlags;
         for (Integer i = 0; i < valueOf(NumberPuppets); i = i + 1) begin
-            case (tuple2(prevPuppetDoneFlags[i], puppetDoneFlags[i])) matches
-                {True, False} : msgArbiter.users[i].request.put(PuppetmasterResponse {
-                    id: startedTrs[i].tid,
-                    status: Started,
-                    timestamp: cycle
-                });
-                {False, True} : msgArbiter.users[i].request.put(PuppetmasterResponse {
-                    id: startedTrs[i].tid,
-                    status: Finished,
-                    timestamp: cycle
-                });
+            case (tuple2(prevPuppetFlags[i], puppetFlags[i])) matches
+                {False, True} : begin
+                    msgArbiter.users[i].request.put(PuppetmasterResponse {
+                        id: getTid(sentToPuppet[i]),
+                        status: Started,
+                        timestamp: cycle
+                    });
+                    reqArbiter.users[i].request.put(tagged Delete sentToPuppet[i].renamedTr);
+                end
+                {True, False} : begin
+                    msgArbiter.users[i].request.put(PuppetmasterResponse {
+                        id: getTid(sentToPuppet[i]),
+                        status: Finished,
+                        timestamp: cycle
+                    });
+                end
             endcase
         end
     endrule
@@ -210,11 +204,15 @@ module mkPuppetmaster(Puppetmaster);
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     // Incoming transactions get forwarded to the renamer.
-    interface Put request = renamer.request;
+    interface Put request;
+        method Action put(InputTransaction inputTr);
+            renamer.request.put(tagged Rename inputTr);
+        endmethod
+    endinterface
 
     interface Get response = msgArbiter.master.request;
     
-    method pollPuppets = map(maybeGetTid, runningTransactions);
+    method pollPuppets = zipWith(maybeFromBool, map(getTid, sentToPuppet), puppetFlags);
 
 endmodule
 
