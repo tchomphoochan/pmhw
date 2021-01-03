@@ -60,17 +60,33 @@ extern "C" void connectal_setup() {
 int main() {
     connectal_setup();
 
-    std::vector<unsigned> ids(64);
-    std::iota(ids.begin(), ids.end(), 0);
+    unsigned numTests = 4;
+    unsigned maxScheduledObjects = 8;
+    unsigned objSetSize = 8;
 
-    for (auto id : ids) {
-        fpga->enqueueTransaction(
-            id, (Object){1, 0, 123}, (Object){1, 0, 45}, (Object){1, 0, 12},
-            (Object){1, 0, 8}, (Object){1, 0, 9}, (Object){1, 0, 345},
-            (Object){1, 0, 643}, (Object){1, 0, 6445}, (Object){1, 1, 3},
-            (Object){1, 1, 34}, (Object){1, 1, 974}, (Object){1, 1, 76},
-            (Object){1, 1, 653}, (Object){1, 1, 445}, (Object){1, 1, 43},
-            (Object){1, 1, 4});
+    for (unsigned i = 0; i < numTests * maxScheduledObjects; i++) {
+        std::vector<Object> objs(2 * objSetSize);
+        for (unsigned j = 0; j < objSetSize; j++) {
+            objs[2 * j] = (Object){
+                .valid = 1,
+                .write = 0,
+                .object = objSetSize * i * 2 + j * 2,
+            };
+            objs[2 * j + 1] = (Object){
+                .valid = 1,
+                .write = 1,
+                .object = i % 4 == 0 ? objSetSize * i * 2 + j * 2 + 1
+                          : i % 4 == 1
+                              ? objSetSize * (i - i % 2) * 2 + j * 2 + 1
+                          : i % 4 == 2 ? objSetSize * (i % 2) * 2 + j * 2 + 1
+                                       : objSetSize * 2 + j * 2 + 1,
+            };
+        }
+
+        fpga->enqueueTransaction(i, objs[0], objs[1], objs[2], objs[3],
+                                 objs[4], objs[5], objs[6], objs[7], objs[8],
+                                 objs[9], objs[10], objs[11], objs[12],
+                                 objs[13], objs[14], objs[15]);
     }
     while(1);
     return 0;
