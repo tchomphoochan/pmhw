@@ -1,64 +1,41 @@
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <map>
-#include <numeric>
 #include <vector>
 
 #include "HostToPuppetmaster.h"
 #include "PuppetmasterToHostIndication.h"
 
-extern "C" {
-void connectal_setup();
-void enqueue_requests(unsigned int points);
-void startTime(unsigned int points);
-void endTime(unsigned int points);
-}
-
 // Handler for messages received from the FPGA
 class PuppetmasterToHostIndication
     : public PuppetmasterToHostIndicationWrapper {
-private:
-    std::map<std::int64_t, std::uint64_t> startTime;
-    std::map<std::uint64_t, std::uint64_t> endTime;
-
 public:
     void transactionStarted(std::uint64_t tid, std::uint64_t timestamp) {
-        printf("Started %lx at %lu\n", tid, timestamp);
+        printf("Started %02lx at %lu\n", tid, timestamp);
         fflush(stdout);
-        startTime[tid] = timestamp;
     }
 
     void transactionFinished(std::uint64_t tid, std::uint64_t timestamp) {
-        printf("Finished %lx at %lu\n", tid, timestamp);
+        printf("Finished %02lx at %lu\n", tid, timestamp);
         fflush(stdout);
-        endTime[tid] = timestamp;
     }
 
     PuppetmasterToHostIndication(unsigned int id)
-        : PuppetmasterToHostIndicationWrapper(id), startTime(), endTime() {}
+        : PuppetmasterToHostIndicationWrapper(id) {}
 };
 
-// Global handle for both communication directions
-HostToPuppetmasterProxy *fpga;
-PuppetmasterToHostIndication *puppetmasterToHost;
-
-extern "C" void connectal_setup() {
+int main(int argc, char **argv) {
     printf("Connectal setting up ...\n");
     fflush(stdout);
 
-    fpga = new HostToPuppetmasterProxy(IfcNames_HostToPuppetmasterS2H);
-    printf("Initialize the request interface to the FPGA\n");
+    HostToPuppetmasterProxy *fpga =
+        new HostToPuppetmasterProxy(IfcNames_HostToPuppetmasterS2H);
+    printf("Initialized the request interface to the FPGA\n");
     fflush(stdout);
 
-    puppetmasterToHost = new PuppetmasterToHostIndication(
+    PuppetmasterToHostIndication puppetmasterToHost(
         IfcNames_PuppetmasterToHostIndicationH2S);
-    printf("Initialize the indication interface\n");
+    printf("Initialized the indication interface\n");
     fflush(stdout);
-}
-
-int main() {
-    connectal_setup();
 
     unsigned numTests = 4;
     unsigned maxScheduledObjects = 8;
@@ -88,6 +65,8 @@ int main() {
                                  objs[9], objs[10], objs[11], objs[12],
                                  objs[13], objs[14], objs[15]);
     }
-    while(1);
+    while (true) {
+        // Wait for simulation.
+    }
     return 0;
 }
