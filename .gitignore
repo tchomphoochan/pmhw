@@ -1,3 +1,4 @@
 /build*/
 /verilator/
 __pycache__/
+.cache/
