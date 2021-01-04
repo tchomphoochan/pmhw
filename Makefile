@@ -8,6 +8,7 @@ CPPFILES += main.cpp
 
 CONNECTALFLAGS += --cxxflags="-std=c++17"
 CONNECTALFLAGS += --nonstrict
-CONNECTALFLAGS += --bscflags="+RTS -Ksize -RTS"
+CONNECTALFLAGS += --bscflags="+RTS -K512m -RTS"
+
 
 include $(CONNECTALDIR)/Makefile.connectal
