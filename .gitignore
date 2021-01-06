@@ -8,3 +8,6 @@ __pycache__/
 
 # JSON compilation database (contains absolute paths).
 compile_commands.json
+
+# Generated test inputs.
+*.csv
