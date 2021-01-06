@@ -1,8 +1,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -22,13 +22,11 @@ bool set_contains(std::unordered_set<type> &set, type &key) {
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 public:
     void transactionStarted(std::uint64_t tid, std::uint64_t timestamp) {
-        printf("Started %02lx at %lu\n", tid, timestamp);
-        fflush(stdout);
+        std::cout << "Started transaction " << tid << " at " << timestamp << std::endl;
     }
 
     void transactionFinished(std::uint64_t tid, std::uint64_t timestamp) {
-        printf("Finished %02lx at %lu\n", tid, timestamp);
-        fflush(stdout);
+        std::cout << "Finished transaction " << tid << " at " << timestamp << std::endl;
     }
 
     PuppetmasterToHostIndication(unsigned int id)
@@ -36,26 +34,22 @@ public:
 };
 
 int main(int argc, char **argv) {
-    printf("Connectal setting up ...\n");
-    fflush(stdout);
+    std::cout << "Connectal setting up..." << std::endl;
 
     HostToPuppetmasterProxy *fpga =
         new HostToPuppetmasterProxy(IfcNames_HostToPuppetmasterS2H);
-    printf("Initialized the request interface to the FPGA\n");
-    fflush(stdout);
+    std::cout << "Initialized the request interface to the FPGA" << std::endl;
 
     PuppetmasterToHostIndication puppetmasterToHost(
         IfcNames_PuppetmasterToHostIndicationH2S);
-    printf("Initialized the indication interface\n");
-    fflush(stdout);
+    std::cout << "Initialized the indication interface" << std::endl;
 
     constexpr std::size_t numObjects = 16;
     std::vector<std::array<Object, numObjects>> tests;
 
     if (argc <= 1) {
         // No test files given, construct default test.
-        printf("Loading default tests...");
-        fflush(stdout);
+        std::cout << "Loading default tests..." << std::endl;
 
         unsigned numTests = 4;
         unsigned maxScheduledObjects = 8;
@@ -83,23 +77,20 @@ int main(int argc, char **argv) {
     } else {
         // Load each input file given into tests.
         for (int i = 1; i < argc; i++) {
-            printf("Loading tests from: %s\n", argv[i]);
-            fflush(stdout);
+            std::cout << "Loading tests from: " << argv[i] << std::endl;
 
             // Open input file.
             std::ifstream source;
             source.open(argv[i]);
             if (!source.is_open()) {
-                printf("File doesn't exist.\n");
-                fflush(stdout);
+                std::cerr << "File doesn't exist." << std::endl;
                 return 1;
             }
 
             // Parse header for location of read and write object fields.
             std::string header;
             if (!std::getline(source, header)) {
-                printf("No header found in file.\n");
-                fflush(stdout);
+                std::cerr << "No header found in file." << std::endl;
                 return 2;
             }
             std::unordered_set<std::size_t> readIndices;
@@ -130,12 +121,11 @@ int main(int argc, char **argv) {
                         try {
                             address = std::stoul(value);
                         } catch (const std::invalid_argument &) {
-                            printf("Not an address: \"%s\"\n", value.c_str());
-                            fflush(stdout);
+                            std::cerr << "Not an address: \"" << value << "\""
+                                      << std::endl;
                             return 3;
                         } catch (const std::out_of_range &) {
-                            printf("Out of range: %s\n", value.c_str());
-                            fflush(stdout);
+                            std::cerr << "Out of range: " << value << std::endl;
                             return 4;
                         }
                         objs[i] = (Object){.valid = 1,
@@ -150,6 +140,7 @@ int main(int argc, char **argv) {
     }
 
     // Run tests.
+    std::cout << "Enqueuing transactions..." << std::endl;
     for (std::size_t i = 0; i < tests.size(); i++) {
         auto &objs = tests[i];
         fpga->enqueueTransaction(i, objs[0], objs[1], objs[2], objs[3], objs[4],
@@ -157,6 +148,7 @@ int main(int argc, char **argv) {
                                  objs[11], objs[12], objs[13], objs[14], objs[15]);
     }
 
+    std::cout << "Waiting for results..." << std::endl;
     while (true) {
         // Wait for simulation.
     }
