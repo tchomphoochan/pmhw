@@ -19,8 +19,7 @@ bool set_contains(std::unordered_set<type> &set, type &key) {
 }
 
 // Handler for messages received from the FPGA
-class PuppetmasterToHostIndication
-    : public PuppetmasterToHostIndicationWrapper {
+class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 public:
     void transactionStarted(std::uint64_t tid, std::uint64_t timestamp) {
         printf("Started %02lx at %lu\n", tid, timestamp);
@@ -73,11 +72,10 @@ int main(int argc, char **argv) {
                 objs[2 * j + 1] = (Object){
                     .valid = 1,
                     .write = 1,
-                    .object =
-                        i % 4 == 0   ? objSetSize * i * 2 + j * 2 + 1
-                        : i % 4 == 1 ? objSetSize * (i - i % 2) * 2 + j * 2 + 1
-                        : i % 4 == 2 ? objSetSize * (i % 2) * 2 + j * 2 + 1
-                                     : objSetSize * 2 + j * 2 + 1,
+                    .object = i % 4 == 0   ? objSetSize * i * 2 + j * 2 + 1
+                              : i % 4 == 1 ? objSetSize * (i - i % 2) * 2 + j * 2 + 1
+                              : i % 4 == 2 ? objSetSize * (i % 2) * 2 + j * 2 + 1
+                                           : objSetSize * 2 + j * 2 + 1,
                 };
             }
             tests.push_back(objs);
@@ -108,8 +106,7 @@ int main(int argc, char **argv) {
             std::unordered_set<std::size_t> writeIndices;
             std::stringstream headerBuffer(header);
             std::string label;
-            for (std::size_t i = 0; std::getline(headerBuffer, label, ',');
-                 i++) {
+            for (std::size_t i = 0; std::getline(headerBuffer, label, ','); i++) {
                 if (label.find("Read object") == 0) {
                     readIndices.insert(i);
                 } else if (label.find("Written object") == 0) {
@@ -126,11 +123,9 @@ int main(int argc, char **argv) {
                 std::stringstream lineBuffer(line);
                 std::string value;
                 for (std::size_t i = 0;
-                     i < numObjects && std::getline(lineBuffer, value, ',');
-                     i++) {
-                    if (value.length() != 0 &&
-                        (set_contains(readIndices, i) ||
-                         set_contains(writeIndices, i))) {
+                     i < numObjects && std::getline(lineBuffer, value, ','); i++) {
+                    if (value.length() != 0 && (set_contains(readIndices, i) ||
+                                                set_contains(writeIndices, i))) {
                         ObjectAddress address;
                         try {
                             address = std::stoul(value);
@@ -143,10 +138,9 @@ int main(int argc, char **argv) {
                             fflush(stdout);
                             return 4;
                         }
-                        objs[i] =
-                            (Object){.valid = 1,
-                                     .write = set_contains(writeIndices, i),
-                                     .object = address};
+                        objs[i] = (Object){.valid = 1,
+                                           .write = set_contains(writeIndices, i),
+                                           .object = address};
                     }
                 }
                 tests.push_back(objs);
@@ -158,10 +152,9 @@ int main(int argc, char **argv) {
     // Run tests.
     for (std::size_t i = 0; i < tests.size(); i++) {
         auto &objs = tests[i];
-        fpga->enqueueTransaction(i, objs[0], objs[1], objs[2], objs[3],
-                                 objs[4], objs[5], objs[6], objs[7], objs[8],
-                                 objs[9], objs[10], objs[11], objs[12],
-                                 objs[13], objs[14], objs[15]);
+        fpga->enqueueTransaction(i, objs[0], objs[1], objs[2], objs[3], objs[4],
+                                 objs[5], objs[6], objs[7], objs[8], objs[9], objs[10],
+                                 objs[11], objs[12], objs[13], objs[14], objs[15]);
     }
 
     while (true) {
