@@ -43,22 +43,15 @@ typedef 3 LogSizeRenamerBuffer;
 
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
 
-typedef Bit#(LogNumberTransactionObjects) TransactionObjectIndex;
 typedef Bit#(LogSizeRenamerBuffer) RenamerBufferIndex;
 
 typedef struct {
     RenamedTransaction renamedTr;
-    TransactionObjectCounter readObjectCount;
-    TransactionObjectCounter writtenObjectCount;
 } FailedRename deriving(Bits, Eq, FShow);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Typeclasses.
 ////////////////////////////////////////////////////////////////////////////////
-instance DefaultValue#(FailedRename);
-    defaultValue = FailedRename {renamedTr: ?, readObjectCount: 0, writtenObjectCount: 0};
-endinstance
-
 // Tells the arbiter whether we need to route responses back.
 instance ArbRequestTC#(RenamerRenameRequest);
     function Bool isReadRequest(a x) = True;
@@ -116,8 +109,8 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     FIFO#(InputTransaction) inputFifo <- mkBypassFIFO();
-    Reg#(ObjectType) objType <- mkReg(ReadObject);
-    Reg#(TransactionObjectIndex) objIndex <- mkReg(0);
+    Reg#(ObjectType) objType <- mkReg(?);
+    Reg#(TransactionObjectCounter) objIndex <- mkReg(0);
     Reg#(Bool) isReady <- mkReg(True); 
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +134,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                 method ActionValue#(ShardRequest) get() if (shardIndex == fromInteger(i));
                     InputTransaction inputTr = inputFifo.first();
                     if (objType == ReadObject) begin
-                        if (objIndex < fromInteger(objSetSize - 1)) begin
+                        if (objIndex < inputTr.readObjectCount - 1) begin
                             // Go to next read object.
                             objIndex <= objIndex + 1;
                         end else begin
@@ -150,7 +143,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                             objType <= WrittenObject;
                         end
                     end else begin
-                        if (objIndex < fromInteger(objSetSize - 1)) begin
+                        if (objIndex < inputTr.writtenObjectCount - 1) begin
                             // Go to next written object.
                             objIndex <= objIndex + 1;
                         end else begin
@@ -162,8 +155,11 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                     end
                     return tagged Rename ShardRenameRequest {
                         tid: inputTr.tid,
-                        address: objType == ReadObject ? inputTr.readObjects[objIndex] : inputTr.writtenObjects[objIndex],
-                        type_: objType
+                        address: objType == ReadObject ? inputTr.readObjects[objIndex] :
+                                                         inputTr.writtenObjects[objIndex],
+                        type_: objType,
+                        objOfTypeCount: objType == ReadObject ? inputTr.readObjectCount :
+                                                                inputTr.writtenObjectCount
                     };
                 endmethod
             endinterface
@@ -174,8 +170,9 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
 
     interface Put request;
         method Action put(InputTransaction inputTr);
-            isReady <= False;
             inputFifo.enq(inputTr);
+            objType <= inputTr.readObjectCount > 0 ? ReadObject : WrittenObject;
+            isReady <= False;
         endmethod
     endinterface
 
@@ -192,7 +189,14 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(FailedRename) req[2] <- mkCReg(2, defaultValue);
+    let emptyRenamedTransaction = RenamedTransaction {
+        tid: ?,
+        readObjects: ?,
+        writtenObjects: ?,
+        readObjectCount: 0,
+        writtenObjectCount: 0
+    };
+    Reg#(RenamedTransaction) req[2] <- mkCReg(2, emptyRenamedTransaction);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
@@ -202,10 +206,10 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     let currentObj = req[0].readObjectCount != 0 ?
         RenamedObject {
             objType: ReadObject,
-            objName: req[0].renamedTr.readObjects[req[0].readObjectCount - 1] } :
+            objName: req[0].readObjects[req[0].readObjectCount - 1] } :
         RenamedObject {
             objType: WrittenObject,
-            objName: req[0].renamedTr.writtenObjects[req[0].writtenObjectCount - 1] };
+            objName: req[0].writtenObjects[req[0].writtenObjectCount - 1] };
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -231,7 +235,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
 
     interface Put request;
         method Action put(FailedRename failedRename) if (done1);
-            req[1] <= failedRename;
+            req[1] <= failedRename.renamedTr;
         endmethod
     endinterface
 
@@ -262,6 +266,9 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     Reg#(TransactionId) tid <- mkReg(?);
     Reg#(RenamedObjects) readObjects <- mkReg(?);
     Reg#(RenamedObjects) writtenObjects <- mkReg(?);
+    let maxObjectCount = fromInteger(objSetSize);
+    Reg#(TransactionObjectCounter) totalReadObjectCount <- mkReg(maxObjectCount);
+    Reg#(TransactionObjectCounter) totalWrittenObjectCount <- mkReg(maxObjectCount);
     Reg#(ObjectSet) readSet <- mkReg(0);
     Reg#(ObjectSet) writeSet <- mkReg(0);
     Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
@@ -279,6 +286,8 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
         action
             readSet <= 0;
             writeSet <= 0;
+            totalReadObjectCount <= maxObjectCount;
+            totalWrittenObjectCount <= maxObjectCount;
             readObjectCount <= 0;
             writtenObjectCount <= 0;
             validReadObjectCount <= 0;
@@ -286,13 +295,16 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
         endaction;
 
     function Bool isDone();
-        return readObjectCount == fromInteger(objSetSize) && writtenObjectCount == fromInteger(objSetSize);
+        return readObjectCount == totalReadObjectCount &&
+               writtenObjectCount == totalWrittenObjectCount;
     endfunction
 
     let renamedTr = RenamedTransaction {
         tid: tid,
         readObjects: readObjects,
-        writtenObjects: writtenObjects
+        writtenObjects: writtenObjects,
+        readObjectCount: validReadObjectCount,
+        writtenObjectCount: validWrittenObjectCount
     };
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -303,8 +315,14 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
             tid <= response.request.tid;
             // Increment request count.
             case (response.request.type_) matches
-                ReadObject: readObjectCount <= readObjectCount + 1;
-                WrittenObject: writtenObjectCount <= writtenObjectCount + 1;
+                ReadObject: begin
+                    totalReadObjectCount <= response.request.objOfTypeCount;
+                    readObjectCount <= readObjectCount + 1;
+                end
+                WrittenObject: begin
+                    totalWrittenObjectCount <= response.request.objOfTypeCount;
+                    writtenObjectCount <= writtenObjectCount + 1;
+                end
             endcase
             // If successful, insert object into appropriate set.
             if (response.name matches tagged Valid .name) begin
@@ -338,11 +356,7 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     interface Get failure;
         method ActionValue#(FailedRename) get() if (isDone() && !success);
             resetState();
-            return FailedRename {
-                renamedTr : renamedTr,
-                readObjectCount: validReadObjectCount,
-                writtenObjectCount: validWrittenObjectCount
-            };
+            return FailedRename { renamedTr : renamedTr };
         endmethod
     endinterface
 endmodule
@@ -444,9 +458,7 @@ module mkRenamer(Renamer);
         method Action put(RenamerDeleteRequest req) if (
                 findElem(True, map(getCanPut, deleteDistributors)) matches tagged Valid .index);
             deleteDistributors[index].request.put(FailedRename {
-                renamedTr: req.renamedTr,
-                readObjectCount: fromInteger(objSetSize),
-                writtenObjectCount: fromInteger(objSetSize)
+                renamedTr: req.renamedTr
             });
         endmethod
     endinterface
@@ -471,7 +483,9 @@ function RenamerRenameRequest makeRenameReq(TransactionId i, ObjectAddress r[], 
     return RenamerRenameRequest { inputTr: InputTransaction {
         tid: i,
         readObjects: arrayToVector(r),
-        writtenObjects: arrayToVector(w)
+        writtenObjects: arrayToVector(w),
+        readObjectCount: fromInteger(objSetSize),
+        writtenObjectCount: fromInteger(objSetSize)
     }};
 endfunction
 

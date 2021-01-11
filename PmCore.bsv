@@ -27,12 +27,16 @@ typedef struct {
     TransactionId tid;
     InputObjects readObjects;
     InputObjects writtenObjects;
+    TransactionObjectCounter readObjectCount;
+    TransactionObjectCounter writtenObjectCount;
 } InputTransaction deriving(Bits, Eq, FShow);
 
 typedef struct {
     TransactionId tid;
     RenamedObjects readObjects;
     RenamedObjects writtenObjects;
+    TransactionObjectCounter readObjectCount;
+    TransactionObjectCounter writtenObjectCount;
 } RenamedTransaction deriving(Bits, Eq, FShow);
 
 typedef struct {
