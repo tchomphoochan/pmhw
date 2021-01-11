@@ -249,6 +249,8 @@ module mkPuppetmasterTestbench();
         testInputs = newVector;
     for (Integer i = 0; i < numTests * maxScheduledObjects; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
+        testInputs[i].readObjectCount = fromInteger(objSetSize);
+        testInputs[i].writtenObjectCount = fromInteger(objSetSize);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
             testInputs[i].readObjects[j] = fromInteger(objSetSize * i * 2 + j * 2);
             testInputs[i].writtenObjects[j] = fromInteger(case (i % 4) matches

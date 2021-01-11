@@ -52,10 +52,10 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
             Integer writeIndex = 0;
             for (Integer i = 0; i < 16; i = i + 1) begin
                 let obj = allObjects[i];
-                if (obj.write == 1) begin
+                if (obj.valid == 1 && obj.write == 1 && writeIndex < 8) begin
                     writtenObjects[writeIndex] = obj.object;
                     writeIndex = writeIndex + 1;
-                end else begin
+                end else if (obj.valid == 1 && obj.write == 0 && readIndex < 8) begin
                     readObjects[readIndex] = obj.object;
                     readIndex = readIndex + 1;
                 end
@@ -63,7 +63,9 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
             pm.request.put(InputTransaction {
                 tid: tid,
                 readObjects: readObjects,
-                writtenObjects: writtenObjects
+                writtenObjects: writtenObjects,
+                readObjectCount: fromInteger(readIndex),
+                writtenObjectCount: fromInteger(writeIndex)
             });
 	    endmethod
 	endinterface
