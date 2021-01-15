@@ -174,7 +174,7 @@ module mkPuppetmaster(Puppetmaster);
         // Start transaction on idle puppet.
         let started = buffer[trIndex];
         sentToPuppet[puppetIndex] <= started;
-        puppets[puppetIndex].start(started.renamedTr.tid);
+        puppets[puppetIndex].start(started.renamedTr);
     endrule
 
     rule sendMessages;
