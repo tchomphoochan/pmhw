@@ -170,4 +170,5 @@ pm_top = custom_target('pm_top',
         '-simdir', builddir,
         '-sim',
         '-e', '@OUTPUT@',
-        '-o', '@OUTPUT@'])
+        '-o', '@OUTPUT@'],
+    build_by_default: true)
