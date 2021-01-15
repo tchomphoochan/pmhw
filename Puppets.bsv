@@ -1,9 +1,3 @@
-import ClientServer::*;
-import FIFOF::*;
-import GetPut::*;
-import SpecialFIFOs::*;
-import Vector::*;
-
 import PmCore::*;
 import PmIfc::*;
 
