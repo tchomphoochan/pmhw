@@ -5,7 +5,7 @@ typedef 5 LogTransactionDelayBase;
 
 typedef TExp#(LogTransactionDelayBase) TransactionDelayBase;
 
-typedef Bit#(TAdd#(TAdd#(LogTransactionObjectCount, 1), LogTransactionDelayBase)) TransactionTimer;
+typedef Bit#(TAdd#(LogTransactionObjectCount, LogTransactionDelayBase)) TransactionTimer;
 
 interface Puppet;
     method Action start(RenamedTransaction tr);
@@ -23,8 +23,8 @@ module mkTimedPuppet(Puppet);
     endrule
 
     method Action start(RenamedTransaction tr);
-        let objCount = extend(tr.readObjectCount) + extend(tr.writtenObjectCount);
-        timeLeft[1] <= objCount * fromInteger(delayBase);
+        let objCount = tr.readObjectCount + tr.writtenObjectCount;
+        timeLeft[1] <= extend(objCount) * fromInteger(delayBase);
     endmethod
 
     method Bool isDone();

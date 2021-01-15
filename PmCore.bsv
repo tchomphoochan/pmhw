@@ -9,7 +9,7 @@ import PmIfc::*;
 typedef 10 LogNumberLiveObjects;
 typedef 3 LogNumberTransactionObjects;
 
-typedef TAdd#(LogNumberTransactionObjects, 1) LogTransactionObjectCount;
+typedef TAdd#(LogNumberTransactionObjects, 2) LogTransactionObjectCount;
 
 typedef TExp#(LogNumberLiveObjects) NumberLiveObjects;
 typedef TExp#(LogNumberTransactionObjects) NumberTransactionObjects;
