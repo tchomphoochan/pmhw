@@ -1,13 +1,21 @@
 import PmCore::*;
 import PmIfc::*;
 
+typedef 5 LogTransactionDelayBase;
+
+typedef TExp#(LogTransactionDelayBase) TransactionDelayBase;
+
+typedef Bit#(TAdd#(TAdd#(LogTransactionObjectCount, 1), LogTransactionDelayBase)) TransactionTimer;
+
 interface Puppet;
     method Action start(RenamedTransaction tr);
     method Bool isDone();
 endinterface
 
-module mkTimedPuppet#(Integer delayBase)(Puppet);
-    Array#(Reg#(Bit#(32))) timeLeft <- mkCReg(2, 0);
+Integer delayBase = valueOf(TransactionDelayBase);
+
+module mkTimedPuppet(Puppet);
+    Reg#(TransactionTimer) timeLeft[2] <- mkCReg(2, 0);
 
     (* no_implicit_conditions, fire_when_enabled *)
     rule incTime if (0 < timeLeft[0]);

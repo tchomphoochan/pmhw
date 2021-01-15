@@ -48,7 +48,6 @@ endinterface
 ////////////////////////////////////////////////////////////////////////////////
 /// Numeric constants.
 ////////////////////////////////////////////////////////////////////////////////
-Integer transactionTime = 2000;
 Integer maxPendingTransactions = 16;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,7 +83,7 @@ module mkPuppetmaster(Puppetmaster);
     // Submodules.
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
-    Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkTimedPuppet(transactionTime));
+    Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkTimedPuppet());
     // Arbiter to serialize status messages.
     let arb1 <- mkRoundRobin;
     Arbiter#(NumberPuppets, PuppetmasterResponse, void) msgArbiter <- mkArbiter(arb1, 1);
