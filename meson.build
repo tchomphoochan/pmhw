@@ -110,9 +110,9 @@ renamer = custom_target('renamer',
         '-e', '@OUTPUT@',
         '-o', '@OUTPUT@'])
 
-puppets_obj = custom_target('puppets_obj',
-    input: 'Puppets.bsv',
-    output: 'Puppets.bo',
+puppet_obj = custom_target('puppet_obj',
+    input: 'Puppet.bsv',
+    output: 'Puppet.bo',
     command: [
         bsc,
         '-quiet',
@@ -133,7 +133,7 @@ pm_obj = custom_target('pm_obj',
         '-sim',
         '-g', 'mkPuppetmasterTestbench',
         '@INPUT@'],
-    depends: [pm_core_obj, pm_ifc_obj, puppets_obj, renamer_obj, scheduler_obj, shard_obj])
+    depends: [pm_core_obj, pm_ifc_obj, puppet_obj, renamer_obj, scheduler_obj, shard_obj])
 
 pm = custom_target('pm',
     input: pm_obj,

@@ -12,7 +12,7 @@ import Vector::*;
 
 import PmCore::*;
 import PmIfc::*;
-import Puppets::*;
+import Puppet::*;
 import Renamer::*;
 import Scheduler::*;
 import Shard::*;
@@ -83,7 +83,7 @@ module mkPuppetmaster(Puppetmaster);
     // Submodules.
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
-    Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkTimedPuppet());
+    Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkPuppet());
     // Arbiter to serialize status messages.
     let arb1 <- mkRoundRobin;
     Arbiter#(NumberPuppets, PuppetmasterResponse, void) msgArbiter <- mkArbiter(arb1, 1);

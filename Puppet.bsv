@@ -14,7 +14,7 @@ endinterface
 
 Integer delayBase = valueOf(TransactionDelayBase);
 
-module mkTimedPuppet(Puppet);
+module mkPuppet(Puppet);
     Reg#(TransactionTimer) timeLeft[2] <- mkCReg(2, 0);
 
     (* no_implicit_conditions, fire_when_enabled *)
