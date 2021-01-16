@@ -81,12 +81,16 @@ module mkTestIndication(PuppetmasterToHostIndication);
     endmethod
 endmodule
 
+typedef 64 NumberPmTopTests;
+
+Integer numPmTopTests = valueOf(NumberPmTopTests);
+
 module mkPmTopTestbench();
     let myIndication <- mkTestIndication();
     PmTop myPmTop <- mkPmTop(myIndication);
 
-    Vector#(64, Vector#(16, Object)) testInputs = newVector;
-    for (Integer i = 0; i < 64; i = i + 1) begin
+    Vector#(NumberPmTopTests, Vector#(16, Object)) testInputs = newVector;
+    for (Integer i = 0; i < numPmTopTests; i = i + 1) begin
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
             testInputs[i][2 * j] = Object {
                 valid: 1,
@@ -108,7 +112,7 @@ module mkPmTopTestbench();
 
     Reg#(Bit#(32)) testIndex <- mkReg(0);
 
-    rule feed if (testIndex < 64);
+    rule feed if (testIndex < fromInteger(numPmTopTests));
         testIndex <= testIndex + 1;
         let objs = testInputs[testIndex];
         myPmTop.request.enqueueTransaction(
