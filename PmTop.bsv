@@ -73,11 +73,11 @@ endmodule
 
 module mkTestIndication(PuppetmasterToHostIndication);
     method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
-        $display("Started %2h at %6d", tid, timestamp);
+        $display("[%6d] PmTop: started %4h", timestamp, tid);
     endmethod
 
     method Action transactionFinished(TransactionId tid, Bit#(64) timestamp);
-        $display("Finished %2h at %6d", tid, timestamp);
+        $display("[%6d] PmTop: finished %4h", timestamp, tid);
     endmethod
 endmodule
 
