@@ -111,6 +111,12 @@ module mkPmTopTestbench();
     end
 
     Reg#(Bit#(32)) testIndex <- mkReg(0);
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+
+    (* fire_when_enabled, no_implicit_conditions *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
 
     rule feed if (testIndex < fromInteger(numPmTopTests));
         testIndex <= testIndex + 1;
@@ -119,5 +125,6 @@ module mkPmTopTestbench();
             extend(testIndex), objs[0], objs[1], objs[2], objs[3], objs[4], objs[5],
             objs[6], objs[7], objs[8], objs[9], objs[10], objs[11], objs[12], objs[13],
             objs[14], objs[15]);
+        $display("[%6d] PmTop: enqueued %2h", cycle, testIndex);
     endrule
 endmodule
