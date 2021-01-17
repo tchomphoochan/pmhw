@@ -140,7 +140,12 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                         end else begin
                             // No more read objects, go to first written object.
                             objIndex <= 0;
-                            objType <= WrittenObject;
+                            if (inputTr.writtenObjectCount == 0) begin
+                                // Except if there are no written objects, then reset.
+                                inputFifo.deq();
+                            end else begin
+                                objType <= WrittenObject;
+                            end
                         end
                     end else begin
                         if (objIndex < inputTr.writtenObjectCount - 1) begin
@@ -149,7 +154,6 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                         end else begin
                             // No more written objects, transaction is processed.
                             objIndex <= 0;
-                            objType <= ReadObject;
                             inputFifo.deq();
                         end
                     end
