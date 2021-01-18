@@ -172,7 +172,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                         end
                     end
 `ifdef DEBUG
-                    $display("[%6d] Renamer: renaming %2h, ", cycle, inputTr.tid,
+                    $display("[%6d] Renamer: renaming %4h, ", cycle, inputTr.tid,
                              objType == ReadObject ? "read" : "written",
                              " object %1d on shard %1d", objIndex, shardIndex);
 `endif
@@ -263,7 +263,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                         WrittenObject : req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
                     endcase
 `ifdef DEBUG
-                    $display("[%6d] Renamer: deleting %2h, ", cycle, req[0].tid,
+                    $display("[%6d] Renamer: deleting %4h, ", cycle, req[0].tid,
                              currentObj.objType == ReadObject ? "read" : "write",
                              " object %1d",
                              currentObj.objType == ReadObject ? req[0].readObjectCount :
@@ -397,7 +397,7 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
                 endcase
             end
 `ifdef DEBUG
-            $display("[%6d] Renamer: renamed %2h, ", cycle, response.request.tid,
+            $display("[%6d] Renamer: renamed %4h, ", cycle, response.request.tid,
                      response.request.type_ == ReadObject ? "read" : "write",
                      " object %1d",
                      response.request.type_ == ReadObject ? readObjectCount :
@@ -420,6 +420,9 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     interface Get failure;
         method ActionValue#(FailedRename) get() if (isDone() && !success);
             resetState();
+`ifdef DEBUG
+            $display("[%6d] Renamer: failed to rename %4h", cycle, renamedTr.tid);
+`endif
             return FailedRename { renamedTr : renamedTr };
         endmethod
     endinterface
