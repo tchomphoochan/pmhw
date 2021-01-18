@@ -133,6 +133,9 @@ module mkPuppetmaster(Puppetmaster);
         bufferIndex[1] <= bufferIndex[1] + 1;
         let result <- renamer.response.get();
         buffer[bufferIndex[1]] <= result;
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: renamed %2h", cycle, result.renamedTr.tid);
+`endif
     endrule
 
     // When buffer is full, send scheduling request.
@@ -145,6 +148,9 @@ module mkPuppetmaster(Puppetmaster);
         let converted = map(getSchedTr, transactions);
         let toSchedule = cons(runningTrSet, converted);
         scheduler.request.put(toSchedule);
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: scheduler starting", cycle);
+`endif
     endrule
 
     // Retrieve indices of scheduled transacions.
@@ -152,6 +158,9 @@ module mkPuppetmaster(Puppetmaster);
         let scheduled <- scheduler.response.get();
         // Lowest bit corresponds to the currently running transactions, so remove it.
         pendingTrFlags <= scheduled[maxRounds - 1 : 1];
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: scheduler finished", cycle);
+`endif
     endrule
 
     // Send first (lowest-index) pending transaction to first idle puppet.
@@ -169,6 +178,10 @@ module mkPuppetmaster(Puppetmaster);
         let started = buffer[trIndex];
         sentToPuppet[puppetIndex] <= started;
         puppets[puppetIndex].start(started.renamedTr);
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: starting %2h on puppet #%0d", cycle,
+                 started.renamedTr.tid, puppetIndex);
+`endif
     endrule
 
     rule sendMessages;

@@ -112,7 +112,10 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     FIFO#(InputTransaction) inputFifo <- mkBypassFIFO();
     Reg#(ObjectType) objType <- mkReg(?);
     Reg#(TransactionObjectCounter) objIndex <- mkReg(0);
-    Reg#(Bool) isReady <- mkReg(True); 
+    Reg#(Bool) isReady <- mkReg(True);
+`ifdef DEBUG
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -123,6 +126,16 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
         let writtenObject = inputTr.writtenObjects[objIndex];
         getShard(objType == ReadObject ? readObject : writtenObject);
     end;
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+`ifdef DEBUG
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -158,6 +171,11 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                             inputFifo.deq();
                         end
                     end
+`ifdef DEBUG
+                    $display("[%6d] Renamer: renaming %2h, ", cycle, inputTr.tid,
+                             objType == ReadObject ? "read" : "written",
+                             " object %1d on shard %1d", objIndex, shardIndex);
+`endif
                     return tagged Rename ShardRenameRequest {
                         tid: inputTr.tid,
                         address: objType == ReadObject ? inputTr.readObjects[objIndex] :
@@ -203,6 +221,9 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
         writtenObjectCount: 0
     };
     Reg#(RenamedTransaction) req[2] <- mkCReg(2, emptyRenamedTransaction);
+`ifdef DEBUG
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
@@ -218,6 +239,16 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
             objName: req[0].writtenObjects[req[0].writtenObjectCount - 1] };
 
     ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+`ifdef DEBUG
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+`endif
+
+    ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     function Get#(ShardRequest) makeOutputInterface(Integer i);
@@ -231,6 +262,13 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                         ReadObject : req[0].readObjectCount <= req[0].readObjectCount - 1;
                         WrittenObject : req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
                     endcase
+`ifdef DEBUG
+                    $display("[%6d] Renamer: deleting %2h, ", cycle, req[0].tid,
+                             currentObj.objType == ReadObject ? "read" : "write",
+                             " object %1d",
+                             currentObj.objType == ReadObject ? req[0].readObjectCount :
+                                                                req[0].writtenObjectCount);
+`endif
                     return tagged Delete ShardDeleteRequest { name: currentObj.objName };
                 endmethod
             endinterface
@@ -281,6 +319,9 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) validReadObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) validWrittenObjectCount <- mkReg(0);
+`ifdef DEBUG
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
@@ -314,6 +355,16 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     };
 
     ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+`ifdef DEBUG
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+`endif
+
+    ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
@@ -345,6 +396,13 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
                     end
                 endcase
             end
+`ifdef DEBUG
+            $display("[%6d] Renamer: renamed %2h, ", cycle, response.request.tid,
+                     response.request.type_ == ReadObject ? "read" : "write",
+                     " object %1d",
+                     response.request.type_ == ReadObject ? readObjectCount :
+                                                            writtenObjectCount);
+`endif
         endmethod
     endinterface
 

@@ -105,6 +105,9 @@ module mkScheduler(Scheduler);
     Reg#(SchedulingPoolIndex) round <- mkReg(0);
     // Number of transactions that have already been merged in this round.
     Reg#(SchedulingPoolIndex) offset <- mkReg(0);
+`ifdef DEBUG
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -120,6 +123,13 @@ module mkScheduler(Scheduler);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
+`ifdef DEBUG
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+`endif
+
     rule doTournament if (maybeTrSets matches tagged Valid .trSets
                           &&& round < fromInteger(maxRounds));
         // Extract transactions to be merged, starting at offset. rotateBy rotates
@@ -146,6 +156,9 @@ module mkScheduler(Scheduler);
         if (newOffset == 0) begin
             round <= round + 1;
         end
+`ifdef DEBUG
+        $display("[%6d] Scheduler: round %2d, offset %3d", round, offset);
+`endif
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
