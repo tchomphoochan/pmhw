@@ -181,8 +181,8 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                         address: objType == ReadObject ? inputTr.readObjects[objIndex] :
                                                          inputTr.writtenObjects[objIndex],
                         type_: objType,
-                        objOfTypeCount: objType == ReadObject ? inputTr.readObjectCount :
-                                                                inputTr.writtenObjectCount
+                        readObjectCount: inputTr.readObjectCount,
+                        writtenObjectCount: inputTr.writtenObjectCount
                     };
                 endmethod
             endinterface
@@ -370,16 +370,12 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     interface Put request;
         method Action put(ShardRenameResponse response) if (!isDone());
             tid <= response.request.tid;
+            totalReadObjectCount <= response.request.readObjectCount;
+            totalWrittenObjectCount <= response.request.writtenObjectCount;
             // Increment request count.
             case (response.request.type_) matches
-                ReadObject: begin
-                    totalReadObjectCount <= response.request.objOfTypeCount;
-                    readObjectCount <= readObjectCount + 1;
-                end
-                WrittenObject: begin
-                    totalWrittenObjectCount <= response.request.objOfTypeCount;
-                    writtenObjectCount <= writtenObjectCount + 1;
-                end
+                ReadObject: readObjectCount <= readObjectCount + 1;
+                WrittenObject: writtenObjectCount <= writtenObjectCount + 1;
             endcase
             // If successful, insert object into appropriate set.
             if (response.name matches tagged Valid .name) begin

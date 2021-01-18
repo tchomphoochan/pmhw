@@ -37,7 +37,8 @@ typedef struct {
     TransactionId tid;
     ObjectAddress address;
     ObjectType type_;
-    TransactionObjectCounter objOfTypeCount;
+    TransactionObjectCounter readObjectCount;
+    TransactionObjectCounter writtenObjectCount;
 } ShardRenameRequest deriving(Bits, Eq, FShow);
 
 typedef struct {
