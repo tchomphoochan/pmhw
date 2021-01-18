@@ -87,6 +87,9 @@ foreach module : modules
         obj_outputs += ['mk@0@Testbench.ba'.format(module)]
         obj_bsc_opts += ['-g', 'mk@0@Testbench'.format(module)]
     endif
+    if get_option('debug')
+        obj_bsc_opts += ['-D', 'DEBUG=1']
+    endif
 
     # Compute dependencies.
     deps = []
