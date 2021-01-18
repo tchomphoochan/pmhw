@@ -245,6 +245,9 @@ module mkShard(Shard);
         method Action put(ShardRequest request) if (!isValid(maybeReq));
             maybeReq <= tagged Valid request;
             tries <= 0;
+`ifdef DEBUG
+        $display("[%6d] Shard: received request", cycle);
+`endif
         endmethod
     endinterface
 
@@ -255,6 +258,9 @@ module mkShard(Shard);
             maybeReq <= tagged Invalid;
             isDone <= False;
             let name = keyToName(req, lastKey);
+`ifdef DEBUG
+        $display("[%6d] Shard: finished %4h: %8h", cycle, req.tid, req.address);
+`endif
             if (isSuccess) begin
                 return ShardRenameResponse { request: req, name: tagged Valid name };
             end else begin
