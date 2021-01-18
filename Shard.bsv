@@ -209,7 +209,7 @@ module mkShard(Shard);
             tries <= tries + 1;
             bram.portA.request.put(makeReadRequest(getNextKey(req)));
 `ifdef DEBUG
-            $display("[%6d] Shard: try #%0d rename of %4h: %8h", tries, cycle, req.tid,
+            $display("[%6d] Shard: try #%0d rename of %4h: %8h", cycle, tries, req.tid,
                      req.address);
 `endif
         end
