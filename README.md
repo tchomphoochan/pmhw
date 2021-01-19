@@ -10,8 +10,10 @@ To compile and run Puppetmaster in Bluesim:
 - (inside `build`) `./mkPuppetmasterTestbench`
 
 To compile and run Connectal wrapper (in Verilator):
+- install [connectal](http://www.connectal.org/)
 - install [bsc-contrib](https://github.com/B-Lang-org/bsc-contrib)
 - install [verilator](https://www.veripool.org/wiki/verilator)
+- set `CONNECTALDIR` to point to the root of the Connectal installation directory
 - set `BLUESPECDIR` to point to the root of the Bluespec installation directory
 - (optional) set `PROJECTDIR` and use that as the build directory instead of `verilator`
 - `make gen.verilator && cd verilator && make`
