@@ -25,47 +25,51 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
     interface HostToPuppetmaster request;
         method Action enqueueTransaction(
             TransactionId tid,
-            Object obj1,
-            Object obj2,
-            Object obj3,
-            Object obj4,
-            Object obj5,
-            Object obj6,
-            Object obj7,
-            Object obj8,
-            Object obj9,
-            Object obj10,
-            Object obj11,
-            Object obj12,
-            Object obj13,
-            Object obj14,
-            Object obj15,
-            Object obj16
-            );
-            Object allObjects[16] = {
-                obj1, obj2, obj3, obj4, obj5, obj6, obj7, obj8, obj9, obj10, obj11, obj12,
-                obj13, obj14, obj15, obj16
+            TransactionObjectCounter readObjectCount,
+            ObjectAddress readObj1,
+            ObjectAddress readObj2,
+            ObjectAddress readObj3,
+            ObjectAddress readObj4,
+            ObjectAddress readObj5,
+            ObjectAddress readObj6,
+            ObjectAddress readObj7,
+            ObjectAddress readObj8,
+            TransactionObjectCounter writtenObjectCount,
+            ObjectAddress writtenObj1,
+            ObjectAddress writtenObj2,
+            ObjectAddress writtenObj3,
+            ObjectAddress writtenObj4,
+            ObjectAddress writtenObj5,
+            ObjectAddress writtenObj6,
+            ObjectAddress writtenObj7,
+            ObjectAddress writtenObj8
+        );
+            ObjectAddress readObjects[8] = {
+                readObj1,
+                readObj2,
+                readObj3,
+                readObj4,
+                readObj5,
+                readObj6,
+                readObj7,
+                readObj8
             };
-            Vector#(8, ObjectAddress) readObjects = newVector;
-            Vector#(8, ObjectAddress) writtenObjects = newVector;
-            Integer readIndex = 0;
-            Integer writeIndex = 0;
-            for (Integer i = 0; i < 16; i = i + 1) begin
-                let obj = allObjects[i];
-                if (obj.valid == 1 && obj.write == 1 && writeIndex < 8) begin
-                    writtenObjects[writeIndex] = obj.object;
-                    writeIndex = writeIndex + 1;
-                end else if (obj.valid == 1 && obj.write == 0 && readIndex < 8) begin
-                    readObjects[readIndex] = obj.object;
-                    readIndex = readIndex + 1;
-                end
-            end
+            ObjectAddress writtenObjects[8] = {
+                writtenObj1,
+                writtenObj2,
+                writtenObj3,
+                writtenObj4,
+                writtenObj5,
+                writtenObj6,
+                writtenObj7,
+                writtenObj8
+            };
             pm.request.put(InputTransaction {
                 tid: tid,
-                readObjects: readObjects,
-                writtenObjects: writtenObjects,
-                readObjectCount: fromInteger(readIndex),
-                writtenObjectCount: fromInteger(writeIndex)
+                readObjects: arrayToVector(readObjects),
+                writtenObjects: arrayToVector(writtenObjects),
+                readObjectCount: readObjectCount,
+                writtenObjectCount: writtenObjectCount
             });
 	    endmethod
 	endinterface
@@ -89,24 +93,16 @@ module mkPmTopTestbench();
     let myIndication <- mkTestIndication();
     PmTop myPmTop <- mkPmTop(myIndication);
 
-    Vector#(NumberPmTopTests, Vector#(16, Object)) testInputs = newVector;
+    Vector#(NumberPmTopTests, Vector#(2, Vector#(8, ObjectAddress))) testInputs = newVector;
     for (Integer i = 0; i < numPmTopTests; i = i + 1) begin
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
-            testInputs[i][2 * j] = Object {
-                valid: 1,
-                write: 0,
-                object: fromInteger(objSetSize * i * 2 + j * 2)
-            };
-            testInputs[i][2 * j + 1] = Object {
-                valid: 1,
-                write: 1,
-                object: fromInteger(case (i % 4) matches
+            testInputs[i][0][j] = fromInteger(objSetSize * i * 2 + j * 2);
+            testInputs[i][1][j] = fromInteger(case (i % 4) matches
                     0 : (objSetSize * i           * 2 + j * 2 + 1);  // conflict with none
-                    1 : (objSetSize * (i - i % 2) * 2 + j * 2 + 1);  // conflict with 1 each
+                    1 : (objSetSize * (i - i % 2) * 2 + j * 2 + 1);  // conflict with one
                     2 : (objSetSize * (i % 2)     * 2 + j * 2 + 1);  // conflict with half
                     3 : (objSetSize               * 2 + j * 2 + 1);  // conflict with all
-                endcase)
-            };
+                endcase);
         end
     end
 
@@ -120,11 +116,29 @@ module mkPmTopTestbench();
 
     rule feed if (testIndex < fromInteger(numPmTopTests));
         testIndex <= testIndex + 1;
-        let objs = testInputs[testIndex];
+        let readObjs = testInputs[testIndex][0];
+        let writtenObjs = testInputs[testIndex][1];
         myPmTop.request.enqueueTransaction(
-            extend(testIndex), objs[0], objs[1], objs[2], objs[3], objs[4], objs[5],
-            objs[6], objs[7], objs[8], objs[9], objs[10], objs[11], objs[12], objs[13],
-            objs[14], objs[15]);
+            extend(testIndex),
+            fromInteger(objSetSize),
+            readObjs[0],
+            readObjs[1],
+            readObjs[2],
+            readObjs[3],
+            readObjs[4],
+            readObjs[5],
+            readObjs[6],
+            readObjs[7],
+            fromInteger(objSetSize),
+            writtenObjs[0],
+            writtenObjs[1],
+            writtenObjs[2],
+            writtenObjs[3],
+            writtenObjs[4],
+            writtenObjs[5],
+            writtenObjs[6],
+            writtenObjs[7]
+        );
         $display("[%6d] PmTop: enqueued %2h", cycle, testIndex);
     endrule
 endmodule

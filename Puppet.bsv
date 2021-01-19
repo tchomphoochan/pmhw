@@ -12,7 +12,7 @@ typedef 5 LogTransactionDelayBase;
 
 typedef TExp#(LogTransactionDelayBase) TransactionDelayBase;
 
-typedef Bit#(TAdd#(LogTransactionObjectCount, LogTransactionDelayBase)) TransactionTimer;
+typedef Bit#(TAdd#(LogMaxTransactionObjectCount, LogTransactionDelayBase)) TransactionTimer;
 
 interface Puppet;
     method Action start(RenamedTransaction tr);
