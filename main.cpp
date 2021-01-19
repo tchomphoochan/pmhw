@@ -9,8 +9,21 @@
 #include <unordered_set>
 #include <vector>
 
+#include "GeneratedTypes.h"
 #include "HostToPuppetmaster.h"
 #include "PuppetmasterToHostIndication.h"
+
+constexpr std::size_t objSetSize = 8;
+
+typedef std::array<ObjectAddress, objSetSize> InputObjects;
+
+typedef struct {
+    TransactionId tid;
+    InputObjects readObjects;
+    InputObjects writtenObjects;
+    TransactionObjectCounter readObjectCount;
+    TransactionObjectCounter writtenObjectCount;
+} InputTransaction;
 
 // Helper function equivalent to C++20 std::unordered_set::contains.
 template <typename type>
@@ -44,38 +57,33 @@ int main(int argc, char **argv) {
         IfcNames_PuppetmasterToHostIndicationH2S);
     std::cout << "Initialized the indication interface" << std::endl;
 
-    constexpr std::size_t numObjects = 16;
-    std::vector<std::array<Object, numObjects>> tests;
+    std::vector<InputTransaction> testInputs;
 
     if (argc <= 1) {
         // No test files given, construct default test.
         std::cout << "Loading default tests..." << std::endl;
 
         unsigned numTests = 4;
-        unsigned maxScheduledObjects = 8;
-        unsigned objSetSize = numObjects / 2;
+        unsigned transactionsPerRound = 8;
 
-        for (unsigned i = 0; i < numTests * maxScheduledObjects; i++) {
-            std::array<Object, numObjects> objs;
+        for (unsigned i = 0; i < numTests * transactionsPerRound; i++) {
+            InputTransaction tr;
+            tr.tid = i;
+            tr.readObjectCount = objSetSize;
+            tr.writtenObjectCount = objSetSize;
             for (unsigned j = 0; j < objSetSize; j++) {
-                objs[2 * j] = (Object){
-                    .valid = 1,
-                    .write = 0,
-                    .object = objSetSize * i * 2 + j * 2,
-                };
-                objs[2 * j + 1] = (Object){
-                    .valid = 1,
-                    .write = 1,
-                    .object = i % 4 == 0   ? objSetSize * i * 2 + j * 2 + 1
-                              : i % 4 == 1 ? objSetSize * (i - i % 2) * 2 + j * 2 + 1
-                              : i % 4 == 2 ? objSetSize * (i % 2) * 2 + j * 2 + 1
-                                           : objSetSize * 2 + j * 2 + 1,
-                };
+                tr.readObjects[j] = objSetSize * i * 2 + j * 2;
+                tr.writtenObjects[j] =
+                    i % 4 == 0   ? objSetSize * i * 2 + j * 2 + 1
+                    : i % 4 == 1 ? objSetSize * (i - i % 2) * 2 + j * 2 + 1
+                    : i % 4 == 2 ? objSetSize * (i % 2) * 2 + j * 2 + 1
+                                 : objSetSize * 2 + j * 2 + 1;
             }
-            tests.push_back(objs);
+            testInputs.push_back(tr);
         }
     } else {
         // Load each input file given into tests.
+        std::size_t testIndex = 0;
         for (int i = 1; i < argc; i++) {
             std::cout << "Loading tests from: " << argv[i] << std::endl;
 
@@ -108,13 +116,13 @@ int main(int argc, char **argv) {
             // Parse content lines.
             std::string line;
             while (std::getline(source, line)) {
-                std::array<Object, numObjects> objs;
+                InputTransaction tr;
+                tr.tid = testIndex++;
 
                 // Parse each comma-separated value in line.
                 std::stringstream lineBuffer(line);
                 std::string value;
-                for (std::size_t i = 0;
-                     i < numObjects && std::getline(lineBuffer, value, ','); i++) {
+                for (std::size_t i = 0; std::getline(lineBuffer, value, ','); i++) {
                     if (value.length() != 0 && (set_contains(readIndices, i) ||
                                                 set_contains(writeIndices, i))) {
                         ObjectAddress address;
@@ -128,12 +136,16 @@ int main(int argc, char **argv) {
                             std::cerr << "Out of range: " << value << std::endl;
                             return 4;
                         }
-                        objs[i] = (Object){.valid = 1,
-                                           .write = set_contains(writeIndices, i),
-                                           .object = address};
+                        if (set_contains(readIndices, i) &&
+                            tr.readObjectCount < objSetSize) {
+                            tr.readObjects[tr.readObjectCount++] = address;
+                        } else if (set_contains(writeIndices, i) &&
+                                   tr.writtenObjectCount < objSetSize) {
+                            tr.writtenObjects[tr.writtenObjectCount++] = address;
+                        }
                     }
                 }
-                tests.push_back(objs);
+                testInputs.push_back(tr);
             }
             source.close();
         }
@@ -141,11 +153,14 @@ int main(int argc, char **argv) {
 
     // Run tests.
     std::cout << "Enqueuing transactions..." << std::endl;
-    for (std::size_t i = 0; i < tests.size(); i++) {
-        auto &objs = tests[i];
-        fpga->enqueueTransaction(i, objs[0], objs[1], objs[2], objs[3], objs[4],
-                                 objs[5], objs[6], objs[7], objs[8], objs[9], objs[10],
-                                 objs[11], objs[12], objs[13], objs[14], objs[15]);
+    for (auto &&tr : testInputs) {
+        fpga->enqueueTransaction(
+            tr.tid, tr.readObjectCount, tr.readObjects[0], tr.readObjects[1],
+            tr.readObjects[2], tr.readObjects[3], tr.readObjects[4], tr.readObjects[5],
+            tr.readObjects[6], tr.readObjects[7], tr.writtenObjectCount,
+            tr.writtenObjects[0], tr.writtenObjects[1], tr.writtenObjects[2],
+            tr.writtenObjects[3], tr.writtenObjects[4], tr.writtenObjects[5],
+            tr.writtenObjects[6], tr.writtenObjects[7]);
     }
 
     std::cout << "Waiting for results..." << std::endl;
