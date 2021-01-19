@@ -101,14 +101,17 @@ int main(int argc, char **argv) {
                 std::cerr << "No header found in file." << std::endl;
                 return 2;
             }
+            std::unordered_set<std::size_t> objIndices;
             std::unordered_set<std::size_t> readIndices;
             std::unordered_set<std::size_t> writeIndices;
             std::stringstream headerBuffer(header);
             std::string label;
             for (std::size_t i = 0; std::getline(headerBuffer, label, ','); i++) {
                 if (label.find("Read object") == 0) {
+                    objIndices.insert(i);
                     readIndices.insert(i);
                 } else if (label.find("Written object") == 0) {
+                    objIndices.insert(i);
                     writeIndices.insert(i);
                 }
             }
@@ -123,8 +126,7 @@ int main(int argc, char **argv) {
                 std::stringstream lineBuffer(line);
                 std::string value;
                 for (std::size_t i = 0; std::getline(lineBuffer, value, ','); i++) {
-                    if (value.length() != 0 && (set_contains(readIndices, i) ||
-                                                set_contains(writeIndices, i))) {
+                    if (value.length() != 0 && set_contains(objIndices, i)) {
                         ObjectAddress address;
                         try {
                             address = std::stoul(value);
