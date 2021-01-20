@@ -306,21 +306,20 @@ endinterface
 
 module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
+    /// Constants.
+    ////////////////////////////////////////////////////////////////////////////////
+    let maxObjectCount = fromInteger(objSetSize);
+    let defaultTr = RenamedTransaction { readObjectCount: 0, writtenObjectCount: 0 };
+    ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(TransactionId) tid <- mkReg(?);
-    Reg#(TransactionType) trType <- mkReg(?);
-    Reg#(RenamedObjects) readObjects <- mkReg(?);
-    Reg#(RenamedObjects) writtenObjects <- mkReg(?);
-    let maxObjectCount = fromInteger(objSetSize);
-    Reg#(TransactionObjectCounter) totalReadObjectCount <- mkReg(maxObjectCount);
-    Reg#(TransactionObjectCounter) totalWrittenObjectCount <- mkReg(maxObjectCount);
+    Reg#(RenamedTransaction) renamedTr <- mkReg(defaultTr);
     Reg#(ObjectSet) readSet <- mkReg(0);
     Reg#(ObjectSet) writeSet <- mkReg(0);
+    Reg#(TransactionObjectCounter) totalReadObjectCount <- mkReg(maxObjectCount);
+    Reg#(TransactionObjectCounter) totalWrittenObjectCount <- mkReg(maxObjectCount);
     Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
-    Reg#(TransactionObjectCounter) validReadObjectCount <- mkReg(0);
-    Reg#(TransactionObjectCounter) validWrittenObjectCount <- mkReg(0);
 `ifdef DEBUG
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
@@ -328,34 +327,24 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
-    let success = readObjectCount == validReadObjectCount
-                  && writtenObjectCount == validWrittenObjectCount;
+    let success = readObjectCount == renamedTr.readObjectCount
+                  && writtenObjectCount == renamedTr.writtenObjectCount;
 
     let resetState =
         action
+            renamedTr <= defaultTr;
             readSet <= 0;
             writeSet <= 0;
             totalReadObjectCount <= maxObjectCount;
             totalWrittenObjectCount <= maxObjectCount;
             readObjectCount <= 0;
             writtenObjectCount <= 0;
-            validReadObjectCount <= 0;
-            validWrittenObjectCount <= 0;
         endaction;
 
     function Bool isDone();
         return readObjectCount == totalReadObjectCount &&
                writtenObjectCount == totalWrittenObjectCount;
     endfunction
-
-    let renamedTr = RenamedTransaction {
-        tid: tid,
-        trType: trType,
-        readObjects: readObjects,
-        writtenObjects: writtenObjects,
-        readObjectCount: validReadObjectCount,
-        writtenObjectCount: validWrittenObjectCount
-    };
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
@@ -372,8 +361,9 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
         method Action put(ShardRenameResponse response) if (!isDone());
-            tid <= response.request.tid;
-            trType <= response.request.trType;
+            let newTr = renamedTr;
+            newTr.tid = response.request.tid;
+            newTr.trType = response.request.trType;
             totalReadObjectCount <= response.request.readObjectCount;
             totalWrittenObjectCount <= response.request.writtenObjectCount;
             // Increment request count.
@@ -385,17 +375,18 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
             if (response.name matches tagged Valid .name) begin
                 case (response.request.type_) matches
                     ReadObject: begin
-                        validReadObjectCount <= validReadObjectCount + 1;
-                        readObjects[validReadObjectCount] <= name;
+                        newTr.readObjects[newTr.readObjectCount] = name;
+                        newTr.readObjectCount = newTr.readObjectCount + 1;
                         readSet <= readSet | (1 << name);
                     end
                     WrittenObject: begin
-                        validWrittenObjectCount <= validWrittenObjectCount + 1;
-                        writtenObjects[validWrittenObjectCount] <= name;
+                        newTr.writtenObjects[newTr.writtenObjectCount] = name;
+                        newTr.writtenObjectCount = newTr.writtenObjectCount + 1;
                         writeSet <= writeSet | (1 << name);
                     end
                 endcase
             end
+            renamedTr <= newTr;
 `ifdef DEBUG
             $display("[%6d] Renamer: renamed %4h, ", cycle, response.request.tid,
                      response.request.type_ == ReadObject ? "read" : "write",
@@ -410,7 +401,7 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
         method ActionValue#(RenamerResponse) get() if (isDone() && success);
             resetState();
             renamedSignal.send();
-            return RenamerResponse { 
+            return RenamerResponse {
                 renamedTr: renamedTr,
                 schedulerTr: SchedulerTransaction { readSet: readSet, writeSet: writeSet }
             };
