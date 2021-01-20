@@ -204,15 +204,15 @@ module mkPuppetmaster(Puppetmaster);
                         status: Started,
                         timestamp: cycle
                     });
-                    reqArbiter.users[i].request.put(RenamerDeleteRequest {
-                        renamedTr: sentToPuppet[i].renamedTr
-                    });
                 end
                 {True, False} : begin
                     msgArbiter.users[i].request.put(PuppetmasterResponse {
                         id: getTid(sentToPuppet[i]),
                         status: Finished,
                         timestamp: cycle
+                    });
+                    reqArbiter.users[i].request.put(RenamerDeleteRequest {
+                        renamedTr: sentToPuppet[i].renamedTr
                     });
                 end
             endcase
