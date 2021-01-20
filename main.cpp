@@ -2,10 +2,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
@@ -31,15 +33,25 @@ bool set_contains(std::unordered_set<type> &set, type &key) {
     return set.find(key) != set.end();
 }
 
+// Helper function to print log messages.
+void print_log(std::string_view msg, std::uint64_t timestamp = 0) {
+    std::cout << "[" << std::setw(6) << timestamp << "] "
+              << "main.cpp: " << msg << std::endl;
+}
+
 // Handler for messages received from the FPGA
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 public:
     void transactionStarted(std::uint64_t tid, std::uint64_t timestamp) {
-        std::cout << "Started transaction " << tid << " at " << timestamp << std::endl;
+        std::ostringstream msg;
+        msg << "started " << std::setw(4) << std::setfill('0') << std::hex << tid;
+        print_log(msg.str(), timestamp);
     }
 
     void transactionFinished(std::uint64_t tid, std::uint64_t timestamp) {
-        std::cout << "Finished transaction " << tid << " at " << timestamp << std::endl;
+        std::ostringstream msg;
+        msg << "finished " << std::setw(4) << std::setfill('0') << std::hex << tid;
+        print_log(msg.str(), timestamp);
     }
 
     PuppetmasterToHostIndication(unsigned int id)
@@ -47,21 +59,21 @@ public:
 };
 
 int main(int argc, char **argv) {
-    std::cout << "Connectal setting up..." << std::endl;
+    print_log("Connectal setting up...");
 
     HostToPuppetmasterProxy *fpga =
         new HostToPuppetmasterProxy(IfcNames_HostToPuppetmasterS2H);
-    std::cout << "Initialized the request interface to the FPGA" << std::endl;
+    print_log("Initialized the request interface to the FPGA");
 
     PuppetmasterToHostIndication puppetmasterToHost(
         IfcNames_PuppetmasterToHostIndicationH2S);
-    std::cout << "Initialized the indication interface" << std::endl;
+    print_log("Initialized the indication interface");
 
     std::vector<InputTransaction> testInputs;
 
     if (argc <= 1) {
         // No test files given, construct default test.
-        std::cout << "Loading default tests..." << std::endl;
+        print_log("Loading default tests...");
 
         unsigned numTests = 4;
         unsigned transactionsPerRound = 8;
@@ -85,7 +97,7 @@ int main(int argc, char **argv) {
         // Load each input file given into tests.
         std::size_t testIndex = 0;
         for (int i = 1; i < argc; i++) {
-            std::cout << "Loading tests from: " << argv[i] << std::endl;
+            print_log("Loading tests from: " + std::string(argv[i]));
 
             // Open input file.
             std::ifstream source;
@@ -154,7 +166,7 @@ int main(int argc, char **argv) {
     }
 
     // Run tests.
-    std::cout << "Enqueuing transactions..." << std::endl;
+    print_log("Enqueuing transactions...");
     for (auto &&tr : testInputs) {
         fpga->enqueueTransaction(
             tr.tid, tr.readObjectCount, tr.readObjects[0], tr.readObjects[1],
@@ -165,7 +177,7 @@ int main(int argc, char **argv) {
             tr.writtenObjects[6], tr.writtenObjects[7]);
     }
 
-    std::cout << "Waiting for results..." << std::endl;
+    print_log("Waiting for results...");
     while (true) {
         // Wait for simulation.
     }
