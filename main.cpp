@@ -61,8 +61,7 @@ public:
         log_message(tid, timestamp, "finished");
     }
 
-    PuppetmasterToHostIndication(unsigned int id)
-        : PuppetmasterToHostIndicationWrapper(id) {}
+    PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
 };
 
 int main(int argc, char** argv) {
