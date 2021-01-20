@@ -21,6 +21,7 @@ typedef std::array<ObjectAddress, objSetSize> InputObjects;
 
 typedef struct {
     TransactionId tid;
+    TransactionType trType;
     InputObjects readObjects;
     InputObjects writtenObjects;
     TransactionObjectCounter readObjectCount;
@@ -87,6 +88,7 @@ int main(int argc, char** argv) {
         for (unsigned i = 0; i < numTests * transactionsPerRound; i++) {
             InputTransaction tr;
             tr.tid = i;
+            tr.trType = TransactionType::DatabaseIncrement;
             tr.readObjectCount = objSetSize;
             tr.writtenObjectCount = objSetSize;
             for (unsigned j = 0; j < objSetSize; j++) {
@@ -119,6 +121,7 @@ int main(int argc, char** argv) {
                 std::cerr << "No header found in file." << std::endl;
                 return 2;
             }
+            std::size_t typeIndex;
             std::unordered_set<std::size_t> objIndices;
             std::unordered_set<std::size_t> readIndices;
             std::unordered_set<std::size_t> writeIndices;
@@ -131,6 +134,8 @@ int main(int argc, char** argv) {
                 } else if (label.find("Written object") == 0) {
                     objIndices.insert(i);
                     writeIndices.insert(i);
+                } else if (label.find("Type") == 0) {
+                    typeIndex = i;
                 }
             }
 
@@ -144,7 +149,17 @@ int main(int argc, char** argv) {
                 std::stringstream lineBuffer(line);
                 std::string value;
                 for (std::size_t i = 0; std::getline(lineBuffer, value, ','); i++) {
-                    if (value.length() != 0 && set_contains(objIndices, i)) {
+                    if (i == typeIndex) {
+                        tr.trType =
+                            value == "get"         ? TransactionType::DatabaseRead
+                            : value == "set"       ? TransactionType::DatabaseWrite
+                            : value == "increment" ? TransactionType::DatabaseIncrement
+                            : value == "swap"      ? TransactionType::DatabaseSwap
+                            : value == "fetch"     ? TransactionType::MessageFetch
+                            : value == "post"
+                                ? TransactionType::MessagePost
+                                : throw std::runtime_error("unknown type: " + value);
+                    } else if (value.length() != 0 && set_contains(objIndices, i)) {
                         ObjectAddress address;
                         try {
                             address = std::stoul(value);
@@ -175,7 +190,7 @@ int main(int argc, char** argv) {
     print_log("Enqueuing transactions...");
     for (auto&& tr : testInputs) {
         fpga->enqueueTransaction(
-            tr.tid, tr.readObjectCount, tr.readObjects[0], tr.readObjects[1],
+            tr.tid, tr.trType, tr.readObjectCount, tr.readObjects[0], tr.readObjects[1],
             tr.readObjects[2], tr.readObjects[3], tr.readObjects[4], tr.readObjects[5],
             tr.readObjects[6], tr.readObjects[7], tr.writtenObjectCount,
             tr.writtenObjects[0], tr.writtenObjects[1], tr.writtenObjects[2],
