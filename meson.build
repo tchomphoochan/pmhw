@@ -26,12 +26,6 @@ has_tests = [
     'PmTop',
 ]
 
-# Modules with testbenches that are built by default, i.e. when `meson compile` is run.
-is_default = [
-    'Puppetmaster',
-    'PmTop',
-]
-
 # Bluespec module dependencies. Values are arrays of indices into the `modules` array.
 # This workaround is needed because Meson dictionaries are immutable.
 dep_indices = {
@@ -120,7 +114,7 @@ foreach module : modules
                 '-e', '@OUTPUT@',
                 '-o', '@OUTPUT@',
             ],
-            build_by_default: module in is_default,
+            build_by_default: true,
         )
     endif
 endforeach
