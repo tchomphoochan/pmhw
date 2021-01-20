@@ -4,15 +4,14 @@
 ////////////////////////////////////////////////////////////////////////////////
 typedef 64 LogMaxNumberTransactions;
 typedef 32 LogSizeMemory;
+typedef 3 LogMaxNumberTransactionObjects;
+
+typedef TAdd#(LogMaxNumberTransactionObjects, 2) LogMaxTransactionObjectCount;
+typedef TExp#(LogMaxNumberTransactionObjects) MaxNumberTransactionObjects;
 
 typedef Bit#(LogMaxNumberTransactions) TransactionId;
 typedef Bit#(LogSizeMemory) ObjectAddress;
-
-typedef struct {
-    Bit#(1) valid;
-    Bit#(1) write;
-    ObjectAddress object;
-} Object deriving(Bits, Eq);
+typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
 
 interface PuppetmasterToHostIndication;
     method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
@@ -22,22 +21,24 @@ endinterface
 interface HostToPuppetmaster;
     method Action enqueueTransaction(
         TransactionId tid,
-        Object obj1,
-        Object obj2,
-        Object obj3,
-        Object obj4,
-        Object obj5,
-        Object obj6,
-        Object obj7,
-        Object obj8,
-        Object obj9,
-        Object obj10,
-        Object obj11,
-        Object obj12,
-        Object obj13,
-        Object obj14,
-        Object obj15,
-        Object obj16
+        TransactionObjectCounter readObjectCount,
+        ObjectAddress readObj1,
+        ObjectAddress readObj2,
+        ObjectAddress readObj3,
+        ObjectAddress readObj4,
+        ObjectAddress readObj5,
+        ObjectAddress readObj6,
+        ObjectAddress readObj7,
+        ObjectAddress readObj8,
+        TransactionObjectCounter writtenObjectCount,
+        ObjectAddress writtenObj1,
+        ObjectAddress writtenObj2,
+        ObjectAddress writtenObj3,
+        ObjectAddress writtenObj4,
+        ObjectAddress writtenObj5,
+        ObjectAddress writtenObj6,
+        ObjectAddress writtenObj7,
+        ObjectAddress writtenObj8
     );
 endinterface
 

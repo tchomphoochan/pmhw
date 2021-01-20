@@ -1,4 +1,6 @@
-CONNECTALDIR ?= connectal
+ifndef CONNECTALDIR
+$(error CONNECTALDIR variable is not defined, aborting build)
+endif
 
 S2H_INTERFACES = HostToPuppetmaster:PmTop.request
 H2S_INTERFACES = PmTop:PuppetmasterToHostIndication

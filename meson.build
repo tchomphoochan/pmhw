@@ -1,58 +1,57 @@
+# Build file for the Puppetmaster project's Bluespec design files.
 project('pmhw')
 
+# Find external programs needed.
 bsc = find_program('bsc')
 prog_python = import('python').find_installation('python3')
-builddir = meson.current_build_dir()
 
-pm_ifc_obj = custom_target('pm_ifc_obj',
-    input: 'PmIfc.bsv',
-    output: ['PmIfc.bo'],
-    command: [
-        bsc,
-        '-quiet',
-        '-bdir', builddir,
-        '-aggressive-conditions',
-        '-sim',
-        '@INPUT@'])
+# List of modules in the project.
+modules = [
+    'PmIfc',
+    'PmCore',
+    'Shard',
+    'Renamer',
+    'Scheduler',
+    'Puppet',
+    'Puppetmaster',
+    'PmTop',
+]
 
-pm_core_obj = custom_target('pm_core_obj',
-    input: 'PmCore.bsv',
-    output: ['PmCore.bo'],
-    command: [
-        bsc,
-        '-quiet',
-        '-bdir', builddir,
-        '-aggressive-conditions',
-        '-sim',
-        '@INPUT@'],
-    depends: [pm_ifc_obj])
+# Modules with testbenches.
+has_tests = [
+    'Shard',
+    'Renamer',
+    'Scheduler',
+    'Puppetmaster',
+    'PmTop',
+]
 
-scheduler_obj = custom_target('scheduler_obj',
-    input: 'Scheduler.bsv',
-    output: ['Scheduler.bo', 'mkSchedulerTestbench.ba'],
-    command: [
-        bsc,
-        '-quiet',
-        '-bdir', builddir,
-        '-aggressive-conditions',
-        '-sim',
-        '-g', 'mkSchedulerTestbench',
-        '@INPUT@'],
-    depends: [pm_core_obj, pm_ifc_obj])
+# Modules with testbenches that are built by default, i.e. when `meson compile` is run.
+is_default = [
+    'Puppetmaster',
+    'PmTop',
+]
 
-scheduler = custom_target('scheduler',
-    input: scheduler_obj,
-    output: 'mkSchedulerTestbench',
-    command: [
-        bsc,
-        '-quiet',
-        '-simdir', builddir,
-        '-sim',
-        '-e', '@OUTPUT@',
-        '-o', '@OUTPUT@'])
+# Bluespec module dependencies. Values are arrays of indices into the `modules` array.
+# This workaround is needed because Meson dictionaries are immutable.
+dep_indices = {
+    'PmCore': [0],
+    'Shard': [0, 1],
+    'Renamer': [0, 1, 2],
+    'Scheduler': [0, 1],
+    'Puppet': [0, 1],
+    'Puppetmaster': [0, 1, 2, 3, 4, 5],
+    'PmTop': [0, 1, 6],
+}
 
+# Non-Bluespec build targets.
 memfile = custom_target('memfile',
-    input: ['make_memfile.py', 'PmCore.bsv', 'PmIfc.bsv', 'Shard.bsv'],
+    input: [
+        'make_memfile.py',
+        'PmCore.bsv',
+        'PmIfc.bsv',
+        'Shard.bsv'
+    ],
     output: 'mem.vmh',
     command: [
         prog_python,
@@ -60,114 +59,68 @@ memfile = custom_target('memfile',
         '@INPUT1@',
         '@INPUT2@',
         '@INPUT3@',
-        '@OUTPUT@'])
+        '@OUTPUT@',
+    ],
+)
 
-shard_obj = custom_target('shard_obj',
-    input: 'Shard.bsv',
-    output: ['Shard.bo', 'mkShardTestbench.ba'],
-    command: [
-        bsc,
+# Dependencies on non-Bluespec targets.
+other_deps = {
+    'Shard': [memfile],
+}
+
+# Bluespec build targets.
+obj_targets = []
+foreach module : modules
+    # Determine target names.
+    target_name = module.to_lower()
+    obj_target_name = target_name + '_obj'
+
+    # Generate output file names and compiler options.
+    obj_outputs = ['@0@.bo'.format(module)]
+    obj_bsc_opts = [
         '-quiet',
-        '-bdir', builddir,
+        '-bdir', '@OUTDIR@',
         '-aggressive-conditions',
         '-sim',
-        '-g', 'mkShardTestbench',
-        '@INPUT@'],
-    depends: [pm_core_obj, pm_ifc_obj, memfile])
+    ]
+    if module in has_tests
+        obj_outputs += ['mk@0@Testbench.ba'.format(module)]
+        obj_bsc_opts += ['-g', 'mk@0@Testbench'.format(module)]
+    endif
+    if get_option('debug')
+        obj_bsc_opts += ['-D', 'DEBUG=1']
+    endif
 
-shard = custom_target('shard',
-    input: shard_obj,
-    output: 'mkShardTestbench',
-    command: [
-        bsc,
-        '-quiet',
-        '-simdir', builddir,
-        '-sim',
-        '-e', '@OUTPUT@',
-        '-o', '@OUTPUT@'])
+    # Compute dependencies.
+    deps = []
+    foreach dep_index : dep_indices.get(module, [])
+        deps += obj_targets[dep_index]
+    endforeach
+    deps += other_deps.get(module, [])
 
-renamer_obj = custom_target('renamer_obj',
-    input: 'Renamer.bsv',
-    output: ['Renamer.bo', 'mkRenamerTestbench.ba'],
-    command: [
-        bsc,
-        '-quiet',
-        '-bdir', builddir,
-        '-aggressive-conditions',
-        '-sim',
-        '-g', 'mkRenamerTestbench',
-        '@INPUT@'],
-    depends: [pm_core_obj, pm_ifc_obj, shard_obj])
+    # Build target for generating Bluesim object file.
+    obj_target = custom_target(obj_target_name,
+        input: '@0@.bsv'.format(module),
+        output: obj_outputs,
+        command: [bsc] + obj_bsc_opts + ['@INPUT@'],
+        depends: deps,
+    )
+    obj_targets += [obj_target]
 
-renamer = custom_target('renamer',
-    input: renamer_obj,
-    output: 'mkRenamerTestbench',
-    command: [
-        bsc,
-        '-quiet',
-        '-simdir', builddir,
-        '-sim',
-        '-e', '@OUTPUT@',
-        '-o', '@OUTPUT@'])
-
-puppets_obj = custom_target('puppets_obj',
-    input: 'Puppets.bsv',
-    output: 'Puppets.bo',
-    command: [
-        bsc,
-        '-quiet',
-        '-bdir', builddir,
-        '-aggressive-conditions',
-        '-sim',
-        '@INPUT@'],
-    depends: [pm_core_obj, pm_ifc_obj])
-
-pm_obj = custom_target('pm_obj',
-    input: 'Puppetmaster.bsv',
-    output: ['Puppetmaster.bo', 'mkPuppetmasterTestbench.ba'],
-    command: [
-        bsc,
-        '-quiet',
-        '-bdir', builddir,
-        '-aggressive-conditions',
-        '-sim',
-        '-g', 'mkPuppetmasterTestbench',
-        '@INPUT@'],
-    depends: [pm_core_obj, pm_ifc_obj, puppets_obj, renamer_obj, scheduler_obj, shard_obj])
-
-pm = custom_target('pm',
-    input: pm_obj,
-    output: 'mkPuppetmasterTestbench',
-    command: [
-        bsc,
-        '-quiet',
-        '-simdir', builddir,
-        '-sim',
-        '-e', '@OUTPUT@',
-        '-o', '@OUTPUT@'],
-    build_by_default: true)
-
-pm_top_obj = custom_target('pm_top_obj',
-    input: 'PmTop.bsv',
-    output: ['PmTop.bo'],
-    command: [
-        bsc,
-        '-quiet',
-        '-bdir', builddir,
-        '-aggressive-conditions',
-        '-sim',
-        '-g', 'mkPmTopTestbench',
-        '+RTS', '-Ksize', '-RTS',
-        '@INPUT@'],
-    depends: [pm_core_obj, pm_ifc_obj, pm_obj])
-
-pm_top = custom_target('pm_top',
-    input: pm_top_obj,
-    output: 'mkPmTopTestbench',
-    command: [
-        bsc,
-        '-quiet',
-        '-simdir', builddir,
-        '-sim',
-        '-e', '@OUTPUT@',
-        '-o', '@OUTPUT@'])
+    # Build target for Bluesim executable.
+    if module in has_tests
+        custom_target(target_name,
+            input: obj_target,
+            output: 'mk@0@Testbench'.format(module),
+            command: [
+                bsc,
+                '-quiet',
+                '-simdir', '@OUTDIR@',
+                '-sim',
+                '-e', '@OUTPUT@',
+                '-o', '@OUTPUT@',
+            ],
+            build_by_default: module in is_default,
+        )
+    endif
+endforeach

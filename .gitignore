@@ -1,3 +1,13 @@
+# Build directories.
 /build*/
 /verilator/
+
+# Cache directories.
 __pycache__/
+.cache/
+
+# JSON compilation database (contains absolute paths).
+compile_commands.json
+
+# Generated test inputs.
+*.csv

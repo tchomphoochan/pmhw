@@ -37,6 +37,8 @@ typedef struct {
     TransactionId tid;
     ObjectAddress address;
     ObjectType type_;
+    TransactionObjectCounter readObjectCount;
+    TransactionObjectCounter writtenObjectCount;
 } ShardRenameRequest deriving(Bits, Eq, FShow);
 
 typedef struct {
@@ -99,8 +101,7 @@ endfunction
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-
-(* descending_urgency = "doRename, startRename, endDelete, startDelete" *)
+(* descending_urgency = "doRename, startRename, endDelete, startDelete", synthesize *)
 module mkShard(Shard);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
@@ -119,6 +120,9 @@ module mkShard(Shard);
     Reg#(Bool) isDone <- mkReg(False);
     // True if rename was successful.
     Reg#(Bool) isSuccess <- mkReg(?);
+`ifdef DEBUG
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Helper functions.
@@ -155,6 +159,13 @@ module mkShard(Shard);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
+`ifdef DEBUG
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+`endif
+
     // This rule is needed because doRename is blocked before the first read
     // request gets sent to the BRAM.
     rule startRename if (maybeReq matches tagged Valid .sreq
@@ -162,6 +173,9 @@ module mkShard(Shard);
         lastKey <= getNextKey(req);
         tries <= tries + 1;
         bram.portA.request.put(makeReadRequest(getNextKey(req)));
+`ifdef DEBUG
+        $display("[%6d] Shard: start rename of %4h: %8h", cycle, req.tid, req.address);
+`endif
     endrule
 
     rule doRename if (maybeReq matches tagged Valid .sreq
@@ -177,23 +191,37 @@ module mkShard(Shard);
                 objectId: req.address
             };
             bram.portA.request.put(makeWriteRequest(lastKey, newEntry));
+`ifdef DEBUG
+            $display("[%6d] Shard: done rename of %4h: %8h to %3h", cycle, req.tid,
+                     req.address, keyToName(req, lastKey));
+`endif
         end else if (entry.counter == fromInteger(maxLiveObjects)
                      && entry.objectId == req.address
                      || tries == fromInteger(maxHashes - 1)) begin
             // Rename request failed: slot is full or hash functions exhausted.
             isDone <= True;
             isSuccess <= False;
+`ifdef DEBUG
+            $display("[%6d] Shard: failed rename of %4h: %8h", cycle, req.tid, req.address);
+`endif
         end else begin
             // Try next hash function (next offset).
             lastKey <= getNextKey(req);
             tries <= tries + 1;
             bram.portA.request.put(makeReadRequest(getNextKey(req)));
+`ifdef DEBUG
+            $display("[%6d] Shard: try #%0d rename of %4h: %8h", cycle, tries, req.tid,
+                     req.address);
+`endif
         end
     endrule
 
     rule startDelete (maybeReq matches tagged Valid .sreq
                       &&& sreq matches tagged Delete .req &&& !isDone);
         bram.portA.request.put(makeReadRequest(getKey(req.name)));
+`ifdef DEBUG
+        $display("[%6d] Shard: start delete: %3h", cycle, req.name);
+`endif
     endrule
 
     rule endDelete (maybeReq matches tagged Valid .sreq
@@ -205,6 +233,9 @@ module mkShard(Shard);
             objectId: entry.objectId
         };
         bram.portA.request.put(makeWriteRequest(getKey(req.name), newEntry));
+`ifdef DEBUG
+        $display("[%6d] Shard: done delete: %3h", cycle, req.name);
+`endif
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -214,6 +245,9 @@ module mkShard(Shard);
         method Action put(ShardRequest request) if (!isValid(maybeReq));
             maybeReq <= tagged Valid request;
             tries <= 0;
+`ifdef DEBUG
+        $display("[%6d] Shard: received request", cycle);
+`endif
         endmethod
     endinterface
 
@@ -224,6 +258,9 @@ module mkShard(Shard);
             maybeReq <= tagged Invalid;
             isDone <= False;
             let name = keyToName(req, lastKey);
+`ifdef DEBUG
+        $display("[%6d] Shard: finished %4h: %8h", cycle, req.tid, req.address);
+`endif
             if (isSuccess) begin
                 return ShardRenameResponse { request: req, name: tagged Valid name };
             end else begin

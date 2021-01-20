@@ -43,22 +43,15 @@ typedef 3 LogSizeRenamerBuffer;
 
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
 
-typedef Bit#(LogNumberTransactionObjects) TransactionObjectIndex;
 typedef Bit#(LogSizeRenamerBuffer) RenamerBufferIndex;
 
 typedef struct {
     RenamedTransaction renamedTr;
-    TransactionObjectCounter readObjectCount;
-    TransactionObjectCounter writtenObjectCount;
 } FailedRename deriving(Bits, Eq, FShow);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Typeclasses.
 ////////////////////////////////////////////////////////////////////////////////
-instance DefaultValue#(FailedRename);
-    defaultValue = FailedRename {renamedTr: ?, readObjectCount: 0, writtenObjectCount: 0};
-endinstance
-
 // Tells the arbiter whether we need to route responses back.
 instance ArbRequestTC#(RenamerRenameRequest);
     function Bool isReadRequest(a x) = True;
@@ -111,14 +104,18 @@ typedef struct {
     ObjectName objName;
 } RenamedObject deriving (Bits,Eq);
 
+(* synthesize *)
 module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     FIFO#(InputTransaction) inputFifo <- mkBypassFIFO();
-    Reg#(ObjectType) objType <- mkReg(ReadObject);
-    Reg#(TransactionObjectIndex) objIndex <- mkReg(0);
-    Reg#(Bool) isReady <- mkReg(True); 
+    Reg#(ObjectType) objType <- mkReg(?);
+    Reg#(TransactionObjectCounter) objIndex <- mkReg(0);
+    Reg#(Bool) isReady <- mkReg(True);
+`ifdef DEBUG
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -131,6 +128,16 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     end;
 
     ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+`ifdef DEBUG
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+`endif
+
+    ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     function Get#(ShardRequest) makeOutputInterface(Integer i);
@@ -141,29 +148,41 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                 method ActionValue#(ShardRequest) get() if (shardIndex == fromInteger(i));
                     InputTransaction inputTr = inputFifo.first();
                     if (objType == ReadObject) begin
-                        if (objIndex < fromInteger(objSetSize - 1)) begin
+                        if (objIndex < inputTr.readObjectCount - 1) begin
                             // Go to next read object.
                             objIndex <= objIndex + 1;
                         end else begin
                             // No more read objects, go to first written object.
                             objIndex <= 0;
-                            objType <= WrittenObject;
+                            if (inputTr.writtenObjectCount == 0) begin
+                                // Except if there are no written objects, then reset.
+                                inputFifo.deq();
+                            end else begin
+                                objType <= WrittenObject;
+                            end
                         end
                     end else begin
-                        if (objIndex < fromInteger(objSetSize - 1)) begin
+                        if (objIndex < inputTr.writtenObjectCount - 1) begin
                             // Go to next written object.
                             objIndex <= objIndex + 1;
                         end else begin
                             // No more written objects, transaction is processed.
                             objIndex <= 0;
-                            objType <= ReadObject;
                             inputFifo.deq();
                         end
                     end
+`ifdef DEBUG
+                    $display("[%6d] Renamer: renaming %4h, ", cycle, inputTr.tid,
+                             objType == ReadObject ? "read" : "written",
+                             " object %1d on shard %1d", objIndex, shardIndex);
+`endif
                     return tagged Rename ShardRenameRequest {
                         tid: inputTr.tid,
-                        address: objType == ReadObject ? inputTr.readObjects[objIndex] : inputTr.writtenObjects[objIndex],
-                        type_: objType
+                        address: objType == ReadObject ? inputTr.readObjects[objIndex] :
+                                                         inputTr.writtenObjects[objIndex],
+                        type_: objType,
+                        readObjectCount: inputTr.readObjectCount,
+                        writtenObjectCount: inputTr.writtenObjectCount
                     };
                 endmethod
             endinterface
@@ -174,8 +193,9 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
 
     interface Put request;
         method Action put(InputTransaction inputTr);
-            isReady <= False;
             inputFifo.enq(inputTr);
+            objType <= inputTr.readObjectCount > 0 ? ReadObject : WrittenObject;
+            isReady <= False;
         endmethod
     endinterface
 
@@ -188,11 +208,22 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     endinterface
 endmodule
 
+(* synthesize *)
 module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(FailedRename) req[2] <- mkCReg(2, defaultValue);
+    let emptyRenamedTransaction = RenamedTransaction {
+        tid: ?,
+        readObjects: ?,
+        writtenObjects: ?,
+        readObjectCount: 0,
+        writtenObjectCount: 0
+    };
+    Reg#(RenamedTransaction) req[2] <- mkCReg(2, emptyRenamedTransaction);
+`ifdef DEBUG
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
@@ -202,10 +233,20 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     let currentObj = req[0].readObjectCount != 0 ?
         RenamedObject {
             objType: ReadObject,
-            objName: req[0].renamedTr.readObjects[req[0].readObjectCount - 1] } :
+            objName: req[0].readObjects[req[0].readObjectCount - 1] } :
         RenamedObject {
             objType: WrittenObject,
-            objName: req[0].renamedTr.writtenObjects[req[0].writtenObjectCount - 1] };
+            objName: req[0].writtenObjects[req[0].writtenObjectCount - 1] };
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+`ifdef DEBUG
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -221,6 +262,13 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                         ReadObject : req[0].readObjectCount <= req[0].readObjectCount - 1;
                         WrittenObject : req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
                     endcase
+`ifdef DEBUG
+                    $display("[%6d] Renamer: deleting %4h, ", cycle, req[0].tid,
+                             currentObj.objType == ReadObject ? "read" : "write",
+                             " object %1d",
+                             currentObj.objType == ReadObject ? req[0].readObjectCount :
+                                                                req[0].writtenObjectCount);
+`endif
                     return tagged Delete ShardDeleteRequest { name: currentObj.objName };
                 endmethod
             endinterface
@@ -231,7 +279,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
 
     interface Put request;
         method Action put(FailedRename failedRename) if (done1);
-            req[1] <= failedRename;
+            req[1] <= failedRename.renamedTr;
         endmethod
     endinterface
 
@@ -262,12 +310,18 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     Reg#(TransactionId) tid <- mkReg(?);
     Reg#(RenamedObjects) readObjects <- mkReg(?);
     Reg#(RenamedObjects) writtenObjects <- mkReg(?);
+    let maxObjectCount = fromInteger(objSetSize);
+    Reg#(TransactionObjectCounter) totalReadObjectCount <- mkReg(maxObjectCount);
+    Reg#(TransactionObjectCounter) totalWrittenObjectCount <- mkReg(maxObjectCount);
     Reg#(ObjectSet) readSet <- mkReg(0);
     Reg#(ObjectSet) writeSet <- mkReg(0);
     Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) validReadObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) validWrittenObjectCount <- mkReg(0);
+`ifdef DEBUG
+    Reg#(Bit#(64)) cycle <- mkReg(0);
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
@@ -279,6 +333,8 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
         action
             readSet <= 0;
             writeSet <= 0;
+            totalReadObjectCount <= maxObjectCount;
+            totalWrittenObjectCount <= maxObjectCount;
             readObjectCount <= 0;
             writtenObjectCount <= 0;
             validReadObjectCount <= 0;
@@ -286,14 +342,27 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
         endaction;
 
     function Bool isDone();
-        return readObjectCount == fromInteger(objSetSize) && writtenObjectCount == fromInteger(objSetSize);
+        return readObjectCount == totalReadObjectCount &&
+               writtenObjectCount == totalWrittenObjectCount;
     endfunction
 
     let renamedTr = RenamedTransaction {
         tid: tid,
         readObjects: readObjects,
-        writtenObjects: writtenObjects
+        writtenObjects: writtenObjects,
+        readObjectCount: validReadObjectCount,
+        writtenObjectCount: validWrittenObjectCount
     };
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+`ifdef DEBUG
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
+`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -301,6 +370,8 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     interface Put request;
         method Action put(ShardRenameResponse response) if (!isDone());
             tid <= response.request.tid;
+            totalReadObjectCount <= response.request.readObjectCount;
+            totalWrittenObjectCount <= response.request.writtenObjectCount;
             // Increment request count.
             case (response.request.type_) matches
                 ReadObject: readObjectCount <= readObjectCount + 1;
@@ -321,6 +392,13 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
                     end
                 endcase
             end
+`ifdef DEBUG
+            $display("[%6d] Renamer: renamed %4h, ", cycle, response.request.tid,
+                     response.request.type_ == ReadObject ? "read" : "write",
+                     " object %1d",
+                     response.request.type_ == ReadObject ? readObjectCount :
+                                                            writtenObjectCount);
+`endif
         endmethod
     endinterface
 
@@ -338,11 +416,10 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     interface Get failure;
         method ActionValue#(FailedRename) get() if (isDone() && !success);
             resetState();
-            return FailedRename {
-                renamedTr : renamedTr,
-                readObjectCount: validReadObjectCount,
-                writtenObjectCount: validWrittenObjectCount
-            };
+`ifdef DEBUG
+            $display("[%6d] Renamer: failed to rename %4h", cycle, renamedTr.tid);
+`endif
+            return FailedRename { renamedTr : renamedTr };
         endmethod
     endinterface
 endmodule
@@ -354,6 +431,7 @@ endmodule
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+(* synthesize *)
 module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
@@ -444,9 +522,7 @@ module mkRenamer(Renamer);
         method Action put(RenamerDeleteRequest req) if (
                 findElem(True, map(getCanPut, deleteDistributors)) matches tagged Valid .index);
             deleteDistributors[index].request.put(FailedRename {
-                renamedTr: req.renamedTr,
-                readObjectCount: fromInteger(objSetSize),
-                writtenObjectCount: fromInteger(objSetSize)
+                renamedTr: req.renamedTr
             });
         endmethod
     endinterface
@@ -471,7 +547,9 @@ function RenamerRenameRequest makeRenameReq(TransactionId i, ObjectAddress r[], 
     return RenamerRenameRequest { inputTr: InputTransaction {
         tid: i,
         readObjects: arrayToVector(r),
-        writtenObjects: arrayToVector(w)
+        writtenObjects: arrayToVector(w),
+        readObjectCount: fromInteger(objSetSize),
+        writtenObjectCount: fromInteger(objSetSize)
     }};
 endfunction
 

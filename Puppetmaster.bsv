@@ -12,7 +12,7 @@ import Vector::*;
 
 import PmCore::*;
 import PmIfc::*;
-import Puppets::*;
+import Puppet::*;
 import Renamer::*;
 import Scheduler::*;
 import Shard::*;
@@ -44,12 +44,6 @@ interface Puppetmaster;
     interface Get#(PuppetmasterResponse) response;
     method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
 endinterface
-
-////////////////////////////////////////////////////////////////////////////////
-/// Numeric constants.
-////////////////////////////////////////////////////////////////////////////////
-Integer transactionTime = 2000;
-Integer maxPendingTransactions = 16;
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,7 +78,7 @@ module mkPuppetmaster(Puppetmaster);
     // Submodules.
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
-    Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkTimedPuppet(transactionTime));
+    Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkPuppet());
     // Arbiter to serialize status messages.
     let arb1 <- mkRoundRobin;
     Arbiter#(NumberPuppets, PuppetmasterResponse, void) msgArbiter <- mkArbiter(arb1, 1);
@@ -139,6 +133,9 @@ module mkPuppetmaster(Puppetmaster);
         bufferIndex[1] <= bufferIndex[1] + 1;
         let result <- renamer.response.get();
         buffer[bufferIndex[1]] <= result;
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: renamed %2h", cycle, result.renamedTr.tid);
+`endif
     endrule
 
     // When buffer is full, send scheduling request.
@@ -151,6 +148,9 @@ module mkPuppetmaster(Puppetmaster);
         let converted = map(getSchedTr, transactions);
         let toSchedule = cons(runningTrSet, converted);
         scheduler.request.put(toSchedule);
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: scheduler starting", cycle);
+`endif
     endrule
 
     // Retrieve indices of scheduled transacions.
@@ -158,6 +158,9 @@ module mkPuppetmaster(Puppetmaster);
         let scheduled <- scheduler.response.get();
         // Lowest bit corresponds to the currently running transactions, so remove it.
         pendingTrFlags <= scheduled[maxRounds - 1 : 1];
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: scheduler finished", cycle);
+`endif
     endrule
 
     // Send first (lowest-index) pending transaction to first idle puppet.
@@ -174,7 +177,11 @@ module mkPuppetmaster(Puppetmaster);
         // Start transaction on idle puppet.
         let started = buffer[trIndex];
         sentToPuppet[puppetIndex] <= started;
-        puppets[puppetIndex].start(started.renamedTr.tid);
+        puppets[puppetIndex].start(started.renamedTr);
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: starting %2h on puppet #%0d", cycle,
+                 started.renamedTr.tid, puppetIndex);
+`endif
     endrule
 
     rule sendMessages;
@@ -249,6 +256,8 @@ module mkPuppetmasterTestbench();
         testInputs = newVector;
     for (Integer i = 0; i < numTests * maxScheduledObjects; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
+        testInputs[i].readObjectCount = fromInteger(objSetSize);
+        testInputs[i].writtenObjectCount = fromInteger(objSetSize);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
             testInputs[i].readObjects[j] = fromInteger(objSetSize * i * 2 + j * 2);
             testInputs[i].writtenObjects[j] = fromInteger(case (i % 4) matches
