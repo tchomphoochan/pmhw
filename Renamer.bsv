@@ -178,6 +178,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
 `endif
                     return tagged Rename ShardRenameRequest {
                         tid: inputTr.tid,
+                        trType: inputTr.trType,
                         address: objType == ReadObject ? inputTr.readObjects[objIndex] :
                                                          inputTr.writtenObjects[objIndex],
                         type_: objType,
@@ -308,6 +309,7 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     Reg#(TransactionId) tid <- mkReg(?);
+    Reg#(TransactionType) trType <- mkReg(?);
     Reg#(RenamedObjects) readObjects <- mkReg(?);
     Reg#(RenamedObjects) writtenObjects <- mkReg(?);
     let maxObjectCount = fromInteger(objSetSize);
@@ -348,6 +350,7 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
 
     let renamedTr = RenamedTransaction {
         tid: tid,
+        trType: trType,
         readObjects: readObjects,
         writtenObjects: writtenObjects,
         readObjectCount: validReadObjectCount,
@@ -370,6 +373,7 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     interface Put request;
         method Action put(ShardRenameResponse response) if (!isDone());
             tid <= response.request.tid;
+            trType <= response.request.trType;
             totalReadObjectCount <= response.request.readObjectCount;
             totalWrittenObjectCount <= response.request.writtenObjectCount;
             // Increment request count.

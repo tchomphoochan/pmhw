@@ -35,6 +35,7 @@ typedef struct {
 
 typedef struct {
     TransactionId tid;
+    TransactionType trType;
     ObjectAddress address;
     ObjectType type_;
     TransactionObjectCounter readObjectCount;

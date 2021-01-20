@@ -14,6 +14,15 @@ typedef Bit#(LogMaxNumberTransactions) TransactionId;
 typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
 
+typedef enum {
+    DatabaseRead,
+    DatabaseWrite,
+    DatabaseIncrement,
+    DatabaseSwap,
+    MessageFetch,
+    MessagePost
+} TransactionType deriving (Bits, Eq, FShow);
+
 interface PuppetmasterToHostIndication;
     method Action transactionReceived(TransactionId tid, Timestamp timestamp);
     method Action transactionStarted(TransactionId tid, Timestamp timestamp);
@@ -23,6 +32,7 @@ endinterface
 interface HostToPuppetmaster;
     method Action enqueueTransaction(
         TransactionId tid,
+        TransactionType trType,
         TransactionObjectCounter readObjectCount,
         ObjectAddress readObj1,
         ObjectAddress readObj2,

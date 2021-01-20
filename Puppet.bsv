@@ -8,21 +8,10 @@ import PmIfc::*;
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 5 LogTransactionDelayBase;
-
-typedef TExp#(LogTransactionDelayBase) TransactionDelayBase;
-
-typedef Bit#(TAdd#(LogMaxTransactionObjectCount, LogTransactionDelayBase)) TransactionTimer;
-
 interface Puppet;
     method Action start(RenamedTransaction tr);
     method Bool isDone();
 endinterface
-
-////////////////////////////////////////////////////////////////////////////////
-/// Numeric constants.
-////////////////////////////////////////////////////////////////////////////////
-Integer delayBase = valueOf(TransactionDelayBase);
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -40,7 +29,7 @@ module mkPuppet(Puppet);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(TransactionTimer) timeLeft[2] <- mkCReg(2, 0);
+    Reg#(Timestamp) timeLeft[2] <- mkCReg(2, 0);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
@@ -54,8 +43,15 @@ module mkPuppet(Puppet);
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     method Action start(RenamedTransaction tr);
-        let objCount = tr.readObjectCount + tr.writtenObjectCount;
-        timeLeft[1] <= extend(objCount) * fromInteger(delayBase);
+        Timestamp trDuration = case (tr.trType) matches
+            DatabaseRead : 2000;
+            DatabaseWrite : 2000;
+            DatabaseIncrement : 4000;
+            DatabaseSwap : 8000;
+            MessageFetch : 1800;
+            MessagePost : 240;
+        endcase;
+        timeLeft[1] <= trDuration;
     endmethod
 
     method Bool isDone();
