@@ -6,7 +6,7 @@ typedef 64 LogMaxNumberTransactions;
 typedef 32 LogSizeMemory;
 typedef 3 LogMaxNumberTransactionObjects;
 
-typedef TAdd#(LogMaxNumberTransactionObjects, 2) LogMaxTransactionObjectCount;
+typedef TAdd#(LogMaxNumberTransactionObjects, 1) LogMaxTransactionObjectCount;
 typedef TExp#(LogMaxNumberTransactionObjects) MaxNumberTransactionObjects;
 
 typedef Bit#(64) Timestamp;
