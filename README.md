@@ -1,25 +1,37 @@
-To compile and run Puppetmaster in Bluesim:
-- install Python 3.5 or newer
-- install [meson](https://mesonbuild.com/)
-- install [ninja](https://ninja-build.org/)
-- install [bsc](https://github.com/B-Lang-org/bsc)
-- `meson setup build` (you can replace `build` with anything, adjust commands accordingly)
-- `cd build && meson compile`
-  or `meson compile -C build`
-  or `ninja -C build`
-- (inside `build`) `./mkPuppetmasterTestbench`
+Puppetmaster
+============
+A hardware architecture for task parallelism.
 
-To compile and run Connectal wrapper (in Verilator):
-- install [connectal](http://www.connectal.org/)
-- install [bsc-contrib](https://github.com/B-Lang-org/bsc-contrib)
-- install [verilator](https://www.veripool.org/wiki/verilator)
-- set `CONNECTALDIR` to point to the root of the Connectal installation directory
-- set `BLUESPECDIR` to point to the root of the Bluespec installation directory
-- (optional) set `PROJECTDIR` and use that as the build directory instead of `verilator`
-- `make gen.verilator && cd verilator && make`
-  or `make gen.verilator && make -C verilator`
-  or `make build.verilator`
-- copy `mem.vmh` from `build` to `verilator`
-- `make run.verilator`
-  or `make -C verilator run`
-  or (inside `verilator`) `make run`
+Requirements
+------------
+- Python 3.5 or newer
+- [bsc](https://github.com/B-Lang-org/bsc)
+- [meson](https://mesonbuild.com/)
+- [ninja](https://ninja-build.org/)
+- [connectal](http://www.connectal.org/) (for FPGA synthesis)
+- GNU make (for FPGA synthesis)
+- GNU compiler collection a.k.a. gcc (for FPGA synthesis)
+- [bsc-contrib](https://github.com/B-Lang-org/bsc-contrib) (for FPGA synthesis)
+- [verilator](https://www.veripool.org/wiki/verilator)  (for FPGA simulation)
+
+Compiling and running tests in Bluesim
+--------------------------------------
+```
+$ meson builddir && cd builddir
+$ meson compile
+$ ./mkPuppetmasterTestbench
+```
+
+Compiling and running FPGA design in Verilator
+----------------------------------------------
+For the commands below to work, two environment variables need to be set:
+- `CONNECTALDIR` to point to the root of the Connectal installation directory
+- `BLUESPECDIR` to point to the `lib` subdirectory in the Bluespec installation directory
+
+```
+$ make build.verilator
+$ cp builddir/mem.vmh verilator/mem.vmh
+$ make run.verilator
+```
+
+If the second command gives an error, the Bluesim design needs to be compiled (see above).
