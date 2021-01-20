@@ -29,7 +29,7 @@ typedef struct {
 
 // Helper function equivalent to C++20 std::unordered_set::contains.
 template <typename type>
-bool set_contains(std::unordered_set<type> &set, type &key) {
+bool set_contains(std::unordered_set<type>& set, type& key) {
     return set.find(key) != set.end();
 }
 
@@ -58,10 +58,10 @@ public:
         : PuppetmasterToHostIndicationWrapper(id) {}
 };
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
     print_log("Connectal setting up...");
 
-    HostToPuppetmasterProxy *fpga =
+    HostToPuppetmasterProxy* fpga =
         new HostToPuppetmasterProxy(IfcNames_HostToPuppetmasterS2H);
     print_log("Initialized the request interface to the FPGA");
 
@@ -142,11 +142,11 @@ int main(int argc, char **argv) {
                         ObjectAddress address;
                         try {
                             address = std::stoul(value);
-                        } catch (const std::invalid_argument &) {
+                        } catch (const std::invalid_argument&) {
                             std::cerr << "Not an address: \"" << value << "\""
                                       << std::endl;
                             return 3;
-                        } catch (const std::out_of_range &) {
+                        } catch (const std::out_of_range&) {
                             std::cerr << "Out of range: " << value << std::endl;
                             return 4;
                         }
@@ -167,7 +167,7 @@ int main(int argc, char **argv) {
 
     // Run tests.
     print_log("Enqueuing transactions...");
-    for (auto &&tr : testInputs) {
+    for (auto&& tr : testInputs) {
         fpga->enqueueTransaction(
             tr.tid, tr.readObjectCount, tr.readObjects[0], tr.readObjects[1],
             tr.readObjects[2], tr.readObjects[3], tr.readObjects[4], tr.readObjects[5],

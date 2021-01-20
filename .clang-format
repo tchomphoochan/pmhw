@@ -8,3 +8,4 @@ IndentCaseLabels: false
 ColumnLimit: 88
 AccessModifierOffset: -4
 NamespaceIndentation: All
+DerivePointerAlignment: false
