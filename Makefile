@@ -6,9 +6,10 @@ BSVFILES += PmIfc.bsv
 BSVPATH += $(CONNECTALDIR)/bsv
 CPPFILES += main.cpp
 
+CONNECTALFLAGS += --mainclockperiod=20
 CONNECTALFLAGS += --cxxflags="-std=c++17"
 CONNECTALFLAGS += --nonstrict
-CONNECTALFLAGS += --bscflags="+RTS -K512m -RTS"
+CONNECTALFLAGS += --bscflags="+RTS -K1G -H6G -RTS"
 
 
 include $(CONNECTALDIR)/Makefile.connectal
