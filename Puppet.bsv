@@ -48,8 +48,8 @@ module mkPuppet(Puppet);
             DatabaseWrite : 2000;
             DatabaseIncrement : 4000;
             DatabaseSwap : 8000;
-            MessageFetch : 1800;
-            MessagePost : 240;
+            MessageFetch : 2700;
+            MessagePost : 1800;
         endcase;
         timeLeft[1] <= trDuration;
     endmethod
