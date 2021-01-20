@@ -17,6 +17,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
     rule receiveResponseFromPm;
         let result <- pm.response.get();
         case (result.status) matches
+            Received : indication.transactionReceived(result.id, result.timestamp);
             Started : indication.transactionStarted(result.id, result.timestamp);
             Finished : indication.transactionFinished(result.id, result.timestamp);
         endcase
@@ -76,6 +77,10 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
 endmodule
 
 module mkTestIndication(PuppetmasterToHostIndication);
+    method Action transactionReceived(TransactionId tid, Bit#(64) timestamp);
+        $display("[%6d] PmTop: received %4h", timestamp, tid);
+    endmethod
+
     method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
         $display("[%6d] PmTop: started %4h", timestamp, tid);
     endmethod
@@ -139,6 +144,5 @@ module mkPmTopTestbench();
             writtenObjs[6],
             writtenObjs[7]
         );
-        $display("[%6d] PmTop: enqueued %2h", cycle, testIndex);
     endrule
 endmodule

@@ -14,6 +14,7 @@ typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
 
 interface PuppetmasterToHostIndication;
+    method Action transactionReceived(TransactionId tid, Bit#(64) timestamp);
     method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
     method Action transactionFinished(TransactionId tid, Bit#(64) timestamp);
 endinterface
@@ -45,4 +46,3 @@ endinterface
 interface PmTop; 
     interface HostToPuppetmaster request;
 endinterface
-

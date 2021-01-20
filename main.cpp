@@ -42,6 +42,12 @@ void print_log(std::string_view msg, std::uint64_t timestamp = 0) {
 // Handler for messages received from the FPGA
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 public:
+    void transactionReceived(std::uint64_t tid, std::uint64_t timestamp) {
+        std::ostringstream msg;
+        msg << "received " << std::setw(4) << std::setfill('0') << std::hex << tid;
+        print_log(msg.str(), timestamp);
+    }
+
     void transactionStarted(std::uint64_t tid, std::uint64_t timestamp) {
         std::ostringstream msg;
         msg << "started " << std::setw(4) << std::setfill('0') << std::hex << tid;

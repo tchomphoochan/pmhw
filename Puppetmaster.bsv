@@ -26,7 +26,11 @@ typedef TExp#(LogNumberPuppets) NumberPuppets;
 
 typedef InputTransaction PuppetmasterRequest;
 
-typedef enum { Started, Finished } TransactionStatus deriving (Bits, Eq, FShow);
+typedef enum {
+    Received,
+    Started,
+    Finished
+} TransactionStatus deriving (Bits, Eq, FShow);
 
 typedef struct {
     TransactionId id;
@@ -44,6 +48,11 @@ interface Puppetmaster;
     interface Get#(PuppetmasterResponse) response;
     method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
 endinterface
+
+////////////////////////////////////////////////////////////////////////////////
+/// Numeric constants.
+////////////////////////////////////////////////////////////////////////////////
+Integer numPuppets = valueOf(NumberPuppets);
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -81,7 +90,8 @@ module mkPuppetmaster(Puppetmaster);
     Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkPuppet());
     // Arbiter to serialize status messages.
     let arb1 <- mkRoundRobin;
-    Arbiter#(NumberPuppets, PuppetmasterResponse, void) msgArbiter <- mkArbiter(arb1, 1);
+    Arbiter#(TAdd#(NumberPuppets, 1), PuppetmasterResponse, void) msgArbiter <-
+        mkArbiter(arb1, 1);
     // Arbiter to serialize transaction deletion requests.
     let arb2 <- mkRoundRobin;
     Arbiter#(NumberPuppets, RenamerDeleteRequest, void) reqArbiter <- mkArbiter(arb2, 1);
@@ -186,7 +196,7 @@ module mkPuppetmaster(Puppetmaster);
 
     rule sendMessages;
         prevPuppetFlags <= puppetFlags;
-        for (Integer i = 0; i < valueOf(NumberPuppets); i = i + 1) begin
+        for (Integer i = 0; i < numPuppets; i = i + 1) begin
             case (tuple2(prevPuppetFlags[i], puppetFlags[i])) matches
                 {False, True} : begin
                     msgArbiter.users[i].request.put(PuppetmasterResponse {
@@ -216,6 +226,11 @@ module mkPuppetmaster(Puppetmaster);
     interface Put request;
         method Action put(InputTransaction inputTr);
             renamer.renameRequest.put(RenamerRenameRequest { inputTr: inputTr });
+            msgArbiter.users[numPuppets].request.put(PuppetmasterResponse {
+                id: inputTr.tid,
+                status: Received,
+                timestamp: cycle
+            });
         endmethod
     endinterface
 
