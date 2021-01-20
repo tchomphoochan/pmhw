@@ -35,7 +35,7 @@ typedef enum {
 typedef struct {
     TransactionId id;
     TransactionStatus status;
-    Bit#(64) timestamp;
+    Timestamp timestamp;
 } PuppetmasterResponse deriving (Bits, Eq, FShow);
 
 instance ArbRequestTC#(PuppetmasterResponse);
@@ -80,7 +80,7 @@ module mkPuppetmaster(Puppetmaster);
     // Last transaction sent to each puppet.
     Reg#(Vector#(NumberPuppets, RenamerResponse)) sentToPuppet <- mkReg(?);
     // Clock.
-    Reg#(Bit#(64)) cycle <- mkReg(0);
+    Reg#(Timestamp) cycle <- mkReg(0);
     // Store previous puppet state to detect when transactions finish running.
     Reg#(Vector#(NumberPuppets, Bool)) prevPuppetFlags <- mkReg(replicate(False));
 

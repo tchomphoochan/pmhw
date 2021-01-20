@@ -77,15 +77,15 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
 endmodule
 
 module mkTestIndication(PuppetmasterToHostIndication);
-    method Action transactionReceived(TransactionId tid, Bit#(64) timestamp);
+    method Action transactionReceived(TransactionId tid, Timestamp timestamp);
         $display("[%6d] PmTop: received %4h", timestamp, tid);
     endmethod
 
-    method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
+    method Action transactionStarted(TransactionId tid, Timestamp timestamp);
         $display("[%6d] PmTop: started %4h", timestamp, tid);
     endmethod
 
-    method Action transactionFinished(TransactionId tid, Bit#(64) timestamp);
+    method Action transactionFinished(TransactionId tid, Timestamp timestamp);
         $display("[%6d] PmTop: finished %4h", timestamp, tid);
     endmethod
 endmodule
@@ -112,7 +112,7 @@ module mkPmTopTestbench();
     end
 
     Reg#(Bit#(32)) testIndex <- mkReg(0);
-    Reg#(Bit#(64)) cycle <- mkReg(0);
+    Reg#(Timestamp) cycle <- mkReg(0);
 
     (* fire_when_enabled, no_implicit_conditions *)
     rule tick;

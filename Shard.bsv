@@ -121,7 +121,7 @@ module mkShard(Shard);
     // True if rename was successful.
     Reg#(Bool) isSuccess <- mkReg(?);
 `ifdef DEBUG
-    Reg#(Bit#(64)) cycle <- mkReg(0);
+    Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
     ////////////////////////////////////////////////////////////////////////////////

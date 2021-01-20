@@ -34,7 +34,7 @@ bool set_contains(std::unordered_set<type>& set, type& key) {
 }
 
 // Helper function to print log messages.
-void print_log(std::string_view msg, std::uint64_t timestamp = 0) {
+void print_log(std::string_view msg, Timestamp timestamp = 0) {
     std::cout << "[" << std::setw(6) << timestamp << "] "
               << "main.cpp: " << msg << std::endl;
 }
@@ -42,19 +42,19 @@ void print_log(std::string_view msg, std::uint64_t timestamp = 0) {
 // Handler for messages received from the FPGA
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 public:
-    void transactionReceived(std::uint64_t tid, std::uint64_t timestamp) {
+    void transactionReceived(TransactionId tid, Timestamp timestamp) {
         std::ostringstream msg;
         msg << "received " << std::setw(4) << std::setfill('0') << std::hex << tid;
         print_log(msg.str(), timestamp);
     }
 
-    void transactionStarted(std::uint64_t tid, std::uint64_t timestamp) {
+    void transactionStarted(TransactionId tid, Timestamp timestamp) {
         std::ostringstream msg;
         msg << "started " << std::setw(4) << std::setfill('0') << std::hex << tid;
         print_log(msg.str(), timestamp);
     }
 
-    void transactionFinished(std::uint64_t tid, std::uint64_t timestamp) {
+    void transactionFinished(TransactionId tid, Timestamp timestamp) {
         std::ostringstream msg;
         msg << "finished " << std::setw(4) << std::setfill('0') << std::hex << tid;
         print_log(msg.str(), timestamp);

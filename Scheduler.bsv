@@ -106,7 +106,7 @@ module mkScheduler(Scheduler);
     // Number of transactions that have already been merged in this round.
     Reg#(SchedulingPoolIndex) offset <- mkReg(0);
 `ifdef DEBUG
-    Reg#(Bit#(64)) cycle <- mkReg(0);
+    Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
     ////////////////////////////////////////////////////////////////////////////////

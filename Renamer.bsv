@@ -114,7 +114,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     Reg#(TransactionObjectCounter) objIndex <- mkReg(0);
     Reg#(Bool) isReady <- mkReg(True);
 `ifdef DEBUG
-    Reg#(Bit#(64)) cycle <- mkReg(0);
+    Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -222,7 +222,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     };
     Reg#(RenamedTransaction) req[2] <- mkCReg(2, emptyRenamedTransaction);
 `ifdef DEBUG
-    Reg#(Bit#(64)) cycle <- mkReg(0);
+    Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -320,7 +320,7 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     Reg#(TransactionObjectCounter) validReadObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) validWrittenObjectCount <- mkReg(0);
 `ifdef DEBUG
-    Reg#(Bit#(64)) cycle <- mkReg(0);
+    Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
     ////////////////////////////////////////////////////////////////////////////////

@@ -9,14 +9,15 @@ typedef 3 LogMaxNumberTransactionObjects;
 typedef TAdd#(LogMaxNumberTransactionObjects, 2) LogMaxTransactionObjectCount;
 typedef TExp#(LogMaxNumberTransactionObjects) MaxNumberTransactionObjects;
 
+typedef Bit#(64) Timestamp;
 typedef Bit#(LogMaxNumberTransactions) TransactionId;
 typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
 
 interface PuppetmasterToHostIndication;
-    method Action transactionReceived(TransactionId tid, Bit#(64) timestamp);
-    method Action transactionStarted(TransactionId tid, Bit#(64) timestamp);
-    method Action transactionFinished(TransactionId tid, Bit#(64) timestamp);
+    method Action transactionReceived(TransactionId tid, Timestamp timestamp);
+    method Action transactionStarted(TransactionId tid, Timestamp timestamp);
+    method Action transactionFinished(TransactionId tid, Timestamp timestamp);
 endinterface
 
 interface HostToPuppetmaster;
