@@ -271,6 +271,7 @@ module mkPuppetmasterTestbench();
         testInputs = newVector;
     for (Integer i = 0; i < numTests * maxScheduledObjects; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
+        testInputs[i].trType = DatabaseSwap;
         testInputs[i].readObjectCount = fromInteger(objSetSize);
         testInputs[i].writtenObjectCount = fromInteger(objSetSize);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
@@ -300,6 +301,7 @@ module mkPuppetmasterTestbench();
     endrule
 
     rule stream;
+        let _ <- myPuppetmaster.response.get();
         let result = myPuppetmaster.pollPuppets();
         prevResult <= result;
         if (prevResult != result)

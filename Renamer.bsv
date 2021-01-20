@@ -550,6 +550,7 @@ Integer numTests = valueOf(NumberRenamerTests);
 function RenamerRenameRequest makeRenameReq(TransactionId i, ObjectAddress r[], ObjectAddress w[]);
     return RenamerRenameRequest { inputTr: InputTransaction {
         tid: i,
+        trType: MessagePost,
         readObjects: arrayToVector(r),
         writtenObjects: arrayToVector(w),
         readObjectCount: fromInteger(objSetSize),

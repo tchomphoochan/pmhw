@@ -276,8 +276,22 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 typedef 17 NumberShardTests;
 
-function ShardRequest makeRenameReq(TransactionId id, ObjectAddress addr, ObjectType t);
-    return tagged Rename ShardRenameRequest {tid: id, address: addr, type_: t};
+function ShardRequest makeRenameReq(
+    TransactionId id,
+    TransactionType trT,
+    ObjectAddress addr,
+    ObjectType t,
+    TransactionObjectCounter rC,
+    TransactionObjectCounter wC
+);
+    return tagged Rename ShardRenameRequest {
+        tid: id,
+        trType: trT,
+        address: addr,
+        type_: t,
+        readObjectCount: rC,
+        writtenObjectCount: wC
+    };
 endfunction
 
 function ShardRequest makeDeleteReq(ObjectName name);
@@ -288,23 +302,23 @@ module mkShardTestbench();
     Shard myShard <- mkShard();
 
     Vector#(NumberShardTests, ShardRequest) testInputs;
-    testInputs[0] = makeRenameReq(64'h1, 32'h00000000, ReadObject);
-    testInputs[1] = makeRenameReq(64'h1, 32'h00000205, WrittenObject);
-    testInputs[2] = makeRenameReq(64'h1, 32'hA0000406, ReadObject);
-    testInputs[3] = makeRenameReq(64'h1, 32'h00000300, ReadObject);
-    testInputs[4] = makeRenameReq(64'h2, 32'hA0000406, WrittenObject);
-    testInputs[5] = makeRenameReq(64'h1, 32'hB0000406, ReadObject);
-    testInputs[6] = makeRenameReq(64'h3, 32'hC0000406, ReadObject);
-    testInputs[7] = makeRenameReq(64'h4, 32'hD0000406, ReadObject);
-    testInputs[8] = makeRenameReq(64'h5, 32'hE0000406, ReadObject);
-    testInputs[9] = makeRenameReq(64'h6, 32'hF0000406, WrittenObject);
-    testInputs[10] = makeRenameReq(64'h7, 32'hF0000806, ReadObject);
-    testInputs[11] = makeRenameReq(64'h8, 32'hF0000C06, ReadObject);
+    testInputs[0] = makeRenameReq(64'h1, DatabaseRead, 32'h00000000, ReadObject, 4, 7);
+    testInputs[1] = makeRenameReq(64'h1, DatabaseRead, 32'h00000205, WrittenObject, 2, 2);
+    testInputs[2] = makeRenameReq(64'h1, DatabaseWrite, 32'hA0000406, ReadObject, 3, 5);
+    testInputs[3] = makeRenameReq(64'h1, DatabaseWrite, 32'h00000300, ReadObject, 2, 2);
+    testInputs[4] = makeRenameReq(64'h2, DatabaseIncrement, 32'hA0000406, WrittenObject, 1, 1);
+    testInputs[5] = makeRenameReq(64'h1, DatabaseIncrement, 32'hB0000406, ReadObject, 1, 1);
+    testInputs[6] = makeRenameReq(64'h3, DatabaseSwap, 32'hC0000406, ReadObject, 2, 2);
+    testInputs[7] = makeRenameReq(64'h4, DatabaseSwap, 32'hD0000406, ReadObject, 6, 6);
+    testInputs[8] = makeRenameReq(64'h5, MessageFetch, 32'hE0000406, ReadObject, 8, 2);
+    testInputs[9] = makeRenameReq(64'h6, MessageFetch, 32'hF0000406, WrittenObject, 4, 1);
+    testInputs[10] = makeRenameReq(64'h7, MessagePost, 32'hF0000806, ReadObject, 5, 5);
+    testInputs[11] = makeRenameReq(64'h8, MessagePost, 32'hF0000C06, ReadObject, 2, 8);
     testInputs[12] = makeDeleteReq(10'h00B);
-    testInputs[13] = makeRenameReq(64'h8, 32'hF0000C06, ReadObject);
+    testInputs[13] = makeRenameReq(64'h8, DatabaseRead, 32'hF0000C06, ReadObject, 4, 0);
     testInputs[14] = makeDeleteReq(10'h006);
     testInputs[15] = makeDeleteReq(10'h006);
-    testInputs[16] = makeRenameReq(64'h9, 32'hA0000006, ReadObject);
+    testInputs[16] = makeRenameReq(64'h9, DatabaseRead, 32'hA0000006, ReadObject, 8, 0);
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 
