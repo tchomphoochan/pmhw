@@ -10,6 +10,7 @@ typedef TAdd#(LogMaxNumberTransactionObjects, 1) LogMaxTransactionObjectCount;
 typedef TExp#(LogMaxNumberTransactionObjects) MaxNumberTransactionObjects;
 
 typedef Bit#(64) Timestamp;
+typedef Bit#(60) ClockMultiplier;
 typedef Bit#(LogMaxNumberTransactions) TransactionId;
 typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
@@ -52,6 +53,7 @@ interface HostToPuppetmaster;
         ObjectAddress writtenObj7,
         ObjectAddress writtenObj8
     );
+    method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
 endinterface
 
 interface PmTop; 

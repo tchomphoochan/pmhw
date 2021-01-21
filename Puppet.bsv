@@ -11,6 +11,7 @@ import PmIfc::*;
 interface Puppet;
     method Action start(RenamedTransaction tr);
     method Bool isDone();
+    method Action setClockMultiplier(ClockMultiplier multiplier);
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +31,7 @@ module mkPuppet(Puppet);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     Reg#(Timestamp) timeLeft[2] <- mkCReg(2, 0);
+    Reg#(ClockMultiplier) multiplier <- mkReg(2000);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
@@ -44,17 +46,21 @@ module mkPuppet(Puppet);
     ////////////////////////////////////////////////////////////////////////////////
     method Action start(RenamedTransaction tr);
         Timestamp trDuration = case (tr.trType) matches
-            DatabaseRead : 2000;
-            DatabaseWrite : 2000;
-            DatabaseIncrement : 4000;
-            DatabaseSwap : 8000;
-            MessageFetch : 2700;
-            MessagePost : 1800;
+            DatabaseRead : 1;
+            DatabaseWrite : 1;
+            DatabaseIncrement : 2;
+            DatabaseSwap : 4;
+            MessageFetch : 3;
+            MessagePost : 2;
         endcase;
-        timeLeft[1] <= trDuration;
+        timeLeft[1] <= trDuration * extend(multiplier);
     endmethod
 
     method Bool isDone();
         return timeLeft[1] == 0;
+    endmethod
+
+    method Action setClockMultiplier(ClockMultiplier m);
+        multiplier <= m;
     endmethod
 endmodule

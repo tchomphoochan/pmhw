@@ -75,6 +75,8 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
                 writtenObjectCount: writtenObjectCount
             });
 	    endmethod
+
+        method setPuppetClockMultiplier = pm.setPuppetClockMultiplier;
 	endinterface
 endmodule
 

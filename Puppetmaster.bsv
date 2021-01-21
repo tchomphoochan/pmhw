@@ -47,6 +47,7 @@ interface Puppetmaster;
     interface Put#(PuppetmasterRequest) request;
     interface Get#(PuppetmasterResponse) response;
     method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
+    method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -238,6 +239,11 @@ module mkPuppetmaster(Puppetmaster);
     
     method pollPuppets = zipWith(maybeFromBool, map(getTid, sentToPuppet), puppetFlags);
 
+    method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
+        for (Integer i = 0; i < numPuppets; i = i + 1) begin
+            puppets[i].setClockMultiplier(multiplier);
+        end
+    endmethod
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////
