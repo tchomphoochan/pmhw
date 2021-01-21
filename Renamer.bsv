@@ -34,6 +34,7 @@ interface Renamer;
     interface Put#(RenamerRenameRequest) renameRequest;
     interface Put#(RenamerDeleteRequest) deleteRequest;
     interface Get#(RenamerResponse) response;
+    method Action clearState();
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -534,6 +535,14 @@ module mkRenamer(Renamer);
             return result;
         endmethod
     endinterface
+
+    method Action clearState() if (all(getCanPut, renameDistributors) && all(getIsReady, shards));
+        // These calls conflict with the arbiter, but that's fine, since there should
+        // never be a shard request pending when this method is enabled.
+        for (Integer i = 0; i < numShards; i = i + 1) begin
+            shards[i].request.put(tagged Reset_);
+        end
+    endmethod
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////

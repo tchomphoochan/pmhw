@@ -54,6 +54,7 @@ interface HostToPuppetmaster;
         ObjectAddress writtenObj8
     );
     method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
+    method Action clearState();
 endinterface
 
 interface PmTop; 

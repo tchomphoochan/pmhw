@@ -77,6 +77,8 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
 	    endmethod
 
         method setPuppetClockMultiplier = pm.setPuppetClockMultiplier;
+
+        method clearState = pm.clearState;
 	endinterface
 endmodule
 

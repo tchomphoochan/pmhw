@@ -48,6 +48,7 @@ interface Puppetmaster;
     interface Get#(PuppetmasterResponse) response;
     method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
     method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
+    method Action clearState();
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -239,6 +240,11 @@ module mkPuppetmaster(Puppetmaster);
         for (Integer i = 0; i < numPuppets; i = i + 1) begin
             puppets[i].setClockMultiplier(multiplier);
         end
+    endmethod
+
+    method Action clearState() if (pendingTrFlags == 0 && all(getIsDone, puppets));
+        bufferIndex[1] <= 0;  // discard transactions that haven't been scheduled.
+        renamer.clearState();
     endmethod
 endmodule
 
