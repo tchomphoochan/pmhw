@@ -261,15 +261,17 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 method ActionValue#(ShardRequest) get() if (
                         !done0 &&& getShard(currentObj.objName) == fromInteger(i));
                     case (currentObj.objType) matches
-                        ReadObject : req[0].readObjectCount <= req[0].readObjectCount - 1;
-                        WrittenObject : req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
+                        ReadObject :
+                            req[0].readObjectCount <= req[0].readObjectCount - 1;
+                        WrittenObject :
+                            req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
                     endcase
 `ifdef DEBUG
                     $display("[%6d] Renamer: deleting %4h, ", cycle, req[0].tid,
                              currentObj.objType == ReadObject ? "read" : "write",
                              " object %1d",
-                             currentObj.objType == ReadObject ? req[0].readObjectCount :
-                                                                req[0].writtenObjectCount);
+                             currentObj.objType == ReadObject ?
+                                req[0].readObjectCount : req[0].writtenObjectCount);
 `endif
                     return tagged Delete ShardDeleteRequest { name: currentObj.objName };
                 endmethod
@@ -427,6 +429,8 @@ endmodule
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+typedef TAdd#(TMul#(2, SizeRenamerBuffer), 1) NumShardAccessors;
+
 (* synthesize *)
 module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
@@ -453,43 +457,57 @@ module mkRenamer(Renamer);
     DeleteRequestDistributor failedTransactionHandler <- mkDeleteRequestDistributor();
 
     // Connections from distributors to shards.
-    Vector#(NumberShards, Arbiter#(TAdd#(TMul#(2, SizeRenamerBuffer), 1), ShardRequest, ShardRenameResponse)) shardArbiters;
+    Vector#(NumberShards, Arbiter#(NumShardAccessors, ShardRequest, ShardRenameResponse))
+        shardArbiters;
     for (Integer i = 0; i < numShards; i = i + 1) begin
         let arb1 <- mkRoundRobin;
         shardArbiters[i] <- mkArbiter(arb1, 1);
         for (Integer j = 0; j < maxTransactions; j = j + 1) begin
-            mkConnection(renameDistributors[j].outputs[i], shardArbiters[i].users[j].request);
-            mkConnection(deleteDistributors[j].outputs[i], shardArbiters[i].users[maxTransactions + j].request);
+            mkConnection(
+                renameDistributors[j].outputs[i], shardArbiters[i].users[j].request
+            );
+            mkConnection(
+                deleteDistributors[j].outputs[i],
+                shardArbiters[i].users[maxTransactions + j].request
+            );
         end
         mkConnection(shardArbiters[i].master.request, shards[i].request);
         mkConnection(shards[i].response, shardArbiters[i].master.response);
     end
 
     // Connections from shards to aggregators.
-    Vector#(SizeRenamerBuffer, Arbiter#(NumberShards, ShardRenameResponse, void)) transactionArbiters;
+    Vector#(SizeRenamerBuffer, Arbiter#(NumberShards, ShardRenameResponse, void))
+        transactionArbiters;
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         let arb2 <- mkRoundRobin;
         transactionArbiters[i] <- mkArbiter(arb2, 1);
         for (Integer j = 0; j < numShards; j = j + 1) begin
-            mkConnection(shardArbiters[j].users[i].response, transactionArbiters[i].users[j].request);
+            mkConnection(
+                shardArbiters[j].users[i].response,
+                transactionArbiters[i].users[j].request
+            );
         end
         mkConnection(transactionArbiters[i].master.request, aggregators[i].request);
     end
 
     // Connections from aggregators to output.
     let arb3 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, RenamerResponse, void) outputArbiter <- mkArbiter(arb3, 1);
+    Arbiter#(SizeRenamerBuffer, RenamerResponse, void) outputArbiter <-
+        mkArbiter(arb3, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].response, outputArbiter.users[i].request);
     end
 
     // Connections from aggregators to failed transaction handler.
     let arb4 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, FailedRename, void) failedTransactionArbiter <- mkArbiter(arb4, 1);
+    Arbiter#(SizeRenamerBuffer, FailedRename, void) failedTransactionArbiter <-
+        mkArbiter(arb4, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].failure, failedTransactionArbiter.users[i].request);
     end
-    mkConnection(failedTransactionArbiter.master.request, failedTransactionHandler.request);
+    mkConnection(
+        failedTransactionArbiter.master.request, failedTransactionHandler.request
+    );
 
     // Connections from failed transaction handler back to the shards.
     for (Integer i = 0; i < numShards; i = i + 1) begin
@@ -520,8 +538,9 @@ module mkRenamer(Renamer);
     // Send renamed transaction to first free delete request distributor.
     interface Put deleteRequest;
         method Action put(RenamerDeleteRequest req) if (
-                findIndex(getCanPut, renameDistributors) matches tagged Valid .index
-                &&& all(getIsReady, shards));
+            findIndex(getCanPut, renameDistributors) matches tagged Valid .index
+            &&& all(getIsReady, shards)
+        );
             deleteDistributors[index].request.put(FailedRename {
                 renamedTr: req.renamedTr
             });
@@ -536,7 +555,9 @@ module mkRenamer(Renamer);
         endmethod
     endinterface
 
-    method Action clearState() if (all(getCanPut, renameDistributors) && all(getIsReady, shards));
+    method Action clearState() if (
+        all(getCanPut, renameDistributors) && all(getIsReady, shards)
+    );
         // These calls conflict with the arbiter, but that's fine, since there should
         // never be a shard request pending when this method is enabled.
         for (Integer i = 0; i < numShards; i = i + 1) begin
@@ -552,7 +573,9 @@ typedef 5 NumberRenamerTests;
 
 Integer numTests = valueOf(NumberRenamerTests);
 
-function RenamerRenameRequest makeRenameReq(TransactionId i, ObjectAddress r[], ObjectAddress w[]);
+function RenamerRenameRequest makeRenameReq(
+    TransactionId i, ObjectAddress r[], ObjectAddress w[]
+);
     return RenamerRenameRequest { inputTr: InputTransaction {
         tid: i,
         trType: MessagePost,
