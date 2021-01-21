@@ -1,4 +1,7 @@
-// Toplevel connectal PM
+////////////////////////////////////////////////////////////////////////////////
+//  Filename      : PmTop.bsv
+//  Description   : Connectal-friendly wrapper for Puppetmaster.
+////////////////////////////////////////////////////////////////////////////////
 import ClientServer::*;
 import GetPut::*;
 import Vector::*;
@@ -82,6 +85,9 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
 	endinterface
 endmodule
 
+////////////////////////////////////////////////////////////////////////////////
+// PmTop tests (these reuse the Puppetmaster end-to-end test data).
+////////////////////////////////////////////////////////////////////////////////
 module mkTestIndication(PuppetmasterToHostIndication);
     method Action transactionReceived(TransactionId tid, Timestamp timestamp);
         $display("[%6d] PmTop: received %4h", timestamp, tid);
@@ -96,43 +102,29 @@ module mkTestIndication(PuppetmasterToHostIndication);
     endmethod
 endmodule
 
-typedef 64 NumberPmTopTests;
-
-Integer numPmTopTests = valueOf(NumberPmTopTests);
-
 module mkPmTopTestbench();
     let myIndication <- mkTestIndication();
     PmTop myPmTop <- mkPmTop(myIndication);
 
-    Vector#(NumberPmTopTests, Vector#(2, Vector#(8, ObjectAddress))) testInputs = newVector;
-    for (Integer i = 0; i < numPmTopTests; i = i + 1) begin
-        for (Integer j = 0; j < objSetSize; j = j + 1) begin
-            testInputs[i][0][j] = fromInteger(objSetSize * i * 2 + j * 2);
-            testInputs[i][1][j] = fromInteger(case (i % 4) matches
-                    0 : (objSetSize * i           * 2 + j * 2 + 1);  // conflict with none
-                    1 : (objSetSize * (i - i % 2) * 2 + j * 2 + 1);  // conflict with one
-                    2 : (objSetSize * (i % 2)     * 2 + j * 2 + 1);  // conflict with half
-                    3 : (objSetSize               * 2 + j * 2 + 1);  // conflict with all
-                endcase);
-        end
-    end
-
     Reg#(Bit#(32)) testIndex <- mkReg(0);
     Reg#(Timestamp) cycle <- mkReg(0);
+
+    let testInputs = makeE2ETests();
 
     (* fire_when_enabled, no_implicit_conditions *)
     rule tick;
         cycle <= cycle + 1;
     endrule
 
-    rule feed if (testIndex < fromInteger(numPmTopTests));
+    rule feed if (testIndex < fromInteger(numE2ETests));
         testIndex <= testIndex + 1;
-        let readObjs = testInputs[testIndex][0];
-        let writtenObjs = testInputs[testIndex][1];
+        let testInput = testInputs[testIndex];
+        let readObjs = testInput.readObjects;
+        let writtenObjs = testInput.writtenObjects;
         myPmTop.request.enqueueTransaction(
-            extend(testIndex),
-            MessageFetch,
-            fromInteger(objSetSize),
+            testInput.tid,
+            testInput.trType,
+            testInput.readObjectCount,
             readObjs[0],
             readObjs[1],
             readObjs[2],
@@ -141,7 +133,7 @@ module mkPmTopTestbench();
             readObjs[5],
             readObjs[6],
             readObjs[7],
-            fromInteger(objSetSize),
+            testInput.writtenObjectCount,
             writtenObjs[0],
             writtenObjs[1],
             writtenObjs[2],

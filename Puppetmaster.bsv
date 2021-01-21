@@ -251,33 +251,14 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 // End-to-end puppetmaster tests.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 4 NumberPuppetmasterTests;
+typedef 4 NumberE2ETestRounds;
+typedef TMul#(NumberE2ETestRounds, SizeSchedulingPool) NumberE2ETests;
 
-Integer numTests = valueOf(NumberPuppetmasterTests);
+Integer numE2ETests = valueOf(NumberE2ETests);
 
-typedef struct {
-    Maybe#(TransactionId) maybeTid;
-} PuppetStatus;
-
-instance FShow#(PuppetStatus);
-    function Fmt fshow(PuppetStatus status);
-        case (status.maybeTid) matches
-            { tagged Invalid } : return $format("--");
-            { tagged Valid .tid } : return $format("%2h", tid);
-        endcase
-    endfunction
-endinstance
-
-function PuppetStatus toStatus(Maybe#(TransactionId) maybeTid);
-    return PuppetStatus { maybeTid : maybeTid };
-endfunction
-
-module mkPuppetmasterTestbench();
-    Puppetmaster myPuppetmaster <- mkPuppetmaster();
-
-    Vector#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool), PuppetmasterRequest)
-        testInputs = newVector;
-    for (Integer i = 0; i < numTests * maxScheduledObjects; i = i + 1) begin
+function Vector#(NumberE2ETests, PuppetmasterRequest) makeE2ETests();
+    Vector#(NumberE2ETests, PuppetmasterRequest) testInputs = newVector;
+    for (Integer i = 0; i < numE2ETests; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
         testInputs[i].trType = case (i % 4) matches
             0 : DatabaseRead;
@@ -299,18 +280,44 @@ module mkPuppetmasterTestbench();
             );
         end
     end
+    return testInputs;
+endfunction
 
-    Reg#(UInt#(TAdd#(TLog#(TMul#(NumberPuppetmasterTests, SizeSchedulingPool)), 1)))
-        counter <- mkReg(0);
+////////////////////////////////////////////////////////////////////////////////
+// Test runner.
+////////////////////////////////////////////////////////////////////////////////
+typedef struct {
+    Maybe#(TransactionId) maybeTid;
+} PuppetStatus;
+
+instance FShow#(PuppetStatus);
+    function Fmt fshow(PuppetStatus status);
+        case (status.maybeTid) matches
+            { tagged Invalid } : return $format("--");
+            { tagged Valid .tid } : return $format("%2h", tid);
+        endcase
+    endfunction
+endinstance
+
+function PuppetStatus toStatus(Maybe#(TransactionId) maybeTid);
+    return PuppetStatus { maybeTid : maybeTid };
+endfunction
+
+module mkPuppetmasterTestbench();
+    Puppetmaster myPuppetmaster <- mkPuppetmaster();
+
+    Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 1)))) counter <- mkReg(0);
     Reg#(UInt#(32)) cycle <- mkReg(0);
     Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) prevResult <- mkReg(?);
+
+    let testInputs = makeE2ETests();
 
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
     endrule
 
-    rule feed if (counter < fromInteger(numTests * maxScheduledObjects));
+    rule feed if (counter < fromInteger(numE2ETests));
         counter <= counter + 1;
         myPuppetmaster.request.put(testInputs[counter]);
     endrule
