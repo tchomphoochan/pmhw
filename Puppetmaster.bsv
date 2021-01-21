@@ -279,17 +279,24 @@ module mkPuppetmasterTestbench();
         testInputs = newVector;
     for (Integer i = 0; i < numTests * maxScheduledObjects; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
-        testInputs[i].trType = DatabaseSwap;
+        testInputs[i].trType = case (i % 4) matches
+            0 : DatabaseRead;
+            1 : DatabaseWrite;
+            2 : DatabaseIncrement;
+            3 : DatabaseSwap;
+        endcase;
         testInputs[i].readObjectCount = fromInteger(objSetSize);
         testInputs[i].writtenObjectCount = fromInteger(objSetSize);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
             testInputs[i].readObjects[j] = fromInteger(objSetSize * i * 2 + j * 2);
-            testInputs[i].writtenObjects[j] = fromInteger(case (i % 4) matches
-                0 : (objSetSize * i           * 2 + j * 2 + 1);  // conflict with none
-                1 : (objSetSize * (i - i % 2) * 2 + j * 2 + 1);  // conflict with 1 each
-                2 : (objSetSize * (i % 2)     * 2 + j * 2 + 1);  // conflict with half
-                3 : (objSetSize               * 2 + j * 2 + 1);  // conflict with all
-            endcase);
+            testInputs[i].writtenObjects[j] = fromInteger(
+                case (i / maxScheduledObjects) matches
+                    0 : (objSetSize * i           * 2 + j * 2 + 1);  // conflict with none
+                    1 : (objSetSize * (i - i % 2) * 2 + j * 2 + 1);  // conflict with one
+                    2 : (objSetSize * (i % 2)     * 2 + j * 2 + 1);  // conflict with half
+                    3 : (objSetSize               * 2 + j * 2 + 1);  // conflict with all
+                endcase
+            );
         end
     end
 
@@ -308,11 +315,15 @@ module mkPuppetmasterTestbench();
         myPuppetmaster.request.put(testInputs[counter]);
     endrule
 
-    rule stream;
+    rule drain;
         let _ <- myPuppetmaster.response.get();
+    endrule
+
+    rule stream;
         let result = myPuppetmaster.pollPuppets();
         prevResult <= result;
-        if (prevResult != result)
+        if (prevResult != result) begin
             $display("%5d: ", cycle, fshow(map(toStatus, result)));
+        end
     endrule
 endmodule
