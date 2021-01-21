@@ -57,11 +57,6 @@ memfile = custom_target('memfile',
     ],
 )
 
-# Dependencies on non-Bluespec targets.
-other_deps = {
-    'Shard': [memfile],
-}
-
 # Bluespec build targets.
 obj_targets = []
 foreach module : modules
@@ -90,7 +85,6 @@ foreach module : modules
     foreach dep_index : dep_indices.get(module, [])
         deps += obj_targets[dep_index]
     endforeach
-    deps += other_deps.get(module, [])
 
     # Build target for generating Bluesim object file.
     obj_target = custom_target(obj_target_name,

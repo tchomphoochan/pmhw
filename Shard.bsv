@@ -5,7 +5,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 import Arbitrate::*;
 import BRAM::*;
-import ClientServer::*;
 import Vector::*;
 
 import PmCore::*;
@@ -22,6 +21,7 @@ typedef TAdd#(1, LogNumberLiveObjects) ObjectCount;
 
 typedef TExp#(LogNumberShards) NumberShards;
 typedef TExp#(LogNumberHashes) NumberHashes;
+typedef TExp#(LogSizeShard) SizeShard;
 
 typedef Bit#(LogNumberShards) ShardIndex;
 typedef Bit#(LogNumberHashes) HashIndex;
@@ -49,6 +49,7 @@ typedef struct {
 typedef union tagged {
     ShardRenameRequest Rename;
     ShardDeleteRequest Delete;
+    void Reset_;
 } ShardRequest deriving(Bits, Eq, FShow);
 
 typedef struct {
@@ -56,7 +57,11 @@ typedef struct {
     Maybe#(ObjectName) name;
 } ShardRenameResponse deriving(Bits, Eq, FShow);
 
-typedef Server#(ShardRequest, ShardRenameResponse) Shard;
+interface Shard;
+    interface Put#(ShardRequest) request;
+    interface Get#(ShardRenameResponse) response;
+    method Bool isReady();
+endinterface
 
 // Type class instances telling the arbiter in the renamer module which messages
 // need responses routed back.
@@ -76,6 +81,7 @@ endinstance
 Integer numShards = valueOf(NumberShards);
 Integer logMaxShardObjects = valueOf(LogSizeShard);
 Integer maxHashes = valueOf(NumberHashes);
+Integer numKeys = valueOf(SizeShard);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Helper functions.
@@ -108,13 +114,12 @@ module mkShard(Shard);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     BRAM_Configure cfg = defaultValue();
-    cfg.loadFormat = tagged Hex "mem.vmh";
     BRAM2Port#(ShardKey, RenameTableEntry) bram <- mkBRAM2Server(cfg);
 
     // Currently processed request.
-    Reg#(Maybe#(ShardRequest)) maybeReq <- mkReg(tagged Invalid);
-    // Last name tried.
-    Reg#(ShardKey) lastKey <- mkReg(?);
+    Reg#(Maybe#(ShardRequest)) maybeReq <- mkReg(tagged Valid tagged Reset_);
+    // Last name tried or last key reset.
+    Reg#(ShardKey) lastKey <- mkReg(0);
     // Number of hash functions used.
     Reg#(HashIndex) tries <- mkReg(0);
     // True if response is ready.
@@ -239,12 +244,26 @@ module mkShard(Shard);
 `endif
     endrule
 
+    // Write zeros into every line of the renaming table (BRAM).
+    rule doReset if (maybeReq matches tagged Valid .sreq
+                    &&& sreq matches tagged Reset_);
+        let zeroEntry = RenameTableEntry { counter: 0, objectId: ? };
+        bram.portA.request.put(makeWriteRequest(lastKey, zeroEntry));
+        if (lastKey == fromInteger(numKeys - 1)) begin
+            maybeReq <= tagged Invalid;
+            lastKey <= 0;
+        end else begin
+            lastKey <= lastKey + 1;
+        end
+    endrule
+
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     interface Put request;
         method Action put(ShardRequest request) if (!isValid(maybeReq));
             maybeReq <= tagged Valid request;
+            lastKey <= 0;
             tries <= 0;
 `ifdef DEBUG
         $display("[%6d] Shard: received request", cycle);
@@ -269,6 +288,8 @@ module mkShard(Shard);
             end
         endmethod
     endinterface
+
+    method Bool isReady = maybeReq != tagged Valid tagged Reset_;
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////

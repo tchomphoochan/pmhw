@@ -460,7 +460,8 @@ module mkRenamer(Renamer);
             mkConnection(renameDistributors[j].outputs[i], shardArbiters[i].users[j].request);
             mkConnection(deleteDistributors[j].outputs[i], shardArbiters[i].users[maxTransactions + j].request);
         end
-        mkConnection(shardArbiters[i].master, shards[i]);
+        mkConnection(shardArbiters[i].master.request, shards[i].request);
+        mkConnection(shards[i].response, shardArbiters[i].master.response);
     end
 
     // Connections from shards to aggregators.
@@ -501,13 +502,16 @@ module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     function Bool getCanPut(RequestDistributor#(a) rd) = rd.canPut();
 
+    function Bool getIsReady(Shard s) = s.isReady();
+
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     // Add input transaction to first open slot (distributor).
     interface Put renameRequest;
         method Action put(RenamerRenameRequest req) if (
-                findElem(True, map(getCanPut, renameDistributors)) matches tagged Valid .index);
+                findIndex(getCanPut, renameDistributors) matches tagged Valid .index
+                &&& all(getIsReady, shards));
             renameDistributors[index].request.put(req.inputTr);
         endmethod
     endinterface
@@ -515,7 +519,8 @@ module mkRenamer(Renamer);
     // Send renamed transaction to first free delete request distributor.
     interface Put deleteRequest;
         method Action put(RenamerDeleteRequest req) if (
-                findElem(True, map(getCanPut, deleteDistributors)) matches tagged Valid .index);
+                findIndex(getCanPut, renameDistributors) matches tagged Valid .index
+                &&& all(getIsReady, shards));
             deleteDistributors[index].request.put(FailedRename {
                 renamedTr: req.renamedTr
             });
