@@ -83,7 +83,7 @@ module mkPuppetmaster(Puppetmaster);
     // Clock.
     Reg#(Timestamp) cycle <- mkReg(0);
     // Store previous puppet state to detect when transactions finish running.
-    Reg#(Vector#(NumberPuppets, Bool)) prevPuppetFlags <- mkReg(replicate(False));
+    Reg#(Vector#(NumberPuppets, Bool)) prevPuppetsDone <- mkReg(replicate(True));
 
     // Submodules.
     let renamer <- mkRenamer();
@@ -103,19 +103,14 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
-    function Maybe#(a) maybeFromBool(a value, Bool flag) =
-        flag ? tagged Valid value : tagged Invalid;
-
-    function Maybe#(a) maybeFromBit(a value, bit flag) =
-        flag == 1'b1 ? tagged Valid value : tagged Invalid;
-
     function SchedulerTransaction getSchedTr(RenamerResponse resp) = resp.schedulerTr;
 
     function TransactionId getTid(RenamerResponse resp) = resp.renamedTr.tid;
 
-    function Bool getPuppetFlag(Puppet puppet) = !puppet.isDone();
+    function Bool getIsDone(Puppet puppet) = puppet.isDone();
 
-    let puppetFlags = map(getPuppetFlag, puppets);
+    function Maybe#(a) ifPuppetBusy(a value, Puppet puppet) =
+        puppet.isDone() ? tagged Invalid : tagged Valid value;
 
     function SchedulerTransaction maybeTrUnion(
             Vector#(vsize, Maybe#(SchedulerTransaction)) maybeTrs);
@@ -153,7 +148,7 @@ module mkPuppetmaster(Puppetmaster);
     rule doSchedule if (bufferIndex[1] == fromInteger(maxScheduledObjects - 1)
             && pendingTrFlags == 0);
         let sentTransactions = map(getSchedTr, sentToPuppet);
-        let runningTransactions = zipWith(maybeFromBool, sentTransactions, puppetFlags);
+        let runningTransactions = zipWith(ifPuppetBusy, sentTransactions, puppets);
         let runningTrSet = maybeTrUnion(runningTransactions);
         let transactions = readVReg(buffer);
         let converted = map(getSchedTr, transactions);
@@ -175,7 +170,7 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     // Send first (lowest-index) pending transaction to first idle puppet.
-    rule sendTransaction if (findElem(False, puppetFlags) matches tagged Valid .puppetIndex
+    rule sendTransaction if (findIndex(getIsDone, puppets) matches tagged Valid .puppetIndex
             &&& pendingTrFlags != 0);
         // Find first scheduled transaction and remove from pending set.
         SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
@@ -196,17 +191,18 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     rule sendMessages;
-        prevPuppetFlags <= puppetFlags;
+        let puppetsDone = map(getIsDone, puppets);
+        prevPuppetsDone <= puppetsDone;
         for (Integer i = 0; i < numPuppets; i = i + 1) begin
-            case (tuple2(prevPuppetFlags[i], puppetFlags[i])) matches
-                {False, True} : begin
+            case (tuple2(prevPuppetsDone[i], puppetsDone[i])) matches
+                {True, False} : begin
                     msgArbiter.users[i].request.put(PuppetmasterResponse {
                         id: getTid(sentToPuppet[i]),
                         status: Started,
                         timestamp: cycle
                     });
                 end
-                {True, False} : begin
+                {False, True} : begin
                     msgArbiter.users[i].request.put(PuppetmasterResponse {
                         id: getTid(sentToPuppet[i]),
                         status: Finished,
@@ -237,7 +233,7 @@ module mkPuppetmaster(Puppetmaster);
 
     interface Get response = msgArbiter.master.request;
     
-    method pollPuppets = zipWith(maybeFromBool, map(getTid, sentToPuppet), puppetFlags);
+    method pollPuppets = zipWith(ifPuppetBusy, map(getTid, sentToPuppet), puppets);
 
     method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
         for (Integer i = 0; i < numPuppets; i = i + 1) begin
