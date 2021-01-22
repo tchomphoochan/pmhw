@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
                 std::cerr << "No header found in file." << std::endl;
                 return 2;
             }
-            std::size_t typeIndex;
+            std::intmax_t typeIndex = -1;
             std::unordered_set<std::size_t> objIndices;
             std::unordered_set<std::size_t> readIndices;
             std::unordered_set<std::size_t> writeIndices;
@@ -137,6 +137,9 @@ int main(int argc, char** argv) {
                 } else if (label.find("Type") == 0) {
                     typeIndex = i;
                 }
+            }
+            if (typeIndex == -1) {
+                throw std::runtime_error("no type column found");
             }
 
             // Parse content lines.
