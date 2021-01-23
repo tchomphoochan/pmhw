@@ -414,6 +414,7 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     interface Get failure;
         method ActionValue#(FailedRename) get() if (isDone() && !success);
             resetState();
+            renamedSignal.send();
 `ifdef DEBUG
             $display("[%6d] Renamer: failed to rename %4h", cycle, renamedTr.tid);
 `endif
