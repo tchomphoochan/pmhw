@@ -245,6 +245,9 @@ module mkPuppetmaster(Puppetmaster);
     method Action clearState() if (pendingTrFlags == 0 && all(getIsDone, puppets));
         bufferIndex[1] <= 0;  // discard transactions that haven't been scheduled.
         renamer.clearState();
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: clearing state", cycle);
+`endif
     endmethod
 endmodule
 
