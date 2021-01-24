@@ -29,7 +29,8 @@ typedef InputTransaction PuppetmasterRequest;
 typedef enum {
     Received,
     Started,
-    Finished
+    Finished,
+    StateCleared
 } TransactionStatus deriving (Bits, Eq, FShow);
 
 typedef struct {
@@ -92,7 +93,7 @@ module mkPuppetmaster(Puppetmaster);
     Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkPuppet());
     // Arbiter to serialize status messages.
     let arb1 <- mkRoundRobin;
-    Arbiter#(TAdd#(NumberPuppets, 1), PuppetmasterResponse, void) msgArbiter <-
+    Arbiter#(TAdd#(NumberPuppets, 2), PuppetmasterResponse, void) msgArbiter <-
         mkArbiter(arb1, 1);
     // Arbiter to serialize transaction deletion requests.
     let arb2 <- mkRoundRobin;
@@ -245,6 +246,11 @@ module mkPuppetmaster(Puppetmaster);
     method Action clearState() if (pendingTrFlags == 0 && all(getIsDone, puppets));
         bufferIndex[1] <= 0;  // discard transactions that haven't been scheduled.
         renamer.clearState();
+        msgArbiter.users[numPuppets + 1].request.put(PuppetmasterResponse {
+                id: ?,
+                status: StateCleared,
+                timestamp: cycle
+            });
 `ifdef DEBUG
         $display("[%6d] Puppetmaster: clearing state", cycle);
 `endif

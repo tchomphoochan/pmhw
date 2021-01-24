@@ -28,6 +28,7 @@ interface PuppetmasterToHostIndication;
     method Action transactionReceived(TransactionId tid, Timestamp timestamp);
     method Action transactionStarted(TransactionId tid, Timestamp timestamp);
     method Action transactionFinished(TransactionId tid, Timestamp timestamp);
+    method Action stateCleared(Timestamp timestamp);
 endinterface
 
 interface HostToPuppetmaster;

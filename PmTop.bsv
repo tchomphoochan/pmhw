@@ -23,6 +23,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
             Received : indication.transactionReceived(result.id, result.timestamp);
             Started : indication.transactionStarted(result.id, result.timestamp);
             Finished : indication.transactionFinished(result.id, result.timestamp);
+            StateCleared : indication.stateCleared(result.timestamp);
         endcase
     endrule
 
@@ -99,6 +100,10 @@ module mkTestIndication(PuppetmasterToHostIndication);
 
     method Action transactionFinished(TransactionId tid, Timestamp timestamp);
         $display("[%6d] PmTop: finished %4h", timestamp, tid);
+    endmethod
+
+    method Action stateCleared(Timestamp timestamp);
+        $display("[%6d] PmTop: state cleared", timestamp);
     endmethod
 endmodule
 
