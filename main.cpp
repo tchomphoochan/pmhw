@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -19,6 +20,7 @@
 #include "PuppetmasterToHostIndication.h"
 
 constexpr std::size_t objSetSize = 8;
+constexpr std::size_t tsWidth = 6;
 
 typedef std::array<ObjectAddress, objSetSize> InputObjects;
 
@@ -40,18 +42,23 @@ bool set_contains(std::unordered_set<type>& set, type& key) {
 }
 
 // Helper function to print log messages.
-void print_log(std::string_view msg, Timestamp timestamp = 0) {
-    std::cout << "[" << std::setw(6) << timestamp << "] "
-              << "main.cpp: " << msg << std::endl;
+void print_log(std::string_view msg) {
+    std::cout << "[" << std::setw(tsWidth + 1) << std::setfill('-') << "]"
+              << " main.cpp: " << msg << std::endl;
 }
 
 // Handler for messages received from the FPGA
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 private:
-    void log_message(TransactionId tid, Timestamp timestamp, std::string_view verb) {
-        std::ostringstream msg;
-        msg << verb << " " << std::setw(4) << std::setfill('0') << std::hex << tid;
-        print_log(msg.str(), timestamp);
+    void log_message(std::optional<TransactionId> tid, Timestamp timestamp,
+                     std::string_view msg) {
+        std::cout << "[" << std::setw(tsWidth) << std::setfill(' ') << std::dec
+                  << timestamp << "] PmTop: " << msg;
+        if (tid.has_value()) {
+            std::cout << " " << std::setw(4) << std::setfill('0') << std::hex
+                      << tid.value();
+        }
+        std::cout << std::endl;
     }
 
 public:
@@ -68,7 +75,7 @@ public:
     }
 
     void stateCleared(Timestamp timestamp) {
-        print_log("state cleared", timestamp);
+        log_message(std::nullopt, timestamp, "state cleared");
         sem_post(&sem_cleared);
     }
 
