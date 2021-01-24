@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -74,6 +75,105 @@ public:
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
 };
 
+void load_default_test(std::vector<InputTransaction>& testInputs) {
+    int numE2ETestRounds = 4;
+    int poolSize = 8;
+    int numE2ETests = numE2ETestRounds * poolSize;
+
+    for (int i = 0; i < numE2ETests; i = i + 1) {
+        auto iDiv = std::div(i, numE2ETestRounds);
+        auto round = iDiv.quot;
+        auto offset = iDiv.rem;
+        testInputs.emplace_back();
+        testInputs[i].tid = i;
+        testInputs[i].trType = offset == 0   ? TransactionType::DatabaseRead
+                               : offset == 1 ? TransactionType::DatabaseWrite
+                               : offset == 2 ? TransactionType::DatabaseIncrement
+                                             : TransactionType::DatabaseSwap;
+        testInputs[i].readObjectCount = objSetSize;
+        testInputs[i].writtenObjectCount = objSetSize;
+        for (std::size_t j = 0; j < objSetSize; j = j + 1) {
+            testInputs[i].readObjects[j] = objSetSize * i * 2 + j * 2;
+            testInputs[i].writtenObjects[j] =
+                round == 0   ? (objSetSize * i * 2 + j * 2 + 1)
+                : round == 1 ? (objSetSize * (i - i % 2) * 2 + j * 2 + 1)
+                : round == 2 ? (objSetSize * (i % 2) * 2 + j * 2 + 1)
+                             : (objSetSize * 2 + j * 2 + 1);
+        }
+    }
+}
+
+void load_test_from_file(std::vector<InputTransaction>& testInputs,
+                         std::size_t& testIndex, const char* fname) {
+    // Open input file.
+    std::ifstream source;
+    source.open(fname);
+    if (!source.is_open()) {
+        throw std::runtime_error("file doesn't exist: " + std::string(fname));
+    }
+
+    std::intmax_t typeIndex = -1;
+    std::unordered_set<std::size_t> objIndices;
+    std::unordered_set<std::size_t> readIndices;
+    std::unordered_set<std::size_t> writeIndices;
+
+    // Parse header for location of read and write object fields.
+    std::string header;
+    if (!std::getline(source, header)) {
+        throw std::runtime_error("no header in file: " + std::string(fname));
+    }
+    std::stringstream headerBuffer(header);
+    std::string label;
+    for (std::size_t i = 0; std::getline(headerBuffer, label, ','); i++) {
+        if (label.find("Read object") == 0) {
+            objIndices.insert(i);
+            readIndices.insert(i);
+        } else if (label.find("Written object") == 0) {
+            objIndices.insert(i);
+            writeIndices.insert(i);
+        } else if (label.find("Type") == 0) {
+            typeIndex = i;
+        }
+    }
+    if (typeIndex < 0) {
+        throw std::runtime_error("no type column in file: " + std::string(fname));
+    }
+
+    // Parse content lines.
+    std::string line;
+    while (std::getline(source, line)) {
+        InputTransaction tr;
+        tr.tid = testIndex++;
+
+        // Parse each comma-separated value in line.
+        std::stringstream lineBuffer(line);
+        std::string value;
+        for (std::size_t i = 0; std::getline(lineBuffer, value, ','); i++) {
+            if (i == static_cast<std::size_t>(typeIndex)) {
+                tr.trType = value == "get"         ? TransactionType::DatabaseRead
+                            : value == "set"       ? TransactionType::DatabaseWrite
+                            : value == "increment" ? TransactionType::DatabaseIncrement
+                            : value == "swap"      ? TransactionType::DatabaseSwap
+                            : value == "fetch"     ? TransactionType::MessageFetch
+                            : value == "post"
+                                ? TransactionType::MessagePost
+                                : throw std::runtime_error("unknown type: " + value);
+            } else if (value.length() != 0 && set_contains(objIndices, i)) {
+                ObjectAddress address;
+                address = std::stoul(value);
+                if (set_contains(readIndices, i) && tr.readObjectCount < objSetSize) {
+                    tr.readObjects[tr.readObjectCount++] = address;
+                } else if (set_contains(writeIndices, i) &&
+                           tr.writtenObjectCount < objSetSize) {
+                    tr.writtenObjects[tr.writtenObjectCount++] = address;
+                }
+            }
+        }
+        testInputs.push_back(tr);
+    }
+    source.close();
+}
+
 int main(int argc, char** argv) {
     print_log("Connectal setting up...");
 
@@ -85,120 +185,50 @@ int main(int argc, char** argv) {
         IfcNames_PuppetmasterToHostIndicationH2S);
     print_log("Initialized the indication interface");
 
+    std::vector<ClockMultiplier> multipliers;
     std::vector<InputTransaction> testInputs;
+    std::size_t testIndex = 0;
 
-    if (argc <= 1) {
-        // No test files given, construct default test.
-        print_log("Loading default tests...");
+    // Process command line arguments.
+    typedef enum { FLAG_NONE, FLAG_FILE, FLAG_MULTIPLIER } Flag;
+    Flag flag = FLAG_NONE;
+    for (int i = 1; i < argc; i++) {
+        std::string arg(argv[i]);
 
-        unsigned numTests = 4;
-        unsigned transactionsPerRound = 8;
-
-        for (unsigned i = 0; i < numTests * transactionsPerRound; i++) {
-            InputTransaction tr;
-            tr.tid = i;
-            tr.trType = TransactionType::DatabaseIncrement;
-            tr.readObjectCount = objSetSize;
-            tr.writtenObjectCount = objSetSize;
-            for (unsigned j = 0; j < objSetSize; j++) {
-                tr.readObjects[j] = objSetSize * i * 2 + j * 2;
-                tr.writtenObjects[j] =
-                    i % 4 == 0   ? objSetSize * i * 2 + j * 2 + 1
-                    : i % 4 == 1 ? objSetSize * (i - i % 2) * 2 + j * 2 + 1
-                    : i % 4 == 2 ? objSetSize * (i % 2) * 2 + j * 2 + 1
-                                 : objSetSize * 2 + j * 2 + 1;
-            }
-            testInputs.push_back(tr);
+        // Switch modes if needed.
+        if (arg == "-f") {
+            flag = FLAG_FILE;
+            continue;
+        } else if (arg == "-m") {
+            flag = FLAG_MULTIPLIER;
+            continue;
         }
-    } else {
-        // Load each input file given into tests.
-        std::size_t testIndex = 0;
-        for (int i = 1; i < argc; i++) {
+
+        // Digest next argument.
+        switch (flag) {
+        case FLAG_NONE:
+            std::cerr << "usage: PROG -f [file1 [file2 ...]] -m [mult1 [mult2 ...]]\n";
+            throw std::runtime_error("unknown argument: " + arg);
+        case FLAG_FILE:
             print_log("Loading tests from: " + std::string(argv[i]));
-
-            // Open input file.
-            std::ifstream source;
-            source.open(argv[i]);
-            if (!source.is_open()) {
-                std::cerr << "File doesn't exist." << std::endl;
-                return 1;
-            }
-
-            // Parse header for location of read and write object fields.
-            std::string header;
-            if (!std::getline(source, header)) {
-                std::cerr << "No header found in file." << std::endl;
-                return 2;
-            }
-            std::intmax_t typeIndex = -1;
-            std::unordered_set<std::size_t> objIndices;
-            std::unordered_set<std::size_t> readIndices;
-            std::unordered_set<std::size_t> writeIndices;
-            std::stringstream headerBuffer(header);
-            std::string label;
-            for (std::size_t i = 0; std::getline(headerBuffer, label, ','); i++) {
-                if (label.find("Read object") == 0) {
-                    objIndices.insert(i);
-                    readIndices.insert(i);
-                } else if (label.find("Written object") == 0) {
-                    objIndices.insert(i);
-                    writeIndices.insert(i);
-                } else if (label.find("Type") == 0) {
-                    typeIndex = i;
-                }
-            }
-            if (typeIndex < 0) {
-                throw std::runtime_error("no type column found");
-            }
-
-            // Parse content lines.
-            std::string line;
-            while (std::getline(source, line)) {
-                InputTransaction tr;
-                tr.tid = testIndex++;
-
-                // Parse each comma-separated value in line.
-                std::stringstream lineBuffer(line);
-                std::string value;
-                for (std::size_t i = 0; std::getline(lineBuffer, value, ','); i++) {
-                    if (i == static_cast<std::size_t>(typeIndex)) {
-                        tr.trType =
-                            value == "get"         ? TransactionType::DatabaseRead
-                            : value == "set"       ? TransactionType::DatabaseWrite
-                            : value == "increment" ? TransactionType::DatabaseIncrement
-                            : value == "swap"      ? TransactionType::DatabaseSwap
-                            : value == "fetch"     ? TransactionType::MessageFetch
-                            : value == "post"
-                                ? TransactionType::MessagePost
-                                : throw std::runtime_error("unknown type: " + value);
-                    } else if (value.length() != 0 && set_contains(objIndices, i)) {
-                        ObjectAddress address;
-                        try {
-                            address = std::stoul(value);
-                        } catch (const std::invalid_argument&) {
-                            std::cerr << "Not an address: \"" << value << "\""
-                                      << std::endl;
-                            return 3;
-                        } catch (const std::out_of_range&) {
-                            std::cerr << "Out of range: " << value << std::endl;
-                            return 4;
-                        }
-                        if (set_contains(readIndices, i) &&
-                            tr.readObjectCount < objSetSize) {
-                            tr.readObjects[tr.readObjectCount++] = address;
-                        } else if (set_contains(writeIndices, i) &&
-                                   tr.writtenObjectCount < objSetSize) {
-                            tr.writtenObjects[tr.writtenObjectCount++] = address;
-                        }
-                    }
-                }
-                testInputs.push_back(tr);
-            }
-            source.close();
+            load_test_from_file(testInputs, testIndex, argv[i]);
+            break;
+        case FLAG_MULTIPLIER:
+            multipliers.push_back(std::stoul(arg));
+            break;
         }
     }
 
-    std::vector<ClockMultiplier> multipliers{10, 100, 1000, 10000};
+    // Construct default test if no tests given.
+    if (testInputs.size() == 0) {
+        print_log("Loading default tests...");
+        load_default_test(testInputs);
+    }
+
+    // Add a default multiplier if no multipliers given.
+    if (multipliers.size() == 0) {
+        multipliers.push_back(2000);
+    }
 
     // Run tests.
     for (auto&& multiplier : multipliers) {
