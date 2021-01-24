@@ -1,3 +1,5 @@
+#include <semaphore.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -27,6 +29,8 @@ typedef struct {
     TransactionObjectCounter readObjectCount;
     TransactionObjectCounter writtenObjectCount;
 } InputTransaction;
+
+static sem_t sem_cleared;
 
 // Helper function equivalent to C++20 std::unordered_set::contains.
 template <typename type>
@@ -60,6 +64,11 @@ public:
 
     void transactionFinished(TransactionId tid, Timestamp timestamp) {
         log_message(tid, timestamp, "finished");
+    }
+
+    void stateCleared(Timestamp timestamp) {
+        print_log("state cleared", timestamp);
+        sem_post(&sem_cleared);
     }
 
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
@@ -189,20 +198,25 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Run tests.
-    print_log("Enqueuing transactions...");
-    for (auto&& tr : testInputs) {
-        fpga->enqueueTransaction(
-            tr.tid, tr.trType, tr.readObjectCount, tr.readObjects[0], tr.readObjects[1],
-            tr.readObjects[2], tr.readObjects[3], tr.readObjects[4], tr.readObjects[5],
-            tr.readObjects[6], tr.readObjects[7], tr.writtenObjectCount,
-            tr.writtenObjects[0], tr.writtenObjects[1], tr.writtenObjects[2],
-            tr.writtenObjects[3], tr.writtenObjects[4], tr.writtenObjects[5],
-            tr.writtenObjects[6], tr.writtenObjects[7]);
-    }
+    std::vector<ClockMultiplier> multipliers{10, 100, 1000, 10000};
 
-    print_log("Waiting for results...");
-    while (true) {
-        // Wait for simulation.
+    // Run tests.
+    for (auto&& multiplier : multipliers) {
+        std::ostringstream msg;
+        msg << "Enqueuing transactions with multiplier " << multiplier;
+        print_log(msg.str());
+        fpga->setPuppetClockMultiplier(multiplier);
+        for (auto&& tr : testInputs) {
+            fpga->enqueueTransaction(
+                tr.tid, tr.trType, tr.readObjectCount, tr.readObjects[0],
+                tr.readObjects[1], tr.readObjects[2], tr.readObjects[3],
+                tr.readObjects[4], tr.readObjects[5], tr.readObjects[6],
+                tr.readObjects[7], tr.writtenObjectCount, tr.writtenObjects[0],
+                tr.writtenObjects[1], tr.writtenObjects[2], tr.writtenObjects[3],
+                tr.writtenObjects[4], tr.writtenObjects[5], tr.writtenObjects[6],
+                tr.writtenObjects[7]);
+        }
+        fpga->clearState();
+        sem_wait(&sem_cleared);
     }
 }
