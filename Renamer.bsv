@@ -458,11 +458,12 @@ module mkRenamer(Renamer);
     DeleteRequestDistributor failedTransactionHandler <- mkDeleteRequestDistributor();
 
     // Connections from distributors to shards.
+    Vector#(NumberShards, Arbitrate#(NumShardAccessors)) shardArbSources;
     Vector#(NumberShards, Arbiter#(NumShardAccessors, ShardRequest, ShardRenameResponse))
         shardArbiters;
     for (Integer i = 0; i < numShards; i = i + 1) begin
-        let arb1 <- mkRoundRobin;
-        shardArbiters[i] <- mkArbiter(arb1, 1);
+        shardArbSources[i] <- mkRoundRobin();
+        shardArbiters[i] <- mkArbiter(shardArbSources[i], 1);
         for (Integer j = 0; j < maxTransactions; j = j + 1) begin
             mkConnection(
                 renameDistributors[j].outputs[i], shardArbiters[i].users[j].request
@@ -524,6 +525,8 @@ module mkRenamer(Renamer);
 
     function Bool getIsReady(Shard s) = s.isReady();
 
+    function Bool noGrant(Arbitrate#(size) arb) = !isValid(findElem(True, arb.grant));
+
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
@@ -557,7 +560,9 @@ module mkRenamer(Renamer);
     endinterface
 
     method Action clearState() if (
-        all(getCanPut, renameDistributors) && all(getIsReady, shards)
+        all(getCanPut, renameDistributors) && all(getCanPut, deleteDistributors)
+        && failedTransactionHandler.canPut() && all(getIsReady, shards)
+        && all(noGrant, shardArbSources)
     );
         // These calls conflict with the arbiter, but that's fine, since there should
         // never be a shard request pending when this method is enabled.
