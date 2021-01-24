@@ -147,7 +147,7 @@ int main(int argc, char** argv) {
                     typeIndex = i;
                 }
             }
-            if (typeIndex == -1) {
+            if (typeIndex < 0) {
                 throw std::runtime_error("no type column found");
             }
 
@@ -161,7 +161,7 @@ int main(int argc, char** argv) {
                 std::stringstream lineBuffer(line);
                 std::string value;
                 for (std::size_t i = 0; std::getline(lineBuffer, value, ','); i++) {
-                    if (i == typeIndex) {
+                    if (i == static_cast<std::size_t>(typeIndex)) {
                         tr.trType =
                             value == "get"         ? TransactionType::DatabaseRead
                             : value == "set"       ? TransactionType::DatabaseWrite
