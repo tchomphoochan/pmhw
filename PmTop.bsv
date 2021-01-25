@@ -21,6 +21,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
         let result <- pm.response.get();
         case (result.status) matches
             Received : indication.transactionReceived(result.id, result.timestamp);
+            Renamed : indication.transactionRenamed(result.id, result.timestamp);
             Started : indication.transactionStarted(result.id, result.timestamp);
             Finished : indication.transactionFinished(result.id, result.timestamp);
             StateCleared : indication.stateCleared(result.timestamp);
@@ -92,6 +93,10 @@ endmodule
 module mkTestIndication(PuppetmasterToHostIndication);
     method Action transactionReceived(TransactionId tid, Timestamp timestamp);
         $display("[%6d] PmTop: received %4h", timestamp, tid);
+    endmethod
+
+    method Action transactionRenamed(TransactionId tid, Timestamp timestamp);
+        $display("[%6d] PmTop: renamed %4h", timestamp, tid);
     endmethod
 
     method Action transactionStarted(TransactionId tid, Timestamp timestamp);

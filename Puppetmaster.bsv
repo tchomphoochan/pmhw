@@ -28,6 +28,7 @@ typedef InputTransaction PuppetmasterRequest;
 
 typedef enum {
     Received,
+    Renamed,
     Started,
     Finished,
     StateCleared
@@ -93,7 +94,7 @@ module mkPuppetmaster(Puppetmaster);
     Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkPuppet());
     // Arbiter to serialize status messages.
     let arb1 <- mkRoundRobin;
-    Arbiter#(TAdd#(NumberPuppets, 2), PuppetmasterResponse, void) msgArbiter <-
+    Arbiter#(TAdd#(NumberPuppets, 3), PuppetmasterResponse, void) msgArbiter <-
         mkArbiter(arb1, 1);
     // Arbiter to serialize transaction deletion requests.
     let arb2 <- mkRoundRobin;
@@ -141,9 +142,11 @@ module mkPuppetmaster(Puppetmaster);
         bufferIndex[1] <= bufferIndex[1] + 1;
         let result <- renamer.response.get();
         buffer[bufferIndex[1]] <= result;
-`ifdef DEBUG
-        $display("[%6d] Puppetmaster: renamed %2h", cycle, result.renamedTr.tid);
-`endif
+        msgArbiter.users[numPuppets + 2].request.put(PuppetmasterResponse {
+            id: result.renamedTr.tid,
+            status: Renamed,
+            timestamp: cycle
+        });
     endrule
 
     // When buffer is full, send scheduling request.
@@ -234,7 +237,7 @@ module mkPuppetmaster(Puppetmaster);
     endinterface
 
     interface Get response = msgArbiter.master.request;
-    
+
     method pollPuppets = zipWith(ifPuppetBusy, map(getTid, sentToPuppet), puppets);
 
     method Action setPuppetClockMultiplier(ClockMultiplier multiplier);

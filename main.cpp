@@ -66,6 +66,10 @@ public:
         log_message(tid, timestamp, "received");
     }
 
+    void transactionRenamed(TransactionId tid, Timestamp timestamp) {
+        log_message(tid, timestamp, "renamed");
+    }
+
     void transactionStarted(TransactionId tid, Timestamp timestamp) {
         log_message(tid, timestamp, "started");
     }
