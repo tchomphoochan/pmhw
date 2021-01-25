@@ -78,6 +78,10 @@ public:
         log_message(tid, timestamp, "finished");
     }
 
+    void transactionFreed(TransactionId tid, Timestamp timestamp) {
+        log_message(tid, timestamp, "freed");
+    }
+
     void stateCleared(Timestamp timestamp) {
         log_message(std::nullopt, timestamp, "state cleared");
         sem_post(&sem_cleared);

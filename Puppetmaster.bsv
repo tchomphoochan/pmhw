@@ -31,6 +31,7 @@ typedef enum {
     Renamed,
     Started,
     Finished,
+    Freed,
     StateCleared
 } TransactionStatus deriving (Bits, Eq, FShow);
 
@@ -75,14 +76,14 @@ module mkPuppetmaster(Puppetmaster);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     // Stores renamed transactions while they are waiting to be sent to the scheduler.
-    Vector#(TSub#(SizeSchedulingPool, 1), Reg#(RenamerResponse)) buffer <-
+    Vector#(TSub#(SizeSchedulingPool, 1), Reg#(RenamerRenameResponse)) buffer <-
         replicateM(mkReg(?));
     // Points to the first empty slot in the buffer.
     Reg#(SchedulingPoolIndex) bufferIndex[2] <- mkCReg(2, 0);
     // Intermediate storage for scheduling result.
     Reg#(Bit#(TSub#(SizeSchedulingPool, 1))) pendingTrFlags <- mkReg(0);
     // Last transaction sent to each puppet.
-    Reg#(Vector#(NumberPuppets, RenamerResponse)) sentToPuppet <- mkReg(?);
+    Reg#(Vector#(NumberPuppets, RenamerRenameResponse)) sentToPuppet <- mkReg(?);
     // Clock.
     Reg#(Timestamp) cycle <- mkReg(0);
     // Store previous puppet state to detect when transactions finish running.
@@ -94,7 +95,7 @@ module mkPuppetmaster(Puppetmaster);
     Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkPuppet());
     // Arbiter to serialize status messages.
     let arb1 <- mkRoundRobin;
-    Arbiter#(TAdd#(NumberPuppets, 3), PuppetmasterResponse, void) msgArbiter <-
+    Arbiter#(TAdd#(NumberPuppets, 4), PuppetmasterResponse, void) msgArbiter <-
         mkArbiter(arb1, 1);
     // Arbiter to serialize transaction deletion requests.
     let arb2 <- mkRoundRobin;
@@ -106,9 +107,9 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
-    function SchedulerTransaction getSchedTr(RenamerResponse resp) = resp.schedulerTr;
+    function SchedulerTransaction getSchedTr(RenamerRenameResponse resp) = resp.schedulerTr;
 
-    function TransactionId getTid(RenamerResponse resp) = resp.renamedTr.tid;
+    function TransactionId getTid(RenamerRenameResponse resp) = resp.renamedTr.tid;
 
     function Bool getIsDone(Puppet puppet) = puppet.isDone();
 
@@ -140,11 +141,21 @@ module mkPuppetmaster(Puppetmaster);
     // Put renamed transactions into a buffer.
     rule getRenamed if (bufferIndex[1] < fromInteger(maxScheduledObjects - 1));
         bufferIndex[1] <= bufferIndex[1] + 1;
-        let result <- renamer.response.get();
+        let result <- renamer.renameResponse.get();
         buffer[bufferIndex[1]] <= result;
         msgArbiter.users[numPuppets + 2].request.put(PuppetmasterResponse {
             id: result.renamedTr.tid,
             status: Renamed,
+            timestamp: cycle
+        });
+    endrule
+
+    // Notify caller about freed transactions.
+    rule getFreed;
+        let result <- renamer.deleteResponse.get();
+        msgArbiter.users[numPuppets + 3].request.put(PuppetmasterResponse {
+            id: result.tid,
+            status: Freed,
             timestamp: cycle
         });
     endrule

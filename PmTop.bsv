@@ -10,7 +10,7 @@ import PmCore::*;
 import PmIfc::*;
 import Puppetmaster::*;
 
-interface PmTop; 
+interface PmTop;
     interface HostToPuppetmaster request;
 endinterface
 
@@ -24,6 +24,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
             Renamed : indication.transactionRenamed(result.id, result.timestamp);
             Started : indication.transactionStarted(result.id, result.timestamp);
             Finished : indication.transactionFinished(result.id, result.timestamp);
+            Freed : indication.transactionFreed(result.id, result.timestamp);
             StateCleared : indication.stateCleared(result.timestamp);
         endcase
     endrule
@@ -105,6 +106,10 @@ module mkTestIndication(PuppetmasterToHostIndication);
 
     method Action transactionFinished(TransactionId tid, Timestamp timestamp);
         $display("[%6d] PmTop: finished %4h", timestamp, tid);
+    endmethod
+
+    method Action transactionFreed(TransactionId tid, Timestamp timestamp);
+        $display("[%6d] PmTop: freed %4h", timestamp, tid);
     endmethod
 
     method Action stateCleared(Timestamp timestamp);

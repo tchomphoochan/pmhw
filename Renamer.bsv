@@ -28,12 +28,17 @@ typedef struct {
 typedef struct {
     RenamedTransaction renamedTr;
     SchedulerTransaction schedulerTr;
-} RenamerResponse deriving (Bits, Eq, FShow);
+} RenamerRenameResponse deriving (Bits, Eq, FShow);
+
+typedef struct {
+    TransactionId tid;
+} RenamerDeleteResponse deriving (Bits, Eq, FShow);
 
 interface Renamer;
     interface Put#(RenamerRenameRequest) renameRequest;
     interface Put#(RenamerDeleteRequest) deleteRequest;
-    interface Get#(RenamerResponse) response;
+    interface Get#(RenamerRenameResponse) renameResponse;
+    interface Get#(RenamerDeleteResponse) deleteResponse;
     method Action clearState();
 endinterface
 
@@ -64,7 +69,12 @@ instance ArbRequestTC#(RenamerDeleteRequest);
     function Bool isWriteRequest(a x) = True;
 endinstance
 
-instance ArbRequestTC#(RenamerResponse);
+instance ArbRequestTC#(RenamerRenameResponse);
+    function Bool isReadRequest(a x) = False;
+    function Bool isWriteRequest(a x) = True;
+endinstance
+
+instance ArbRequestTC#(RenamerDeleteResponse);
     function Bool isReadRequest(a x) = False;
     function Bool isWriteRequest(a x) = True;
 endinstance
@@ -303,7 +313,7 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 interface ResponseAggregator;
     interface Put#(ShardRenameResponse) request;
-    interface Get#(RenamerResponse) response;
+    interface Get#(RenamerRenameResponse) response;
     interface Get#(FailedRename) failure;
 endinterface
 
@@ -401,10 +411,10 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     endinterface
 
     interface Get response;
-        method ActionValue#(RenamerResponse) get() if (isDone() && success);
+        method ActionValue#(RenamerRenameResponse) get() if (isDone() && success);
             resetState();
             renamedSignal.send();
-            return RenamerResponse {
+            return RenamerRenameResponse {
                 renamedTr: renamedTr,
                 schedulerTr: SchedulerTransaction { readSet: readSet, writeSet: writeSet }
             };
@@ -444,6 +454,8 @@ module mkRenamer(Renamer);
     // Delete request distributors.
     Vector#(SizeRenamerBuffer, DeleteRequestDistributor) deleteDistributors <-
         replicateM(mkDeleteRequestDistributor);
+    Reg#(Vector#(SizeRenamerBuffer, TransactionId)) sentToDelDistr <- mkReg(?);
+    Reg#(Vector#(SizeRenamerBuffer, Bool)) prevDelDistrCanPut <- mkReg(replicate(True));
 
     // Shards.
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
@@ -494,10 +506,10 @@ module mkRenamer(Renamer);
 
     // Connections from aggregators to output.
     let arb3 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, RenamerResponse, void) outputArbiter <-
+    Arbiter#(SizeRenamerBuffer, RenamerRenameResponse, void) renameOutputArbiter <-
         mkArbiter(arb3, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
-        mkConnection(aggregators[i].response, outputArbiter.users[i].request);
+        mkConnection(aggregators[i].response, renameOutputArbiter.users[i].request);
     end
 
     // Connections from aggregators to failed transaction handler.
@@ -518,6 +530,11 @@ module mkRenamer(Renamer);
             shardArbiters[i].users[2 * maxTransactions].request);
     end
 
+    // Connections to delete response output.
+    let arb5 <- mkRoundRobin;
+    Arbiter#(SizeRenamerBuffer, RenamerDeleteResponse, void) deleteOutputArbiter <-
+        mkArbiter(arb5, 1);
+
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
@@ -526,6 +543,22 @@ module mkRenamer(Renamer);
     function Bool getIsReady(Shard s) = s.isReady();
 
     function Bool noGrant(Arbitrate#(size) arb) = !isValid(findElem(True, arb.grant));
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Rules.
+    ////////////////////////////////////////////////////////////////////////////////
+    (* fire_when_enabled *)
+    rule sendDeleteResponses;
+        let delDistrCanPut = map(getCanPut, deleteDistributors);
+        prevDelDistrCanPut <= delDistrCanPut;
+        for (Integer i = 0; i < maxTransactions; i = i + 1) begin
+            if (!prevDelDistrCanPut[i] && delDistrCanPut[i]) begin
+                deleteOutputArbiter.users[i].request.put(RenamerDeleteResponse {
+                    tid: sentToDelDistr[i]
+                });
+            end
+        end
+    endrule
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -548,13 +581,21 @@ module mkRenamer(Renamer);
             deleteDistributors[index].request.put(FailedRename {
                 renamedTr: req.renamedTr
             });
+            sentToDelDistr[index] <= req.renamedTr.tid;
         endmethod
     endinterface
 
     // Return computed result.
-    interface Get response;
-        method ActionValue#(RenamerResponse) get();
-            let result <- outputArbiter.master.request.get();
+    interface Get renameResponse;
+        method ActionValue#(RenamerRenameResponse) get();
+            let result <- renameOutputArbiter.master.request.get();
+            return result;
+        endmethod
+    endinterface
+
+    interface Get deleteResponse;
+        method ActionValue#(RenamerDeleteResponse) get();
+            let result <- deleteOutputArbiter.master.request.get();
             return result;
         endmethod
     endinterface
@@ -620,7 +661,7 @@ module mkRenamerTestbench();
     endrule
 
     rule stream;
-        let result <- myRenamer.response.get();
+        let result <- myRenamer.renameResponse.get();
         $display(fshow(result));
     endrule
 endmodule
