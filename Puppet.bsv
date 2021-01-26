@@ -46,6 +46,7 @@ module mkPuppet(Puppet);
     ////////////////////////////////////////////////////////////////////////////////
     method Action start(RenamedTransaction tr);
         Timestamp trDuration = case (tr.trType) matches
+            NoOp : 0;
             DatabaseRead : 1;
             DatabaseWrite : 1;
             DatabaseIncrement : 2;

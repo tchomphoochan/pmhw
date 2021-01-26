@@ -16,6 +16,7 @@ typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
 
 typedef enum {
+    NoOp,
     DatabaseRead,
     DatabaseWrite,
     DatabaseIncrement,
