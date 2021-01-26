@@ -98,6 +98,8 @@ foreach module : modules
     endif
     if get_option('debug')
         obj_bsc_opts += ['-D', 'DEBUG=1']
+    else
+        obj_bsc_opts += ['-no-warn-action-shadowing']
     endif
 
     # Compute dependencies.
