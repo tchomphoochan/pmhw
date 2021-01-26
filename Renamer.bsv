@@ -19,26 +19,24 @@ import Shard::*;
 ////////////////////////////////////////////////////////////////////////////////
 typedef struct {
     InputTransaction inputTr;
-} RenamerRenameRequest deriving (Bits, Eq, FShow);
+} RenameRequest deriving (Bits, Eq, FShow);
 
 typedef struct {
     RenamedTransaction renamedTr;
-} RenamerDeleteRequest deriving (Bits, Eq, FShow);
+} DeleteRequest deriving (Bits, Eq, FShow);
 
 typedef struct {
     RenamedTransaction renamedTr;
     SchedulerTransaction schedulerTr;
-} RenamerRenameResponse deriving (Bits, Eq, FShow);
+} RenameResponse deriving (Bits, Eq, FShow);
 
 typedef struct {
     TransactionId tid;
-} RenamerDeleteResponse deriving (Bits, Eq, FShow);
+} DeleteResponse deriving (Bits, Eq, FShow);
 
 interface Renamer;
-    interface Put#(RenamerRenameRequest) renameRequest;
-    interface Put#(RenamerDeleteRequest) deleteRequest;
-    interface Get#(RenamerRenameResponse) renameResponse;
-    interface Get#(RenamerDeleteResponse) deleteResponse;
+    interface Server#(RenameRequest, RenameResponse) rename;
+    interface Server#(DeleteRequest, DeleteResponse) delete;
     method Action clearState();
 endinterface
 
@@ -59,22 +57,22 @@ typedef struct {
 /// Typeclasses.
 ////////////////////////////////////////////////////////////////////////////////
 // Tells the arbiter whether we need to route responses back.
-instance ArbRequestTC#(RenamerRenameRequest);
+instance ArbRequestTC#(RenameRequest);
     function Bool isReadRequest(a x) = True;
     function Bool isWriteRequest(a x) = False;
 endinstance
 
-instance ArbRequestTC#(RenamerDeleteRequest);
+instance ArbRequestTC#(DeleteRequest);
     function Bool isReadRequest(a x) = False;
     function Bool isWriteRequest(a x) = True;
 endinstance
 
-instance ArbRequestTC#(RenamerRenameResponse);
+instance ArbRequestTC#(RenameResponse);
     function Bool isReadRequest(a x) = False;
     function Bool isWriteRequest(a x) = True;
 endinstance
 
-instance ArbRequestTC#(RenamerDeleteResponse);
+instance ArbRequestTC#(DeleteResponse);
     function Bool isReadRequest(a x) = False;
     function Bool isWriteRequest(a x) = True;
 endinstance
@@ -313,7 +311,7 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 interface ResponseAggregator;
     interface Put#(ShardRenameResponse) request;
-    interface Get#(RenamerRenameResponse) response;
+    interface Get#(RenameResponse) response;
     interface Get#(FailedRename) failure;
 endinterface
 
@@ -411,10 +409,10 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     endinterface
 
     interface Get response;
-        method ActionValue#(RenamerRenameResponse) get() if (isDone() && success);
+        method ActionValue#(RenameResponse) get() if (isDone() && success);
             resetState();
             renamedSignal.send();
-            return RenamerRenameResponse {
+            return RenameResponse {
                 renamedTr: renamedTr,
                 schedulerTr: SchedulerTransaction { readSet: readSet, writeSet: writeSet }
             };
@@ -506,7 +504,7 @@ module mkRenamer(Renamer);
 
     // Connections from aggregators to output.
     let arb3 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, RenamerRenameResponse, void) renameOutputArbiter <-
+    Arbiter#(SizeRenamerBuffer, RenameResponse, void) renameOutputArbiter <-
         mkArbiter(arb3, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].response, renameOutputArbiter.users[i].request);
@@ -532,7 +530,7 @@ module mkRenamer(Renamer);
 
     // Connections to delete response output.
     let arb5 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, RenamerDeleteResponse, void) deleteOutputArbiter <-
+    Arbiter#(SizeRenamerBuffer, DeleteResponse, void) deleteOutputArbiter <-
         mkArbiter(arb5, 1);
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -553,7 +551,7 @@ module mkRenamer(Renamer);
         prevDelDistrCanPut <= delDistrCanPut;
         for (Integer i = 0; i < maxTransactions; i = i + 1) begin
             if (!prevDelDistrCanPut[i] && delDistrCanPut[i]) begin
-                deleteOutputArbiter.users[i].request.put(RenamerDeleteResponse {
+                deleteOutputArbiter.users[i].request.put(DeleteResponse {
                     tid: sentToDelDistr[i]
                 });
             end
@@ -563,41 +561,36 @@ module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
-    // Add input transaction to first open slot (distributor).
-    interface Put renameRequest;
-        method Action put(RenamerRenameRequest req) if (
+    interface Server rename;
+        // Add input transaction to first open slot (rename distributor).
+        interface Put request;
+            method Action put(RenameRequest req) if (
+                    findIndex(getCanPut, renameDistributors) matches tagged Valid .index
+                    &&& all(getIsReady, shards));
+                renameDistributors[index].request.put(req.inputTr);
+            endmethod
+        endinterface
+
+        // Return computed result.
+        interface Get response = renameOutputArbiter.master.request;
+    endinterface
+
+    interface Server delete;
+        // Send renamed transaction to first free delete request distributor.
+        interface Put request;
+            method Action put(DeleteRequest req) if (
                 findIndex(getCanPut, renameDistributors) matches tagged Valid .index
-                &&& all(getIsReady, shards));
-            renameDistributors[index].request.put(req.inputTr);
-        endmethod
-    endinterface
+                &&& all(getIsReady, shards)
+            );
+                deleteDistributors[index].request.put(FailedRename {
+                    renamedTr: req.renamedTr
+                });
+                sentToDelDistr[index] <= req.renamedTr.tid;
+            endmethod
+        endinterface
 
-    // Send renamed transaction to first free delete request distributor.
-    interface Put deleteRequest;
-        method Action put(RenamerDeleteRequest req) if (
-            findIndex(getCanPut, renameDistributors) matches tagged Valid .index
-            &&& all(getIsReady, shards)
-        );
-            deleteDistributors[index].request.put(FailedRename {
-                renamedTr: req.renamedTr
-            });
-            sentToDelDistr[index] <= req.renamedTr.tid;
-        endmethod
-    endinterface
-
-    // Return computed result.
-    interface Get renameResponse;
-        method ActionValue#(RenamerRenameResponse) get();
-            let result <- renameOutputArbiter.master.request.get();
-            return result;
-        endmethod
-    endinterface
-
-    interface Get deleteResponse;
-        method ActionValue#(RenamerDeleteResponse) get();
-            let result <- deleteOutputArbiter.master.request.get();
-            return result;
-        endmethod
+        // Notify about delete.
+        interface Get response = deleteOutputArbiter.master.request;
     endinterface
 
     method Action clearState() if (
@@ -620,10 +613,10 @@ typedef 5 NumberRenamerTests;
 
 Integer numTests = valueOf(NumberRenamerTests);
 
-function RenamerRenameRequest makeRenameReq(
+function RenameRequest makeRenameReq(
     TransactionId i, ObjectAddress r[], ObjectAddress w[]
 );
-    return RenamerRenameRequest { inputTr: InputTransaction {
+    return RenameRequest { inputTr: InputTransaction {
         tid: i,
         trType: MessagePost,
         readObjects: arrayToVector(r),
@@ -650,18 +643,18 @@ module mkRenamerTestbench();
         {'h001, 'h003, 'h005, 'h007, 'h010, 'h030, 'h050, 'h070},
         {'h310, 'h002, 'h202, 'hF10, 'h720, 'h101, 'h610, 'hC20}
     };
-    Vector#(NumberRenamerTests, RenamerRenameRequest) testInputs = zipWith3(
+    Vector#(NumberRenamerTests, RenameRequest) testInputs = zipWith3(
         makeRenameReq, genWith(fromInteger), arrayToVector(reads), arrayToVector(writes));
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 
     rule feed if (counter < fromInteger(numTests));
         counter <= counter + 1;
-        myRenamer.renameRequest.put(testInputs[counter]);
+        myRenamer.rename.request.put(testInputs[counter]);
     endrule
 
     rule stream;
-        let result <- myRenamer.renameResponse.get();
+        let result <- myRenamer.rename.response.get();
         $display(fshow(result));
     endrule
 endmodule
