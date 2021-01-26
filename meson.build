@@ -26,6 +26,15 @@ has_tests = [
     'PmTop',
 ]
 
+# Modules with extra synthesize boundaries.
+synthesized = {
+    'Shard': ['mkShard'],
+    'Renamer': ['mkRenameRequestDistributor', 'mkDeleteRequestDistributor', 'mkRenamer'],
+    'Scheduler': ['mkScheduler'],
+    'Puppet': ['mkPuppet'],
+    'Puppetmaster': ['mkPuppetmaster'],
+}
+
 # Bluespec module dependencies. Values are arrays of indices into the `modules` array.
 # This workaround is needed because Meson dictionaries are immutable.
 dep_indices = {
@@ -66,11 +75,22 @@ foreach module : modules
 
     # Generate output file names and compiler options.
     obj_outputs = ['@0@.bo'.format(module)]
-    obj_bsc_opts = [
+    link_outputs = [
+        'mk@0@Testbench'.format(module),
+        'mk@0@Testbench.so'.format(module),
+    ]
+    common_bsc_opts = [
         '-quiet',
+        '-sim',
+    ]
+    obj_bsc_opts = common_bsc_opts + [
         '-bdir', '@OUTDIR@',
         '-aggressive-conditions',
-        '-sim',
+    ]
+    link_bsc_opts = common_bsc_opts + [
+        '-simdir', '@PRIVATE_DIR@',
+        '-e', '@OUTPUT0@',
+        '-o', '@OUTPUT0@',
     ]
     if module in has_tests
         obj_outputs += ['mk@0@Testbench.ba'.format(module)]
@@ -86,6 +106,11 @@ foreach module : modules
         deps += obj_targets[dep_index]
     endforeach
 
+    # Figure out extra output files.
+    foreach synth_module : synthesized.get(module, [])
+        obj_outputs += ['@0@.ba'.format(synth_module)]
+    endforeach
+
     # Build target for generating Bluesim object file.
     obj_target = custom_target(obj_target_name,
         input: '@0@.bsv'.format(module),
@@ -97,17 +122,13 @@ foreach module : modules
 
     # Build target for Bluesim executable.
     if module in has_tests
+        run_command(
+            'mkdir', '-p', meson.current_build_dir() / 'mk@0@Testbench.p'.format(module)
+        )
         custom_target(target_name,
             input: obj_target,
-            output: 'mk@0@Testbench'.format(module),
-            command: [
-                bsc,
-                '-quiet',
-                '-simdir', '@OUTDIR@',
-                '-sim',
-                '-e', '@OUTPUT@',
-                '-o', '@OUTPUT@',
-            ],
+            output: link_outputs,
+            command: [bsc] + link_bsc_opts,
             build_by_default: true,
         )
     endif
