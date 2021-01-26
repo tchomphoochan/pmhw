@@ -11,3 +11,6 @@ compile_commands.json
 
 # Generated test inputs.
 *.csv
+
+# Log files.
+*.log
