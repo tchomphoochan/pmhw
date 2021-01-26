@@ -312,7 +312,7 @@ module mkResponseAggregator(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(Maybe#(RenamedTransaction)) maybeRenamedTr <- mkReg(tagged Invalid);
+    Reg#(Maybe#(RenamedTransaction)) maybeRenamedTr[2] <- mkCReg(2, tagged Invalid);
     Reg#(ObjectSet) readSet <- mkReg(0);
     Reg#(ObjectSet) writeSet <- mkReg(0);
     Reg#(TransactionObjectCounter) totalReadObjectCount <- mkReg(?);
@@ -347,11 +347,11 @@ module mkResponseAggregator(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
-    method Bool canPut() = !isValid(maybeRenamedTr);
+    method Bool canPut() = !isValid(maybeRenamedTr[1]);
 
     interface Put request;
-        method Action put(InputTransaction inputTr) if (!isValid(maybeRenamedTr));
-            maybeRenamedTr <= tagged Valid RenamedTransaction {
+        method Action put(InputTransaction inputTr) if (!isValid(maybeRenamedTr[1]));
+            maybeRenamedTr[1] <= tagged Valid RenamedTransaction {
                 tid: inputTr.tid,
                 trType: inputTr.trType,
                 readObjects: ?,
@@ -370,7 +370,7 @@ module mkResponseAggregator(ResponseAggregator);
 
     interface Put aggregate;
         method Action put(ShardRenameResponse response) if (
-            maybeRenamedTr matches tagged Valid .renamedTr &&& !isDone
+            maybeRenamedTr[0] matches tagged Valid .renamedTr &&& !isDone
         );
             let newTr = renamedTr;
             // Increment request count.
@@ -393,7 +393,7 @@ module mkResponseAggregator(ResponseAggregator);
                     end
                 endcase
             end
-            maybeRenamedTr <= tagged Valid newTr;
+            maybeRenamedTr[0] <= tagged Valid newTr;
 `ifdef DEBUG
             $display("[%6d] Renamer: renamed %4h, ", cycle, response.request.tid,
                      response.request.type_ == ReadObject ? "read" : "write",
@@ -406,10 +406,10 @@ module mkResponseAggregator(ResponseAggregator);
 
     interface Get response;
         method ActionValue#(RenameResponse) get() if (
-            maybeRenamedTr matches tagged Valid .renamedTr &&& isDone
+            maybeRenamedTr[0] matches tagged Valid .renamedTr &&& isDone
             && isSuccess(renamedTr)
         );
-            maybeRenamedTr <= tagged Invalid;
+            maybeRenamedTr[0] <= tagged Invalid;
             return RenameResponse {
                 renamedTr: renamedTr,
                 schedulerTr: SchedulerTransaction { readSet: readSet, writeSet: writeSet }
@@ -419,10 +419,10 @@ module mkResponseAggregator(ResponseAggregator);
 
     interface Get failure;
         method ActionValue#(FailedRename) get() if (
-            maybeRenamedTr matches tagged Valid .renamedTr &&& isDone
+            maybeRenamedTr[0] matches tagged Valid .renamedTr &&& isDone
             && !isSuccess(renamedTr)
         );
-            maybeRenamedTr <= tagged Invalid;
+            maybeRenamedTr[0] <= tagged Invalid;
 `ifdef DEBUG
             $display("[%6d] Renamer: failed to rename %4h", cycle, renamedTr.tid);
 `endif
