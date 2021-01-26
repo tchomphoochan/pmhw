@@ -31,8 +31,7 @@ typedef enum {
     Renamed,
     Started,
     Finished,
-    Freed,
-    StateCleared
+    Freed
 } TransactionStatus deriving (Bits, Eq, FShow);
 
 typedef struct {
@@ -88,6 +87,8 @@ module mkPuppetmaster(Puppetmaster);
     Reg#(Timestamp) cycle <- mkReg(0);
     // Store previous puppet state to detect when transactions finish running.
     Reg#(Vector#(NumberPuppets, Bool)) prevPuppetsDone <- mkReg(replicate(True));
+    // Whether we should execute all remaining transactions in the buffer.
+    Reg#(Bool) partialMode <- mkReg(?);
 
     // Submodules.
     let renamer <- mkRenamer();
@@ -108,6 +109,13 @@ module mkPuppetmaster(Puppetmaster);
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
     function SchedulerTransaction getSchedTr(RenameResponse resp) = resp.schedulerTr;
+
+    function SchedulerTransaction getSchedTrIfValid(
+        RenameResponse resp, Integer i, SchedulingPoolIndex firstEmpty
+    );
+        let emptySchedulerTr = SchedulerTransaction { readSet: 0, writeSet : 0 };
+        return fromInteger(i) < firstEmpty ? resp.schedulerTr : emptySchedulerTr;
+    endfunction
 
     function TransactionId getTid(RenameResponse resp) = resp.renamedTr.tid;
 
@@ -147,10 +155,15 @@ module mkPuppetmaster(Puppetmaster);
         all(id, zipWith3(isNoOp, readVReg(buffer), genVector(), replicate(bufferIndex[1])))
     );
         bufferIndex[1] <= 0;
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: clearing buffer", cycle);
+`endif
     endrule
 
     // Put renamed transactions into a buffer.
-    rule getRenamed if (bufferIndex[2] < fromInteger(maxScheduledObjects - 1));
+    rule getRenamed if (
+        bufferIndex[2] < fromInteger(maxScheduledObjects - 1) && !partialMode
+    );
         bufferIndex[2] <= bufferIndex[2] + 1;
         let result <- renamer.rename.response.get();
         buffer[bufferIndex[2]] <= result;
@@ -172,13 +185,33 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     // When buffer is full, send scheduling request.
-    rule doSchedule if (bufferIndex[2] == fromInteger(maxScheduledObjects - 1)
-            && pendingTrFlags == 0);
+    rule doSchedule if (
+        bufferIndex[2] == fromInteger(maxScheduledObjects - 1) && pendingTrFlags == 0
+    );
         let sentTransactions = map(getSchedTr, sentToPuppet);
         let runningTransactions = zipWith(ifPuppetBusy, sentTransactions, puppets);
         let runningTrSet = maybeTrUnion(runningTransactions);
         let transactions = readVReg(buffer);
         let converted = map(getSchedTr, transactions);
+        let toSchedule = cons(runningTrSet, converted);
+        scheduler.request.put(toSchedule);
+`ifdef DEBUG
+        $display("[%6d] Puppetmaster: scheduler starting", cycle);
+`endif
+    endrule
+
+    // When buffer is not full in partial mode, send scheduling request.
+    rule doPartialSchedule if (
+        0 < bufferIndex[2] && bufferIndex[2] < fromInteger(maxScheduledObjects - 1)
+        && pendingTrFlags == 0 && partialMode
+    );
+        let sentTransactions = map(getSchedTr, sentToPuppet);
+        let runningTransactions = zipWith(ifPuppetBusy, sentTransactions, puppets);
+        let runningTrSet = maybeTrUnion(runningTransactions);
+        let transactions = readVReg(buffer);
+        let converted = zipWith3(
+            getSchedTrIfValid, transactions, genVector(), replicate(bufferIndex[2])
+        );
         let toSchedule = cons(runningTrSet, converted);
         scheduler.request.put(toSchedule);
 `ifdef DEBUG
@@ -249,6 +282,7 @@ module mkPuppetmaster(Puppetmaster);
     // Incoming transactions get forwarded to the renamer.
     interface Put request;
         method Action put(InputTransaction inputTr);
+            partialMode <= False;
             renamer.rename.request.put(RenameRequest { inputTr: inputTr });
             msgArbiter.users[numPuppets].request.put(PuppetmasterResponse {
                 id: inputTr.tid,
@@ -268,14 +302,8 @@ module mkPuppetmaster(Puppetmaster);
         end
     endmethod
 
-    method Action clearState() if (pendingTrFlags == 0 && all(getIsDone, puppets));
-        bufferIndex[1] <= 0;  // discard transactions that haven't been scheduled.
-        renamer.clearState();
-        msgArbiter.users[numPuppets + 1].request.put(PuppetmasterResponse {
-                id: ?,
-                status: StateCleared,
-                timestamp: cycle
-            });
+    method Action clearState();
+        partialMode <= True;
 `ifdef DEBUG
         $display("[%6d] Puppetmaster: clearing state", cycle);
 `endif

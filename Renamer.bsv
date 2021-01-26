@@ -35,7 +35,6 @@ typedef struct {
 interface Renamer;
     interface Server#(RenameRequest, RenameResponse) rename;
     interface Server#(DeleteRequest, DeleteResponse) delete;
-    method Action clearState();
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -594,18 +593,6 @@ module mkRenamer(Renamer);
         // Notify about delete.
         interface Get response = deleteOutputArbiter.master.request;
     endinterface
-
-    method Action clearState() if (
-        all(getCanPut, renameDistributors) && all(getCanPut, deleteDistributors)
-        && failedTransactionHandler.canPut() && all(getIsReady, shards)
-        && all(noGrant, shardArbSources)
-    );
-        // These calls conflict with the arbiter, but that's fine, since there should
-        // never be a shard request pending when this method is enabled.
-        for (Integer i = 0; i < numShards; i = i + 1) begin
-            shards[i].request.put(tagged Reset_);
-        end
-    endmethod
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////

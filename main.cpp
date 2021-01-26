@@ -1,13 +1,13 @@
 #include <semaphore.h>
 
 #include <array>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -20,6 +20,7 @@
 #include "PuppetmasterToHostIndication.h"
 
 constexpr std::size_t objSetSize = 8;
+constexpr std::size_t poolSize = 8;
 constexpr std::size_t tsWidth = 6;
 
 typedef std::array<ObjectAddress, objSetSize> InputObjects;
@@ -33,7 +34,8 @@ typedef struct {
     TransactionObjectCounter writtenObjectCount;
 } InputTransaction;
 
-static sem_t sem_cleared;
+static sem_t sem_all_renamed;
+static sem_t sem_all_freed;
 
 // Helper function equivalent to C++20 std::unordered_set::contains.
 template <typename type>
@@ -50,15 +52,14 @@ void print_log(std::string_view msg) {
 // Handler for messages received from the FPGA
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 private:
-    void log_message(std::optional<TransactionId> tid, Timestamp timestamp,
-                     std::string_view msg) {
+    const int numTansactions;
+    int numRenamed = 0;
+    int numFreed = 0;
+
+    void log_message(TransactionId tid, Timestamp timestamp, std::string_view verb) {
         std::cout << "[" << std::setw(tsWidth) << std::setfill(' ') << std::dec
-                  << timestamp << "] PmTop: " << msg;
-        if (tid.has_value()) {
-            std::cout << " " << std::setw(4) << std::setfill('0') << std::hex
-                      << tid.value();
-        }
-        std::cout << std::endl;
+                  << timestamp << "] PmTop: " << verb << " " << std::setw(4)
+                  << std::setfill('0') << std::hex << tid << std::endl;
     }
 
 public:
@@ -68,6 +69,10 @@ public:
 
     void transactionRenamed(TransactionId tid, Timestamp timestamp) {
         log_message(tid, timestamp, "renamed");
+        if (++numRenamed == numTansactions) {
+            numRenamed = 0;
+            sem_post(&sem_all_renamed);
+        }
     }
 
     void transactionStarted(TransactionId tid, Timestamp timestamp) {
@@ -80,19 +85,18 @@ public:
 
     void transactionFreed(TransactionId tid, Timestamp timestamp) {
         log_message(tid, timestamp, "freed");
+        if (++numFreed == numTansactions) {
+            numFreed = 0;
+            sem_post(&sem_all_freed);
+        }
     }
 
-    void stateCleared(Timestamp timestamp) {
-        log_message(std::nullopt, timestamp, "state cleared");
-        sem_post(&sem_cleared);
-    }
-
-    PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
+    PuppetmasterToHostIndication(int id, int totalTransactions)
+        : PuppetmasterToHostIndicationWrapper(id), numTansactions(totalTransactions) {}
 };
 
 void load_default_test(std::vector<InputTransaction>& testInputs) {
     int numE2ETestRounds = 4;
-    int poolSize = 8;
     int numE2ETests = numE2ETestRounds * poolSize;
 
     for (int i = 0; i < numE2ETests; i = i + 1) {
@@ -190,16 +194,6 @@ void load_test_from_file(std::vector<InputTransaction>& testInputs,
 }
 
 int main(int argc, char** argv) {
-    print_log("Connectal setting up...");
-
-    HostToPuppetmasterProxy* fpga =
-        new HostToPuppetmasterProxy(IfcNames_HostToPuppetmasterS2H);
-    print_log("Initialized the request interface to the FPGA");
-
-    PuppetmasterToHostIndication puppetmasterToHost(
-        IfcNames_PuppetmasterToHostIndicationH2S);
-    print_log("Initialized the indication interface");
-
     std::vector<ClockMultiplier> multipliers;
     std::vector<InputTransaction> testInputs;
     std::size_t testIndex = 0;
@@ -246,6 +240,16 @@ int main(int argc, char** argv) {
     }
 
     // Run tests.
+    print_log("Connectal setting up...");
+
+    HostToPuppetmasterProxy* fpga =
+        new HostToPuppetmasterProxy(IfcNames_HostToPuppetmasterS2H);
+    print_log("Initialized the request interface to the FPGA");
+
+    PuppetmasterToHostIndication puppetmasterToHost(
+        IfcNames_PuppetmasterToHostIndicationH2S, testInputs.size());
+    print_log("Initialized the indication interface");
+
     for (auto&& multiplier : multipliers) {
         std::ostringstream msg;
         msg << "Enqueuing transactions with multiplier " << multiplier;
@@ -261,7 +265,9 @@ int main(int argc, char** argv) {
                 tr.writtenObjects[4], tr.writtenObjects[5], tr.writtenObjects[6],
                 tr.writtenObjects[7]);
         }
+        sem_wait(&sem_all_renamed);
+        print_log("Waiting for termination...");
         fpga->clearState();
-        sem_wait(&sem_cleared);
+        sem_wait(&sem_all_freed);
     }
 }
