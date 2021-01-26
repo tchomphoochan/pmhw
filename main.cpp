@@ -91,6 +91,19 @@ public:
         }
     }
 
+    void transactionFailed(TransactionId tid, Timestamp timestamp) {
+        log_message(tid, timestamp, "failed");
+        // Failed transactions skip both the renaming and the freeing step.
+        if (++numRenamed == numTansactions) {
+            numRenamed = 0;
+            sem_post(&sem_all_renamed);
+        }
+        if (++numFreed == numTansactions) {
+            numFreed = 0;
+            sem_post(&sem_all_freed);
+        }
+    }
+
     PuppetmasterToHostIndication(int id, int totalTransactions)
         : PuppetmasterToHostIndicationWrapper(id), numTansactions(totalTransactions) {}
 };

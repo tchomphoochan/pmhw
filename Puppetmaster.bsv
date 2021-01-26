@@ -31,7 +31,8 @@ typedef enum {
     Renamed,
     Started,
     Finished,
-    Freed
+    Freed,
+    Failed
 } TransactionStatus deriving (Bits, Eq, FShow);
 
 typedef struct {
@@ -153,9 +154,19 @@ module mkPuppetmaster(Puppetmaster);
         bufferIndex[1] <= bufferIndex[1] + 1;
         let result <- renamer.rename.response.get();
         buffer[bufferIndex[1]] <= result;
-        msgArbiter.users[numPuppets + 2].request.put(PuppetmasterResponse {
+        msgArbiter.users[numPuppets + 1].request.put(PuppetmasterResponse {
             id: result.renamedTr.tid,
             status: Renamed,
+            timestamp: cycle
+        });
+    endrule
+
+    // Notify caller about failed transactions.
+    rule getFailed;
+        let result <- renamer.fail.get();
+        msgArbiter.users[numPuppets + 2].request.put(PuppetmasterResponse {
+            id: result.tid,
+            status: Failed,
             timestamp: cycle
         });
     endrule

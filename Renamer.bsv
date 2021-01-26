@@ -32,9 +32,14 @@ typedef struct {
     TransactionId tid;
 } DeleteResponse deriving (Bits, Eq, FShow);
 
+typedef struct {
+    TransactionId tid;
+} FailResponse deriving (Bits, Eq, FShow);
+
 interface Renamer;
     interface Server#(RenameRequest, RenameResponse) rename;
     interface Server#(DeleteRequest, DeleteResponse) delete;
+    interface Get#(FailResponse) fail;
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -515,9 +520,6 @@ module mkRenamer(Renamer);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].failure, failedTransactionArbiter.users[i].request);
     end
-    mkConnection(
-        failedTransactionArbiter.master.request, failedTransactionHandler.request
-    );
 
     // Connections from failed transaction handler back to the shards.
     for (Integer i = 0; i < numShards; i = i + 1) begin
@@ -592,6 +594,14 @@ module mkRenamer(Renamer);
 
         // Notify about delete.
         interface Get response = deleteOutputArbiter.master.request;
+    endinterface
+
+    interface Get fail;
+        method ActionValue#(FailResponse) get();
+            let failedRename <- failedTransactionArbiter.master.request.get();
+            failedTransactionHandler.request.put(failedRename);
+            return FailResponse { tid: failedRename.renamedTr.tid };
+        endmethod
     endinterface
 endmodule
 
