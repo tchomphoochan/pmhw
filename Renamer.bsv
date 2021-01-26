@@ -579,7 +579,7 @@ module mkRenamer(Renamer);
         // Send renamed transaction to first free delete request distributor.
         interface Put request;
             method Action put(DeleteRequest req) if (
-                findIndex(getCanPut, renameDistributors) matches tagged Valid .index
+                findIndex(getCanPut, deleteDistributors) matches tagged Valid .index
                 &&& all(getIsReady, shards)
             );
                 deleteDistributors[index].request.put(FailedRename {
