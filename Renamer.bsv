@@ -5,7 +5,6 @@
 import Arbitrate::*;
 import ClientServer::*;
 import Connectable::*;
-import FIFOF::*;
 import GetPut::*;
 import Vector::*;
 
@@ -116,7 +115,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    FIFOF#(InputTransaction) inputFifo <- mkFIFOF1();
+    Reg#(Maybe#(InputTransaction)) maybeInputTr <- mkReg(tagged Invalid);
     Reg#(ObjectType) objType <- mkReg(?);
     Reg#(TransactionObjectCounter) objIndex <- mkReg(0);
 `ifdef DEBUG
@@ -126,12 +125,11 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
-    ShardIndex shardIndex = begin
-        InputTransaction inputTr = inputFifo.first();
+    function ShardIndex getIndex(InputTransaction inputTr);
         let readObject = inputTr.readObjects[objIndex];
         let writtenObject = inputTr.writtenObjects[objIndex];
-        getShard(objType == ReadObject ? readObject : writtenObject);
-    end;
+        return getShard(objType == ReadObject ? readObject : writtenObject);
+    endfunction
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
@@ -152,8 +150,10 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
             interface Get
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
-                method ActionValue#(ShardRequest) get() if (shardIndex == fromInteger(i));
-                    InputTransaction inputTr = inputFifo.first();
+                method ActionValue#(ShardRequest) get() if (
+                    maybeInputTr matches tagged Valid .inputTr
+                    &&& getIndex(inputTr) == fromInteger(i)
+                );
                     if (objType == ReadObject) begin
                         if (objIndex < inputTr.readObjectCount - 1) begin
                             // Go to next read object.
@@ -163,7 +163,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                             objIndex <= 0;
                             if (inputTr.writtenObjectCount == 0) begin
                                 // Except if there are no written objects, then reset.
-                                inputFifo.deq();
+                                maybeInputTr <= tagged Invalid;
                             end else begin
                                 objType <= WrittenObject;
                             end
@@ -175,7 +175,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                         end else begin
                             // No more written objects, transaction is processed.
                             objIndex <= 0;
-                            inputFifo.deq();
+                            maybeInputTr <= tagged Invalid;
                         end
                     end
 `ifdef DEBUG
@@ -193,15 +193,15 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
         );
     end
 
-    method Bool canPut() = inputFifo.notFull();
+    method Bool canPut() = !isValid(maybeInputTr);
 
     interface Put request;
-        method Action put(InputTransaction inputTr) if (inputFifo.notFull());
+        method Action put(InputTransaction inputTr) if (!isValid(maybeInputTr));
             if (inputTr.readObjectCount > 0) begin
-                inputFifo.enq(inputTr);
+                maybeInputTr <= tagged Valid inputTr;
                 objType <= ReadObject;
             end else if (inputTr.writtenObjectCount > 0) begin
-                inputFifo.enq(inputTr);
+                maybeInputTr <= tagged Valid inputTr;
                 objType <= WrittenObject;
             end
         endmethod
