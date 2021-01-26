@@ -78,7 +78,7 @@ module mkPuppetmaster(Puppetmaster);
     Vector#(TSub#(SizeSchedulingPool, 1), Reg#(RenameResponse)) buffer <-
         replicateM(mkReg(?));
     // Points to the first empty slot in the buffer.
-    Reg#(SchedulingPoolIndex) bufferIndex[3] <- mkCReg(3, 0);
+    Reg#(SchedulingPoolIndex) bufferIndex[2] <- mkCReg(2, 0);
     // Intermediate storage for scheduling result.
     Reg#(Bit#(TSub#(SizeSchedulingPool, 1))) pendingTrFlags <- mkReg(0);
     // Last transaction sent to each puppet.
@@ -124,10 +124,6 @@ module mkPuppetmaster(Puppetmaster);
     function Maybe#(a) ifPuppetBusy(a value, Puppet puppet) =
         puppet.isDone() ? tagged Invalid : tagged Valid value;
 
-    function Bool isNoOp(RenameResponse resp, Integer i, SchedulingPoolIndex firstEmpty);
-        return fromInteger(i) < firstEmpty ? resp.renamedTr.trType == NoOp : True;
-    endfunction
-
     function SchedulerTransaction maybeTrUnion(
             Vector#(vsize, Maybe#(SchedulerTransaction)) maybeTrs);
         SchedulerTransaction result;
@@ -150,23 +146,13 @@ module mkPuppetmaster(Puppetmaster);
         cycle <= cycle + 1;
     endrule
 
-    // When there are only no-ops in the buffer, clear it.
-    rule clearBuffer if (
-        all(id, zipWith3(isNoOp, readVReg(buffer), genVector(), replicate(bufferIndex[1])))
-    );
-        bufferIndex[1] <= 0;
-`ifdef DEBUG
-        $display("[%6d] Puppetmaster: clearing buffer", cycle);
-`endif
-    endrule
-
     // Put renamed transactions into a buffer.
     rule getRenamed if (
-        bufferIndex[2] < fromInteger(maxScheduledObjects - 1) && !partialMode
+        bufferIndex[1] < fromInteger(maxScheduledObjects - 1) && !partialMode
     );
-        bufferIndex[2] <= bufferIndex[2] + 1;
+        bufferIndex[1] <= bufferIndex[1] + 1;
         let result <- renamer.rename.response.get();
-        buffer[bufferIndex[2]] <= result;
+        buffer[bufferIndex[1]] <= result;
         msgArbiter.users[numPuppets + 2].request.put(PuppetmasterResponse {
             id: result.renamedTr.tid,
             status: Renamed,
@@ -186,7 +172,7 @@ module mkPuppetmaster(Puppetmaster);
 
     // When buffer is full, send scheduling request.
     rule doSchedule if (
-        bufferIndex[2] == fromInteger(maxScheduledObjects - 1) && pendingTrFlags == 0
+        bufferIndex[1] == fromInteger(maxScheduledObjects - 1) && pendingTrFlags == 0
     );
         let sentTransactions = map(getSchedTr, sentToPuppet);
         let runningTransactions = zipWith(ifPuppetBusy, sentTransactions, puppets);
