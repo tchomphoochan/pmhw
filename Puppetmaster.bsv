@@ -188,7 +188,7 @@ module mkPuppetmaster(Puppetmaster);
 
     // When buffer is not full in partial mode, send scheduling request.
     rule doPartialSchedule if (
-        0 < bufferIndex[2] && bufferIndex[2] < fromInteger(maxScheduledObjects - 1)
+        0 < bufferIndex[1] && bufferIndex[1] < fromInteger(maxScheduledObjects - 1)
         && pendingTrFlags == 0 && partialMode
     );
         let sentTransactions = map(getSchedTr, sentToPuppet);
@@ -196,7 +196,7 @@ module mkPuppetmaster(Puppetmaster);
         let runningTrSet = maybeTrUnion(runningTransactions);
         let transactions = readVReg(buffer);
         let converted = zipWith3(
-            getSchedTrIfValid, transactions, genVector(), replicate(bufferIndex[2])
+            getSchedTrIfValid, transactions, genVector(), replicate(bufferIndex[1])
         );
         let toSchedule = cons(runningTrSet, converted);
         scheduler.request.put(toSchedule);
