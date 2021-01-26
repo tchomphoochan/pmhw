@@ -5,9 +5,8 @@
 import Arbitrate::*;
 import ClientServer::*;
 import Connectable::*;
-import FIFO::*;
+import FIFOF::*;
 import GetPut::*;
-import SpecialFIFOs::*;
 import Vector::*;
 
 import PmCore::*;
@@ -99,10 +98,9 @@ interface Signal;
 endinterface
 
 interface RequestDistributor#(type req_type);
-    interface Put#(req_type) request;
-    interface Vector#(NumberShards, Get#(ShardRequest)) outputs;
     method Bool canPut();
-    interface Signal free;
+    interface Put#(req_type) request;
+    interface Vector#(NumberShards, Get#(ShardRequest)) distribute;
 endinterface
 
 typedef RequestDistributor#(InputTransaction) RenameRequestDistributor;
@@ -118,10 +116,9 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    FIFO#(InputTransaction) inputFifo <- mkBypassFIFO();
+    FIFOF#(InputTransaction) inputFifo <- mkFIFOF1();
     Reg#(ObjectType) objType <- mkReg(?);
     Reg#(TransactionObjectCounter) objIndex <- mkReg(0);
-    Reg#(Bool) isReady <- mkReg(True);
 `ifdef DEBUG
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
@@ -149,8 +146,9 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
-    function Get#(ShardRequest) makeOutputInterface(Integer i);
-        return (
+    Vector#(NumberShards, Get#(ShardRequest)) distributeIfc;
+    for (Integer i = 0; i < numShards; i = i + 1) begin
+        distributeIfc[i] = (
             interface Get
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
@@ -186,36 +184,30 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                              " object %1d on shard %1d", objIndex, shardIndex);
 `endif
                     return tagged Rename ShardRenameRequest {
-                        tid: inputTr.tid,
-                        trType: inputTr.trType,
-                        address: objType == ReadObject ? inputTr.readObjects[objIndex] :
-                                                         inputTr.writtenObjects[objIndex],
-                        type_: objType,
-                        readObjectCount: inputTr.readObjectCount,
-                        writtenObjectCount: inputTr.writtenObjectCount
+                        address: objType == ReadObject ? inputTr.readObjects[objIndex]
+                                                       : inputTr.writtenObjects[objIndex],
+                        objType: objType
                     };
                 endmethod
             endinterface
         );
-    endfunction
+    end
 
-    interface outputs = map(makeOutputInterface, genVector());
+    method Bool canPut() = inputFifo.notFull();
 
     interface Put request;
-        method Action put(InputTransaction inputTr);
-            inputFifo.enq(inputTr);
-            objType <= inputTr.readObjectCount > 0 ? ReadObject : WrittenObject;
-            isReady <= False;
+        method Action put(InputTransaction inputTr) if (inputFifo.notFull());
+            if (inputTr.readObjectCount > 0) begin
+                inputFifo.enq(inputTr);
+                objType <= ReadObject;
+            end else if (inputTr.writtenObjectCount > 0) begin
+                inputFifo.enq(inputTr);
+                objType <= WrittenObject;
+            end
         endmethod
     endinterface
 
-    method Bool canPut() = isReady;
-
-    interface Signal free;
-        method Action send();
-            isReady <= True;
-        endmethod
-    endinterface
+    interface distribute = distributeIfc;
 endmodule
 
 (* synthesize *)
@@ -225,6 +217,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     let emptyRenamedTransaction = RenamedTransaction {
         tid: ?,
+        trType: ?,
         readObjects: ?,
         writtenObjects: ?,
         readObjectCount: 0,
@@ -261,13 +254,15 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
-    function Get#(ShardRequest) makeOutputInterface(Integer i);
-        return (
+    Vector#(NumberShards, Get#(ShardRequest)) distributeIfc;
+    for (Integer i = 0; i < numShards; i = i + 1) begin
+        distributeIfc[i] = (
             interface Get
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRequest) get() if (
-                        !done0 &&& getShard(currentObj.objName) == fromInteger(i));
+                    !done0 &&& getShard(currentObj.objName) == fromInteger(i)
+                );
                     case (currentObj.objType) matches
                         ReadObject :
                             req[0].readObjectCount <= req[0].readObjectCount - 1;
@@ -285,9 +280,9 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 endmethod
             endinterface
         );
-    endfunction
+    end
 
-    interface outputs = map(makeOutputInterface, genVector());
+    method Bool canPut = done1;
 
     interface Put request;
         method Action put(FailedRename failedRename) if (done1);
@@ -295,11 +290,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
         endmethod
     endinterface
 
-    method Bool canPut = done1;
-
-    interface Signal free;
-        method Action send() = noAction;
-    endinterface
+    interface distribute = distributeIfc;
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -310,25 +301,22 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 interface ResponseAggregator;
-    interface Put#(ShardRenameResponse) request;
+    method Bool canPut();
+    interface Put#(InputTransaction) request;
+    interface Put#(ShardRenameResponse) aggregate;
     interface Get#(RenameResponse) response;
     interface Get#(FailedRename) failure;
 endinterface
 
-module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
-    ////////////////////////////////////////////////////////////////////////////////
-    /// Constants.
-    ////////////////////////////////////////////////////////////////////////////////
-    let maxObjectCount = fromInteger(objSetSize);
-    let defaultTr = RenamedTransaction { readObjectCount: 0, writtenObjectCount: 0 };
+module mkResponseAggregator(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(RenamedTransaction) renamedTr <- mkReg(defaultTr);
+    Reg#(Maybe#(RenamedTransaction)) maybeRenamedTr <- mkReg(tagged Invalid);
     Reg#(ObjectSet) readSet <- mkReg(0);
     Reg#(ObjectSet) writeSet <- mkReg(0);
-    Reg#(TransactionObjectCounter) totalReadObjectCount <- mkReg(maxObjectCount);
-    Reg#(TransactionObjectCounter) totalWrittenObjectCount <- mkReg(maxObjectCount);
+    Reg#(TransactionObjectCounter) totalReadObjectCount <- mkReg(?);
+    Reg#(TransactionObjectCounter) totalWrittenObjectCount <- mkReg(?);
     Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
 `ifdef DEBUG
@@ -338,23 +326,12 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
-    let success = readObjectCount == renamedTr.readObjectCount
-                  && writtenObjectCount == renamedTr.writtenObjectCount;
+    let isDone = readObjectCount == totalReadObjectCount
+                 && writtenObjectCount == totalWrittenObjectCount;
 
-    let resetState =
-        action
-            renamedTr <= defaultTr;
-            readSet <= 0;
-            writeSet <= 0;
-            totalReadObjectCount <= maxObjectCount;
-            totalWrittenObjectCount <= maxObjectCount;
-            readObjectCount <= 0;
-            writtenObjectCount <= 0;
-        endaction;
-
-    function Bool isDone();
-        return readObjectCount == totalReadObjectCount &&
-               writtenObjectCount == totalWrittenObjectCount;
+    function Bool isSuccess(RenamedTransaction renamedTr);
+        return readObjectCount == renamedTr.readObjectCount
+               && writtenObjectCount == renamedTr.writtenObjectCount;
     endfunction
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -370,21 +347,40 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
+    method Bool canPut() = !isValid(maybeRenamedTr);
+
     interface Put request;
-        method Action put(ShardRenameResponse response) if (!isDone());
+        method Action put(InputTransaction inputTr) if (!isValid(maybeRenamedTr));
+            maybeRenamedTr <= tagged Valid RenamedTransaction {
+                tid: inputTr.tid,
+                trType: inputTr.trType,
+                readObjects: ?,
+                writtenObjects: ?,
+                readObjectCount: 0,
+                writtenObjectCount: 0
+            };
+            readSet <= 0;
+            writeSet <= 0;
+            totalReadObjectCount <= inputTr.readObjectCount;
+            totalWrittenObjectCount <= inputTr.writtenObjectCount;
+            readObjectCount <= 0;
+            writtenObjectCount <= 0;
+        endmethod
+    endinterface
+
+    interface Put aggregate;
+        method Action put(ShardRenameResponse response) if (
+            maybeRenamedTr matches tagged Valid .renamedTr &&& !isDone
+        );
             let newTr = renamedTr;
-            newTr.tid = response.request.tid;
-            newTr.trType = response.request.trType;
-            totalReadObjectCount <= response.request.readObjectCount;
-            totalWrittenObjectCount <= response.request.writtenObjectCount;
             // Increment request count.
-            case (response.request.type_) matches
+            case (response.request.objType) matches
                 ReadObject: readObjectCount <= readObjectCount + 1;
                 WrittenObject: writtenObjectCount <= writtenObjectCount + 1;
             endcase
             // If successful, insert object into appropriate set.
             if (response.name matches tagged Valid .name) begin
-                case (response.request.type_) matches
+                case (response.request.objType) matches
                     ReadObject: begin
                         newTr.readObjects[newTr.readObjectCount] = name;
                         newTr.readObjectCount = newTr.readObjectCount + 1;
@@ -397,7 +393,7 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
                     end
                 endcase
             end
-            renamedTr <= newTr;
+            maybeRenamedTr <= tagged Valid newTr;
 `ifdef DEBUG
             $display("[%6d] Renamer: renamed %4h, ", cycle, response.request.tid,
                      response.request.type_ == ReadObject ? "read" : "write",
@@ -409,9 +405,11 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     endinterface
 
     interface Get response;
-        method ActionValue#(RenameResponse) get() if (isDone() && success);
-            resetState();
-            renamedSignal.send();
+        method ActionValue#(RenameResponse) get() if (
+            maybeRenamedTr matches tagged Valid .renamedTr &&& isDone
+            && isSuccess(renamedTr)
+        );
+            maybeRenamedTr <= tagged Invalid;
             return RenameResponse {
                 renamedTr: renamedTr,
                 schedulerTr: SchedulerTransaction { readSet: readSet, writeSet: writeSet }
@@ -420,9 +418,11 @@ module mkResponseAggregator#(Signal renamedSignal)(ResponseAggregator);
     endinterface
 
     interface Get failure;
-        method ActionValue#(FailedRename) get() if (isDone() && !success);
-            resetState();
-            renamedSignal.send();
+        method ActionValue#(FailedRename) get() if (
+            maybeRenamedTr matches tagged Valid .renamedTr &&& isDone
+            && !isSuccess(renamedTr)
+        );
+            maybeRenamedTr <= tagged Invalid;
 `ifdef DEBUG
             $display("[%6d] Renamer: failed to rename %4h", cycle, renamedTr.tid);
 `endif
@@ -452,6 +452,7 @@ module mkRenamer(Renamer);
     // Delete request distributors.
     Vector#(SizeRenamerBuffer, DeleteRequestDistributor) deleteDistributors <-
         replicateM(mkDeleteRequestDistributor);
+    // Temporary storage to keep track of delete distributor state.
     Reg#(Vector#(SizeRenamerBuffer, TransactionId)) sentToDelDistr <- mkReg(?);
     Reg#(Vector#(SizeRenamerBuffer, Bool)) prevDelDistrCanPut <- mkReg(replicate(True));
 
@@ -459,10 +460,8 @@ module mkRenamer(Renamer);
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
 
     // Response aggregators.
-    Vector#(SizeRenamerBuffer, ResponseAggregator) aggregators;
-    for (Integer i = 0; i < maxTransactions; i = i + 1) begin
-        aggregators[i] <- mkResponseAggregator(renameDistributors[i].free);
-    end
+    Vector#(SizeRenamerBuffer, ResponseAggregator) aggregators <-
+        replicateM(mkResponseAggregator());
 
     // Failed transaction handler: routes objects back to the shards for deletion.
     DeleteRequestDistributor failedTransactionHandler <- mkDeleteRequestDistributor();
@@ -476,10 +475,10 @@ module mkRenamer(Renamer);
         shardArbiters[i] <- mkArbiter(shardArbSources[i], 1);
         for (Integer j = 0; j < maxTransactions; j = j + 1) begin
             mkConnection(
-                renameDistributors[j].outputs[i], shardArbiters[i].users[j].request
+                renameDistributors[j].distribute[i], shardArbiters[i].users[j].request
             );
             mkConnection(
-                deleteDistributors[j].outputs[i],
+                deleteDistributors[j].distribute[i],
                 shardArbiters[i].users[maxTransactions + j].request
             );
         end
@@ -499,7 +498,7 @@ module mkRenamer(Renamer);
                 transactionArbiters[i].users[j].request
             );
         end
-        mkConnection(transactionArbiters[i].master.request, aggregators[i].request);
+        mkConnection(transactionArbiters[i].master.request, aggregators[i].aggregate);
     end
 
     // Connections from aggregators to output.
@@ -524,7 +523,7 @@ module mkRenamer(Renamer);
     // Connections from failed transaction handler back to the shards.
     for (Integer i = 0; i < numShards; i = i + 1) begin
         mkConnection(
-            failedTransactionHandler.outputs[i],
+            failedTransactionHandler.distribute[i],
             shardArbiters[i].users[2 * maxTransactions].request);
     end
 
@@ -537,6 +536,7 @@ module mkRenamer(Renamer);
     /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
     function Bool getCanPut(RequestDistributor#(a) rd) = rd.canPut();
+    function Bool getCanPut2(ResponseAggregator ra) = ra.canPut();
 
     function Bool getIsReady(Shard s) = s.isReady();
 
@@ -565,9 +565,11 @@ module mkRenamer(Renamer);
         // Add input transaction to first open slot (rename distributor).
         interface Put request;
             method Action put(RenameRequest req) if (
-                    findIndex(getCanPut, renameDistributors) matches tagged Valid .index
-                    &&& all(getIsReady, shards));
+                findIndex(getCanPut2, aggregators) matches tagged Valid .index
+                &&& all(getIsReady, shards)
+            );
                 renameDistributors[index].request.put(req.inputTr);
+                aggregators[index].request.put(req.inputTr);
             endmethod
         endinterface
 
