@@ -44,8 +44,8 @@ def main() -> None:
     )
     parser.add_argument(
         "-t",
-        "--text",
-        help="turn on text mode",
+        "--text-only",
+        help="do not display plot even if Matplotlib is available",
         action="store_true",
         default=np is None or plt is None,
     )
@@ -61,10 +61,9 @@ def main() -> None:
     latencies = sorted(latency_data.values())
     min_latency = latencies[0]
     max_latency = latencies[int(len(latencies) * args.cutoff) - 1]
-    if args.text:
-        print("Latency:")
-        print_histogram(latencies, args.bins, min_latency, max_latency)
-    else:
+    print("Latency:")
+    print_histogram(latencies, args.bins, min_latency, max_latency)
+    if not args.text_only:
         plot_histogram(latencies, args.bins, min_latency, max_latency)
 
 
