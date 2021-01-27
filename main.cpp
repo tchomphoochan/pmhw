@@ -135,8 +135,8 @@ void load_default_test(std::vector<InputTransaction>& testInputs) {
     }
 }
 
-void load_test_from_file(std::vector<InputTransaction>& testInputs,
-                         std::size_t& testIndex, const char* fname) {
+std::size_t load_test_from_file(std::vector<InputTransaction>& testInputs,
+                                std::size_t startIndex, const char* fname) {
     // Open input file.
     std::ifstream source;
     source.open(fname);
@@ -175,7 +175,7 @@ void load_test_from_file(std::vector<InputTransaction>& testInputs,
     std::string line;
     while (std::getline(source, line)) {
         InputTransaction tr;
-        tr.tid = testIndex++;
+        tr.tid = startIndex++;
 
         // Parse each comma-separated value in line.
         std::stringstream lineBuffer(line);
@@ -204,6 +204,7 @@ void load_test_from_file(std::vector<InputTransaction>& testInputs,
         testInputs.push_back(tr);
     }
     source.close();
+    return startIndex;
 }
 
 int main(int argc, char** argv) {
@@ -233,7 +234,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("unknown argument: " + arg);
         case FLAG_FILE:
             print_log("Loading tests from: " + std::string(argv[i]));
-            load_test_from_file(testInputs, testIndex, argv[i]);
+            testIndex = load_test_from_file(testInputs, testIndex, argv[i]);
             break;
         case FLAG_MULTIPLIER:
             multipliers.push_back(std::stoul(arg));
