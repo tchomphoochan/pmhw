@@ -6,8 +6,7 @@ import bisect
 from argparse import ArgumentParser, FileType
 from collections.abc import Sequence
 from io import TextIOBase
-from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 try:
     import matplotlib.pyplot as plt
