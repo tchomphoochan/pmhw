@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
         if (arg == "-f") {
             flag = FLAG_FILE;
             continue;
-        } else if (arg == "-m") {
+        } else if (arg == "-x") {
             flag = FLAG_MULTIPLIER;
             continue;
         }
@@ -230,7 +230,8 @@ int main(int argc, char** argv) {
         // Digest next argument.
         switch (flag) {
         case FLAG_NONE:
-            std::cerr << "usage: PROG -f [file1 [file2 ...]] -m [mult1 [mult2 ...]]\n";
+            std::cerr << "usage: PROG -f [file1 [file2 ...]] -x [multiplier1 "
+                         "[multiplier2 ...]]\n";
             throw std::runtime_error("unknown argument: " + arg);
         case FLAG_FILE:
             print_log("Loading tests from: " + std::string(argv[i]));
