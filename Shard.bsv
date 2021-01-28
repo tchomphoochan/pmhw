@@ -176,7 +176,7 @@ module mkShard(Shard);
         tries <= tries + 1;
         bram.portA.request.put(makeReadRequest(getNextKey(req)));
 `ifdef DEBUG
-        $display("[%6d] Shard: start rename of %4h: %8h", cycle, req.tid, req.address);
+        $display("[%8d] Shard: start renaming O#%h", cycle, req.address);
 `endif
     endrule
 
@@ -194,8 +194,8 @@ module mkShard(Shard);
             };
             bram.portA.request.put(makeWriteRequest(lastKey, newEntry));
 `ifdef DEBUG
-            $display("[%6d] Shard: done rename of %4h: %8h to %3h", cycle, req.tid,
-                     req.address, keyToName(req, lastKey));
+            $display("[%8d] Shard: done renaming O#%h to O'#%h", cycle, req.address,
+                     keyToName(req, lastKey));
 `endif
         end else if (entry.counter == fromInteger(maxLiveObjects)
                      && entry.objectId == req.address
@@ -204,7 +204,7 @@ module mkShard(Shard);
             isDone <= True;
             isSuccess <= False;
 `ifdef DEBUG
-            $display("[%6d] Shard: failed rename of %4h: %8h", cycle, req.tid, req.address);
+            $display("[%8d] Shard: failed to rename O#%h", cycle, req.address);
 `endif
         end else begin
             // Try next hash function (next offset).
@@ -212,8 +212,7 @@ module mkShard(Shard);
             tries <= tries + 1;
             bram.portA.request.put(makeReadRequest(getNextKey(req)));
 `ifdef DEBUG
-            $display("[%6d] Shard: try #%0d rename of %4h: %8h", cycle, tries, req.tid,
-                     req.address);
+            $display("[%8d] Shard: try %0d of renaming O#%h", cycle, tries, req.address);
 `endif
         end
     endrule
@@ -222,7 +221,7 @@ module mkShard(Shard);
                       &&& sreq matches tagged Delete .req &&& !isDone);
         bram.portA.request.put(makeReadRequest(getKey(req.name)));
 `ifdef DEBUG
-        $display("[%6d] Shard: start delete: %3h", cycle, req.name);
+        $display("[%8d] Shard: start deleting O'#%h", cycle, req.name);
 `endif
     endrule
 
@@ -236,7 +235,7 @@ module mkShard(Shard);
         };
         bram.portA.request.put(makeWriteRequest(getKey(req.name), newEntry));
 `ifdef DEBUG
-        $display("[%6d] Shard: done delete: %3h", cycle, req.name);
+        $display("[%8d] Shard: done deleting O'#%h", cycle, req.name);
 `endif
     endrule
 
@@ -262,7 +261,7 @@ module mkShard(Shard);
             lastKey <= 0;
             tries <= 0;
 `ifdef DEBUG
-        $display("[%6d] Shard: received request", cycle);
+        $display("[%8d] Shard: received request", cycle);
 `endif
         endmethod
     endinterface
@@ -275,7 +274,7 @@ module mkShard(Shard);
             isDone <= False;
             let name = keyToName(req, lastKey);
 `ifdef DEBUG
-        $display("[%6d] Shard: finished %4h: %8h", cycle, req.tid, req.address);
+        $display("[%8d] Shard: finished renaming O#%h", cycle, req.address);
 `endif
             if (isSuccess) begin
                 return ShardRenameResponse { request: req, name: tagged Valid name };

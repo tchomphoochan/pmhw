@@ -111,6 +111,10 @@ def load_file(file: TextIOBase) -> tuple[float, dict[int, int], dict[int, int]]:
         except ValueError:
             raise ValueError(f"unknown log entry format: {message}")
 
+        # Strip id prefix from newer logs
+        if transaction_id_str[:2] == "T#":
+            transaction_id_str = transaction_id_str[2:]
+
         try:
             transaction_id = int(transaction_id_str, base=16)
         except ValueError:

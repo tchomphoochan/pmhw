@@ -93,27 +93,27 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 module mkTestIndication(PuppetmasterToHostIndication);
     method Action transactionReceived(TransactionId tid, Timestamp timestamp);
-        $display("[%6d] PmTop: received %4h", timestamp, tid);
+        $display("[%8d] PmTop: received T#%h", timestamp, tid);
     endmethod
 
     method Action transactionRenamed(TransactionId tid, Timestamp timestamp);
-        $display("[%6d] PmTop: renamed %4h", timestamp, tid);
+        $display("[%8d] PmTop: renamed T#%h", timestamp, tid);
     endmethod
 
     method Action transactionStarted(TransactionId tid, Timestamp timestamp);
-        $display("[%6d] PmTop: started %4h", timestamp, tid);
+        $display("[%8d] PmTop: started T#%h", timestamp, tid);
     endmethod
 
     method Action transactionFinished(TransactionId tid, Timestamp timestamp);
-        $display("[%6d] PmTop: finished %4h", timestamp, tid);
+        $display("[%8d] PmTop: finished T#%h", timestamp, tid);
     endmethod
 
     method Action transactionFreed(TransactionId tid, Timestamp timestamp);
-        $display("[%6d] PmTop: freed %4h", timestamp, tid);
+        $display("[%8d] PmTop: freed T#%h", timestamp, tid);
     endmethod
 
     method Action transactionFailed(TransactionId tid, Timestamp timestamp);
-        $display("[%6d] PmTop: failed %4h", timestamp, tid);
+        $display("[%8d] PmTop: failed T#%h", timestamp, tid);
     endmethod
 endmodule
 

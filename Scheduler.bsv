@@ -157,7 +157,7 @@ module mkScheduler(Scheduler);
             round <= round + 1;
         end
 `ifdef DEBUG
-        $display("[%6d] Scheduler: round %2d, offset %3d", cycle, round, offset);
+        $display("[%8d] Scheduler: round %0d, offset %0d", cycle, round, offset);
 `endif
     endrule
 

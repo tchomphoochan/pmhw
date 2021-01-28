@@ -172,6 +172,11 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                                 objType <= WrittenObject;
                             end
                         end
+`ifdef DEBUG
+                    $display(
+                        "[%8d] Renamer: renaming read object %0d from T#%h on shard %0d",
+                        cycle, objIndex, inputTr.tid, getIndex(inputTr));
+`endif
                     end else begin
                         if (objIndex < inputTr.writtenObjectCount - 1) begin
                             // Go to next written object.
@@ -181,12 +186,12 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                             objIndex <= 0;
                             maybeInputTr <= tagged Invalid;
                         end
-                    end
 `ifdef DEBUG
-                    $display("[%6d] Renamer: renaming %4h, ", cycle, inputTr.tid,
-                             objType == ReadObject ? "read" : "written",
-                             " object %1d on shard %1d", objIndex, shardIndex);
+                    $display(
+                        "[%8d] Renamer: renaming written object %0d from T#%h on shard %0d",
+                        cycle, objIndex, inputTr.tid, getIndex(inputTr));
 `endif
+                    end
                     return tagged Rename ShardRenameRequest {
                         address: objType == ReadObject ? inputTr.readObjects[objIndex]
                                                        : inputTr.writtenObjects[objIndex],
@@ -268,18 +273,21 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                     !done0 &&& getShard(currentObj.objName) == fromInteger(i)
                 );
                     case (currentObj.objType) matches
-                        ReadObject :
+                        ReadObject : begin
                             req[0].readObjectCount <= req[0].readObjectCount - 1;
-                        WrittenObject :
-                            req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
-                    endcase
 `ifdef DEBUG
-                    $display("[%6d] Renamer: deleting %4h, ", cycle, req[0].tid,
-                             currentObj.objType == ReadObject ? "read" : "write",
-                             " object %1d",
-                             currentObj.objType == ReadObject ?
-                                req[0].readObjectCount : req[0].writtenObjectCount);
+                    $display("[%8d] Renamer: deleting read object %0d from T#%h", cycle,
+                             req[0].readObjectCount - 1, req[0].tid);
 `endif
+                        end
+                        WrittenObject : begin
+                            req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
+`ifdef DEBUG
+                    $display("[%8d] Renamer: deleting written object %0d from T#%h",
+                             cycle, req[0].writtenObjectCount - 1, req[0].tid);
+`endif
+                        end
+                    endcase
                     return tagged Delete ShardDeleteRequest { name: currentObj.objName };
                 endmethod
             endinterface
@@ -389,22 +397,21 @@ module mkResponseAggregator(ResponseAggregator);
                         newTr.readObjects[newTr.readObjectCount] = name;
                         newTr.readObjectCount = newTr.readObjectCount + 1;
                         readSet <= readSet | (1 << name);
+`ifdef DEBUG
+            $display("[%8d] Renamer: renamed read object %0d", cycle, readObjectCount);
+`endif
                     end
                     WrittenObject: begin
                         newTr.writtenObjects[newTr.writtenObjectCount] = name;
                         newTr.writtenObjectCount = newTr.writtenObjectCount + 1;
                         writeSet <= writeSet | (1 << name);
+`ifdef DEBUG
+            $display("[%8d] Renamer: renamed written object %0d", cycle, writtenObjectCount);
+`endif
                     end
                 endcase
             end
             maybeRenamedTr[0] <= tagged Valid newTr;
-`ifdef DEBUG
-            $display("[%6d] Renamer: renamed %4h, ", cycle, response.request.tid,
-                     response.request.type_ == ReadObject ? "read" : "write",
-                     " object %1d",
-                     response.request.type_ == ReadObject ? readObjectCount :
-                                                            writtenObjectCount);
-`endif
         endmethod
     endinterface
 
@@ -428,7 +435,7 @@ module mkResponseAggregator(ResponseAggregator);
         );
             maybeRenamedTr[0] <= tagged Invalid;
 `ifdef DEBUG
-            $display("[%6d] Renamer: failed to rename %4h", cycle, renamedTr.tid);
+            $display("[%8d] Renamer: failed to rename T#%h", cycle, renamedTr.tid);
 `endif
             return FailedRename { renamedTr : renamedTr };
         endmethod

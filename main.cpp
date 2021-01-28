@@ -21,7 +21,7 @@
 
 constexpr std::size_t objSetSize = 8;
 constexpr std::size_t poolSize = 8;
-constexpr std::size_t tsWidth = 6;
+constexpr std::size_t tsWidth = 8;
 
 typedef std::array<ObjectAddress, objSetSize> InputObjects;
 
@@ -58,7 +58,7 @@ private:
 
     void log_message(TransactionId tid, Timestamp timestamp, std::string_view verb) {
         std::cout << "[" << std::setw(tsWidth) << std::setfill(' ') << std::dec
-                  << timestamp << "] PmTop: " << verb << " " << std::setw(4)
+                  << timestamp << "] PmTop: " << verb << " T#" << std::setw(sizeof(tid))
                   << std::setfill('0') << std::hex << tid << std::endl;
     }
 

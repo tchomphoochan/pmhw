@@ -193,7 +193,7 @@ module mkPuppetmaster(Puppetmaster);
         let toSchedule = cons(runningTrSet, converted);
         scheduler.request.put(toSchedule);
 `ifdef DEBUG
-        $display("[%6d] Puppetmaster: scheduler starting", cycle);
+        $display("[%8d] Puppetmaster: starting scheduler", cycle);
 `endif
     endrule
 
@@ -212,7 +212,7 @@ module mkPuppetmaster(Puppetmaster);
         let toSchedule = cons(runningTrSet, converted);
         scheduler.request.put(toSchedule);
 `ifdef DEBUG
-        $display("[%6d] Puppetmaster: scheduler starting", cycle);
+        $display("[%8d] Puppetmaster: starting scheduler with partial buffer", cycle);
 `endif
     endrule
 
@@ -222,7 +222,7 @@ module mkPuppetmaster(Puppetmaster);
         // Lowest bit corresponds to the currently running transactions, so remove it.
         pendingTrFlags <= scheduled[maxRounds - 1 : 1];
 `ifdef DEBUG
-        $display("[%6d] Puppetmaster: scheduler finished", cycle);
+        $display("[%8d] Puppetmaster: scheduler returned %b", cycle, scheduled);
 `endif
     endrule
 
@@ -242,7 +242,7 @@ module mkPuppetmaster(Puppetmaster);
             bufferIndex[0] <= bufferIndex[0] - 1;
         end
 `ifdef DEBUG
-        $display("[%6d] Puppetmaster: starting %2h on puppet #%0d", cycle,
+        $display("[%8d] Puppetmaster: starting T#%h on puppet %0d", cycle,
                  started.renamedTr.tid, puppetIndex);
 `endif
     endrule
@@ -302,7 +302,7 @@ module mkPuppetmaster(Puppetmaster);
     method Action clearState();
         partialMode <= True;
 `ifdef DEBUG
-        $display("[%6d] Puppetmaster: clearing state", cycle);
+        $display("[%8d] Puppetmaster: clearing state", cycle);
 `endif
     endmethod
 endmodule
