@@ -148,6 +148,7 @@ std::size_t load_test_from_file(std::vector<InputTransaction>& testInputs,
     std::unordered_set<std::size_t> objIndices;
     std::unordered_set<std::size_t> readIndices;
     std::unordered_set<std::size_t> writeIndices;
+    std::size_t indexCount;
 
     // Parse header for location of read and write object fields.
     std::string header;
@@ -156,15 +157,15 @@ std::size_t load_test_from_file(std::vector<InputTransaction>& testInputs,
     }
     std::stringstream headerBuffer(header);
     std::string label;
-    for (std::size_t i = 0; std::getline(headerBuffer, label, ','); i++) {
+    for (indexCount = 0; std::getline(headerBuffer, label, ','); indexCount++) {
         if (label.find("Read object") == 0) {
-            objIndices.insert(i);
-            readIndices.insert(i);
+            objIndices.insert(indexCount);
+            readIndices.insert(indexCount);
         } else if (label.find("Written object") == 0) {
-            objIndices.insert(i);
-            writeIndices.insert(i);
+            objIndices.insert(indexCount);
+            writeIndices.insert(indexCount);
         } else if (label.find("Type") == 0) {
-            typeIndex = i;
+            typeIndex = indexCount;
         }
     }
     if (typeIndex < 0) {
@@ -176,11 +177,14 @@ std::size_t load_test_from_file(std::vector<InputTransaction>& testInputs,
     while (std::getline(source, line)) {
         InputTransaction tr;
         tr.tid = startIndex++;
+        tr.readObjectCount = 0;
+        tr.writtenObjectCount = 0;
 
         // Parse each comma-separated value in line.
         std::stringstream lineBuffer(line);
         std::string value;
-        for (std::size_t i = 0; std::getline(lineBuffer, value, ','); i++) {
+        for (std::size_t i = 0; i < indexCount; i++) {
+            std::getline(lineBuffer, value, ',');
             if (i == static_cast<std::size_t>(typeIndex)) {
                 tr.trType = value == "get"         ? TransactionType::DatabaseRead
                             : value == "set"       ? TransactionType::DatabaseWrite
