@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import bisect
 from argparse import ArgumentParser, FileType
+from collections import defaultdict
 from collections.abc import Sequence
 from io import TextIOBase
 from typing import Optional
@@ -50,13 +51,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Parse log file into dictionary.
-    latency_data, throughput = load_file(args.file)
+    # Analyze log file.
+    throughput, latency_data, core_usage = load_file(args.file)
 
+    # Output throughput.
     print("Throughput:")
     print(f"\t{throughput:.3e} /cycle")
     print(f"\t{throughput * args.frequency * 1e6:,.0f} /s at {args.frequency} MHz")
 
+    # Output latency.
     latencies = sorted(latency_data.values())
     min_latency = latencies[0]
     max_latency = latencies[int(len(latencies) * args.cutoff) - 1]
@@ -65,15 +68,25 @@ def main() -> None:
     if not args.text_only:
         plot_histogram(latencies, args.bins, min_latency, max_latency)
 
+    # Output core utilization.
+    total_cores = max(core_usage)
+    total_cycles = sum(core_usage.values())
+    print("Core usage:")
+    for n_cores in range(total_cores + 1):
+        print(f"\t{n_cores} cores: {core_usage[n_cores] / total_cycles:.2%}")
 
-def load_file(file: TextIOBase) -> tuple[dict[int, int], float]:
+
+def load_file(file: TextIOBase) -> tuple[float, dict[int, int], dict[int, int]]:
     """Read and parse log file into dictionary mapping ids to data."""
     receive_times: dict[int, int] = dict()
     start_times: dict[int, int] = dict()
+    core_usage: defaultdict[int, int] = defaultdict(int)
 
     first_start: Optional[int] = None
     last_start: int
+    last_finish: int = -1
     n_transactions = 0
+    n_cores_used = 0
 
     while True:
         # Line format: "[  XXXX] FILE: MESSAGE"
@@ -125,8 +138,15 @@ def load_file(file: TextIOBase) -> tuple[dict[int, int], float]:
             start_times[transaction_id] = timestamp
             if first_start is None:
                 first_start = timestamp
+            else:
+                core_usage[n_cores_used] += timestamp - max(last_start, last_finish)
+                n_cores_used += 1
             last_start = timestamp
             n_transactions += 1
+        elif verb == "finished":
+            core_usage[n_cores_used] += timestamp - max(last_start, last_finish)
+            n_cores_used -= 1
+            last_finish = timestamp
 
     if first_start is None:
         raise ValueError("no transactions started")
@@ -137,14 +157,14 @@ def load_file(file: TextIOBase) -> tuple[dict[int, int], float]:
             f"{len(receive_times) - len(start_times)} transactions not started"
         )
 
-    latencies = dict()
+    latency_data = dict()
     for transaction_id, receive_time in receive_times.items():
         if transaction_id not in start_times:
             raise ValueError(f"transaction {transaction_id} not started")
         start_time = start_times[transaction_id]
-        latencies[transaction_id] = start_time - receive_time
+        latency_data[transaction_id] = start_time - receive_time
 
-    return latencies, throughput
+    return throughput, latency_data, core_usage
 
 
 def plot_histogram(values: Sequence[int], n_bins: int, min_val: int, max_val: int):
