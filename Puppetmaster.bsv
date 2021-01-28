@@ -232,15 +232,15 @@ module mkPuppetmaster(Puppetmaster);
         // Find first scheduled transaction and remove from pending set.
         SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
         pendingTrFlags <= pendingTrFlags & ~(1 << trIndex);
-        // Move last transaction in buffer to replace transaction being started.
-        if (0 < bufferIndex[0]) begin
-            buffer[trIndex] <= buffer[bufferIndex[0] - 1];
-            bufferIndex[0] <= bufferIndex[0] - 1;
-        end
         // Start transaction on idle puppet.
         let started = buffer[trIndex];
         sentToPuppet[puppetIndex] <= started;
         puppets[puppetIndex].start(started.renamedTr);
+        // Move last transaction in buffer to replace it.
+        if (0 < bufferIndex[0]) begin
+            buffer[trIndex] <= buffer[bufferIndex[0] - 1];
+            bufferIndex[0] <= bufferIndex[0] - 1;
+        end
 `ifdef DEBUG
         $display("[%6d] Puppetmaster: starting %2h on puppet #%0d", cycle,
                  started.renamedTr.tid, puppetIndex);
