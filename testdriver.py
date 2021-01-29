@@ -82,7 +82,7 @@ for module in args.modules or tests:
             result = results[-1].rstrip()
             assert (
                 result == expected[i]
-            ), f"\n\tgot:     {result}\n\texpected: {expected[i]}"
+            ), f"\n\tgot:      {result}\n\texpected: {expected[i]}"
         except AssertionError as e:
             print(f"\nTest {i + 1} failed: {e}", end="")
         else:
