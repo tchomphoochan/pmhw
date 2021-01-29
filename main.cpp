@@ -271,7 +271,8 @@ int main(int argc, char** argv) {
 
     for (auto&& multiplier : multipliers) {
         std::ostringstream msg;
-        msg << "Enqueuing transactions with multiplier " << multiplier;
+        msg << "Enqueuing " << testInputs.size() << " transactions with multiplier "
+            << multiplier;
         print_log(msg.str());
         fpga->setPuppetClockMultiplier(multiplier);
         for (auto&& tr : testInputs) {
