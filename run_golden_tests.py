@@ -64,7 +64,8 @@ for module, expected in tests.items():
         bufsize=1,
         preexec_fn=os.setsid,  # necessary for the os.killpg call to work
     )
-    assert proc.stdout is not None
+    if proc.stdout is None:
+        raise RuntimeError("process has no stdout")
     proc_output = proc.stdout
 
     # Check output.
@@ -75,14 +76,14 @@ for module, expected in tests.items():
         thread.daemon = True
         thread.start()
         thread.join(args.timeout)
-        try:
-            assert not thread.is_alive(), "test timed out"
-            result = results[-1].rstrip()
-            assert (
-                result == expected[i]
-            ), f"\n\tgot:      {result}\n\texpected: {expected[i]}"
-        except AssertionError as e:
-            print(f"\nLine {i + 1} doesn't match: {e}", end="")
+        if thread.is_alive():
+            print("test timed out.", end="")
+            break
+        result = results[-1].rstrip()
+        if result != expected[i]:
+            print(f"\nLine {i + 1} doesn't match:")
+            print(f"\tgot:      {result}")
+            print(f"\texpected: {expected[i]}", end="")
         else:
             passed += 1
     if passed == len(expected):
