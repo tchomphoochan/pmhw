@@ -9,49 +9,48 @@ from pathlib import Path
 from threading import Thread
 from typing import List
 
-TEST_TIMEOUT_SECONDS = 5
-
-cur_dir = Path(__file__).parent.resolve()
-
-# Assemble available tests.
-tests = {}
-test_dir = cur_dir / "golden_tests"
-for test_file in test_dir.iterdir():
-    test_name = test_file.stem
-    with open(test_file, "rt") as f:
-        tests[test_name] = f.read().splitlines()
-
 # Read command line arguments.
 parser = ArgumentParser(description=__doc__)
-group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument(
-    "-m",
-    "--modules",
-    choices=tests,
-    nargs="+",
-    help="modules to test",
-)
-group.add_argument(
-    "-a",
-    "--all",
-    action="store_true",
-    help="test all modules",
+parser.add_argument(
+    "-k",
+    metavar="pattern".upper(),
+    dest="pattern",
+    help="only run tests which match the given substring",
+    default="",
 )
 parser.add_argument(
     "-d",
-    "--directory",
-    metavar="dir",
-    help="look for tested binaries in dir",
-    default=os.getcwd(),
+    metavar="directory".upper(),
+    dest="directory",
+    help="directory for golden tests",
+    default="../golden_tests",
+)
+parser.add_argument(
+    "-t",
+    metavar="timeout".upper(),
+    dest="timeout",
+    type=int,
+    help="test timeout in seconds",
+    default=5,
 )
 args = parser.parse_args()
 
+# Assemble tests.
+tests = {}
+test_dir = Path(args.directory).resolve()
+for test_file in test_dir.iterdir():
+    test_name = test_file.stem
+    if args.pattern not in test_name:
+        continue
+    with open(test_file, "rt") as f:
+        tests[test_name] = f.read().splitlines()
+
 # Run tests.
-for module in args.modules or tests:
-    print(f"Running tests for {module}... ", end="")
+for module, expected in tests.items():
+    print(f"Running golden test for {module}... ", end="")
 
     # Start process.
-    proc_dir = Path(args.directory)
+    proc_dir = Path(os.getcwd())
     module_name = f"mk{module}Testbench"
     proc_path = proc_dir / module_name
     if not proc_path.is_file():
@@ -69,14 +68,13 @@ for module in args.modules or tests:
     proc_output = proc.stdout
 
     # Check output.
-    expected = tests[module]
     results: List[str] = []
     passed = 0
     for i in range(len(expected)):
         thread = Thread(target=lambda: results.append(proc_output.readline()))
         thread.daemon = True
         thread.start()
-        thread.join(TEST_TIMEOUT_SECONDS)
+        thread.join(args.timeout)
         try:
             assert not thread.is_alive(), "test timed out"
             result = results[-1].rstrip()
@@ -84,12 +82,12 @@ for module in args.modules or tests:
                 result == expected[i]
             ), f"\n\tgot:      {result}\n\texpected: {expected[i]}"
         except AssertionError as e:
-            print(f"\nTest {i + 1} failed: {e}", end="")
+            print(f"\nLine {i + 1} doesn't match: {e}", end="")
         else:
             passed += 1
     if passed == len(expected):
-        print("all passed.")
+        print("passed.")
     else:
-        print(f"\n{passed}/{len(expected)} passed.")
+        print(f"\n{passed}/{len(expected)} lines match.")
 
     os.killpg(os.getpgid(proc.pid), signal.SIGTERM)  # kill subprocesses too
