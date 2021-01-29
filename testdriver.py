@@ -15,7 +15,7 @@ cur_dir = Path(__file__).parent.resolve()
 
 # Assemble available tests.
 tests = {}
-test_dir = cur_dir / "test_outputs"
+test_dir = cur_dir / "golden_tests"
 for test_file in test_dir.iterdir():
     test_name = test_file.stem
     with open(test_file, "rt") as f:
