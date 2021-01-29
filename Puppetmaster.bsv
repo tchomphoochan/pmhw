@@ -22,7 +22,10 @@ import Shard::*;
 ////////////////////////////////////////////////////////////////////////////////
 typedef 3 LogNumberPuppets;
 
+typedef TSub#(SizeSchedulingPool, 1) NumberPendingTransactions;
 typedef TExp#(LogNumberPuppets) NumberPuppets;
+
+typedef Bit#(TLog#(TAdd#(NumberPendingTransactions, 1))) PendingTransactionCount;
 
 typedef InputTransaction PuppetmasterRequest;
 
@@ -58,6 +61,7 @@ endinterface
 /// Numeric constants.
 ////////////////////////////////////////////////////////////////////////////////
 Integer numPuppets = valueOf(NumberPuppets);
+Integer maxPendingTransactions = valueOf(NumberPendingTransactions);
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -75,20 +79,20 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    // Stores renamed transactions while they are waiting to be sent to the scheduler.
-    Vector#(TSub#(SizeSchedulingPool, 1), Reg#(RenameResponse)) buffer <-
+    // Renamed transactions while they are waiting to be sent to the scheduler or puppets.
+    Vector#(NumberPendingTransactions, Reg#(RenameResponse)) pendingTrs <-
         replicateM(mkReg(?));
-    // Points to the first empty slot in the buffer.
-    Reg#(SchedulingPoolIndex) bufferIndex[2] <- mkCReg(2, 0);
-    // Intermediate storage for scheduling result.
-    Reg#(Bit#(TSub#(SizeSchedulingPool, 1))) pendingTrFlags <- mkReg(0);
+    // Number of (valid) transactions in the above vector.
+    Reg#(PendingTransactionCount) pendingTrCount[2] <- mkCReg(2, 0);
+    // For each valid transaction: 0 = waiting to be scheduled, 1 = already scheduled.
+    Reg#(Bit#(NumberPendingTransactions)) pendingTrFlags <- mkReg(0);
     // Last transaction sent to each puppet.
     Reg#(Vector#(NumberPuppets, RenameResponse)) sentToPuppet <- mkReg(?);
     // Clock.
     Reg#(Timestamp) cycle <- mkReg(0);
     // Store previous puppet state to detect when transactions finish running.
     Reg#(Vector#(NumberPuppets, Bool)) prevPuppetsDone <- mkReg(replicate(True));
-    // Whether we should execute all remaining transactions in the buffer.
+    // Whether we should execute all remaining pending transactions.
     Reg#(Bool) partialMode <- mkReg(?);
 
     // Submodules.
@@ -112,10 +116,10 @@ module mkPuppetmaster(Puppetmaster);
     function SchedulerTransaction getSchedTr(RenameResponse resp) = resp.schedulerTr;
 
     function SchedulerTransaction getSchedTrIfValid(
-        RenameResponse resp, Integer i, SchedulingPoolIndex firstEmpty
+        RenameResponse resp, Integer i, PendingTransactionCount trCount
     );
         let emptySchedulerTr = SchedulerTransaction { readSet: 0, writeSet : 0 };
-        return fromInteger(i) < firstEmpty ? resp.schedulerTr : emptySchedulerTr;
+        return fromInteger(i) < trCount ? resp.schedulerTr : emptySchedulerTr;
     endfunction
 
     function TransactionId getTid(RenameResponse resp) = resp.renamedTr.tid;
@@ -147,13 +151,13 @@ module mkPuppetmaster(Puppetmaster);
         cycle <= cycle + 1;
     endrule
 
-    // Put renamed transactions into a buffer.
+    // Move renamed transactions to pending.
     rule getRenamed if (
-        bufferIndex[1] < fromInteger(maxScheduledObjects - 1) && !partialMode
+        pendingTrCount[1] < fromInteger(maxPendingTransactions) && !partialMode
     );
-        bufferIndex[1] <= bufferIndex[1] + 1;
         let result <- renamer.rename.response.get();
-        buffer[bufferIndex[1]] <= result;
+        pendingTrs[pendingTrCount[1]] <= result;
+        pendingTrCount[1] <= pendingTrCount[1] + 1;
         msgArbiter.users[numPuppets + 1].request.put(PuppetmasterResponse {
             id: result.renamedTr.tid,
             status: Renamed,
@@ -181,14 +185,14 @@ module mkPuppetmaster(Puppetmaster);
         });
     endrule
 
-    // When buffer is full, send scheduling request.
+    // When pending transaction buffer is full, send scheduling request.
     rule doSchedule if (
-        bufferIndex[1] == fromInteger(maxScheduledObjects - 1) && pendingTrFlags == 0
+        pendingTrCount[1] == fromInteger(maxPendingTransactions) && pendingTrFlags == 0
     );
         let sentTransactions = map(getSchedTr, sentToPuppet);
         let runningTransactions = zipWith(ifPuppetBusy, sentTransactions, puppets);
         let runningTrSet = maybeTrUnion(runningTransactions);
-        let transactions = readVReg(buffer);
+        let transactions = readVReg(pendingTrs);
         let converted = map(getSchedTr, transactions);
         let toSchedule = cons(runningTrSet, converted);
         scheduler.request.put(toSchedule);
@@ -197,17 +201,17 @@ module mkPuppetmaster(Puppetmaster);
 `endif
     endrule
 
-    // When buffer is not full in partial mode, send scheduling request.
+    // When pending transation buffer is not full in partial mode, send scheduling request.
     rule doPartialSchedule if (
-        0 < bufferIndex[1] && bufferIndex[1] < fromInteger(maxScheduledObjects - 1)
+        0 < pendingTrCount[1] && pendingTrCount[1] < fromInteger(maxPendingTransactions)
         && pendingTrFlags == 0 && partialMode
     );
         let sentTransactions = map(getSchedTr, sentToPuppet);
         let runningTransactions = zipWith(ifPuppetBusy, sentTransactions, puppets);
         let runningTrSet = maybeTrUnion(runningTransactions);
-        let transactions = readVReg(buffer);
+        let transactions = readVReg(pendingTrs);
         let converted = zipWith3(
-            getSchedTrIfValid, transactions, genVector(), replicate(bufferIndex[1])
+            getSchedTrIfValid, transactions, genVector(), replicate(pendingTrCount[1])
         );
         let toSchedule = cons(runningTrSet, converted);
         scheduler.request.put(toSchedule);
@@ -230,16 +234,17 @@ module mkPuppetmaster(Puppetmaster);
     rule sendTransaction if (findIndex(getIsDone, puppets) matches tagged Valid .puppetIndex
             &&& pendingTrFlags != 0);
         // Find first scheduled transaction and remove from pending set.
-        SchedulingPoolIndex trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
+        PendingTransactionCount trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
         pendingTrFlags <= pendingTrFlags & ~(1 << trIndex);
         // Start transaction on idle puppet.
-        let started = buffer[trIndex];
+        let started = pendingTrs[trIndex];
         sentToPuppet[puppetIndex] <= started;
         puppets[puppetIndex].start(started.renamedTr);
-        // Move last transaction in buffer to replace it.
-        if (0 < bufferIndex[0]) begin
-            buffer[trIndex] <= buffer[bufferIndex[0] - 1];
-            bufferIndex[0] <= bufferIndex[0] - 1;
+        // Move last transaction in pending transaction buffer to replace it.
+        if (0 < pendingTrCount[0]) begin
+            let newPendingTrCount = pendingTrCount[0] - 1;
+            pendingTrs[trIndex] <= pendingTrs[newPendingTrCount];
+            pendingTrCount[0] <= newPendingTrCount;
         end
 `ifdef DEBUG
         $display("[%8d] Puppetmaster: starting T#%h on puppet %0d", cycle,
