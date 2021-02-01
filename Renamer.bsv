@@ -109,6 +109,7 @@ endinterface
 
 interface RequestDistributor#(type req_type);
     method Bool canPut();
+    method Maybe#(req_type) currentRequest();
     interface Put#(req_type) request;
     interface Vector#(NumberShards, Get#(ShardRequest)) distribute;
 endinterface
@@ -211,6 +212,8 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
 
     method Bool canPut() = !isValid(maybeInputTr);
 
+    method Maybe#(InputTransaction) currentRequest() = maybeInputTr;
+
     interface Put request;
         method Action put(InputTransaction inputTr) if (!isValid(maybeInputTr));
             if (inputTr.readObjectCount > 0) begin
@@ -231,7 +234,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(RenamedTransaction) req[2] <- mkCReg(2, defaultValue());
+    Reg#(RenamedTransaction) req[3] <- mkCReg(3, defaultValue());
 `ifdef DEBUG
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
@@ -239,8 +242,10 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
-    let done0 = req[0].readObjectCount == 0 && req[0].writtenObjectCount == 0;
-    let done1 = req[1].readObjectCount == 0 && req[1].writtenObjectCount == 0;
+    Bool done[3];
+    for (Integer i = 0; i < 3; i = i + 1) begin
+        done[i] = req[i].readObjectCount == 0 && req[i].writtenObjectCount == 0;
+    end
     let currentObj = req[0].readObjectCount != 0 ?
         RenamedObject {
             objType: ReadObject,
@@ -269,7 +274,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                 // One get method per shard.
                 // At most one of these is unblocked on each cycle.
                 method ActionValue#(ShardRequest) get() if (
-                    !done0 &&& getShard(currentObj.objName) == fromInteger(i)
+                    !done[0] &&& getShard(currentObj.objName) == fromInteger(i)
                 );
                     case (currentObj.objType) matches
                         ReadObject : begin
@@ -293,10 +298,13 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
         );
     end
 
-    method Bool canPut = done1;
+    method Bool canPut = done[1];
+
+    method Maybe#(FailedRename) currentRequest() =
+        done[2] ? tagged Invalid : tagged Valid FailedRename { renamedTr: req[2] };
 
     interface Put request;
-        method Action put(FailedRename failedRename) if (done1);
+        method Action put(FailedRename failedRename) if (done[1]);
             req[1] <= failedRename.renamedTr;
         endmethod
     endinterface
@@ -463,8 +471,8 @@ module mkRenamer(Renamer);
     Vector#(SizeRenamerBuffer, DeleteRequestDistributor) deleteDistributors <-
         replicateM(mkDeleteRequestDistributor);
     // Temporary storage to keep track of delete distributor state.
-    Reg#(Vector#(SizeRenamerBuffer, TransactionId)) sentToDelDistr <- mkReg(?);
-    Reg#(Vector#(SizeRenamerBuffer, Bool)) prevDelDistrCanPut <- mkReg(replicate(True));
+    Vector#(SizeRenamerBuffer, Reg#(Maybe#(FailedRename))) prevDelDistrReq <-
+        replicateM(mkReg(tagged Invalid));
 
     // Shards.
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
@@ -543,6 +551,8 @@ module mkRenamer(Renamer);
     /// Functions and function-like variables.
     ////////////////////////////////////////////////////////////////////////////////
     function Bool getCanPut(RequestDistributor#(a) rd) = rd.canPut();
+    function Maybe#(a) getCurrentReq(RequestDistributor#(a) rd) = rd.currentRequest();
+
     function Bool getCanPut2(ResponseAggregator ra) = ra.canPut();
 
     function Bool getIsReady(Shard s) = s.isReady();
@@ -554,14 +564,16 @@ module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     (* fire_when_enabled *)
     rule sendDeleteResponses;
-        let delDistrCanPut = map(getCanPut, deleteDistributors);
-        prevDelDistrCanPut <= delDistrCanPut;
+        let delDistrReq = map(getCurrentReq, deleteDistributors);
         for (Integer i = 0; i < maxTransactions; i = i + 1) begin
-            if (!prevDelDistrCanPut[i] && delDistrCanPut[i]) begin
+            if (prevDelDistrReq[i] matches tagged Valid .req
+                &&& !isValid(delDistrReq[i])
+                || fromMaybe(?, delDistrReq[i]).renamedTr.tid != req.renamedTr.tid) begin
                 deleteOutputArbiter.users[i].request.put(DeleteResponse {
-                    tid: sentToDelDistr[i]
+                    tid: req.renamedTr.tid
                 });
             end
+            prevDelDistrReq[i] <= delDistrReq[i];
         end
     endrule
 
@@ -594,7 +606,6 @@ module mkRenamer(Renamer);
                 deleteDistributors[index].request.put(FailedRename {
                     renamedTr: req.renamedTr
                 });
-                sentToDelDistr[index] <= req.renamedTr.tid;
             endmethod
         endinterface
 
