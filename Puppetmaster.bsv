@@ -81,13 +81,13 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     // Renamed transactions while they are waiting to be sent to the scheduler or puppets.
     Vector#(NumberPendingTransactions, Reg#(RenameResponse)) pendingTrs <-
-        replicateM(mkReg(?));
+        replicateM(mkReg(defaultValue()));
     // Number of (valid) transactions in the above vector.
     Reg#(PendingTransactionCount) pendingTrCount[2] <- mkCReg(2, 0);
     // For each valid transaction: 0 = waiting to be scheduled, 1 = already scheduled.
     Reg#(Bit#(NumberPendingTransactions)) pendingTrFlags <- mkReg(0);
     // Last transaction sent to each puppet.
-    Reg#(Vector#(NumberPuppets, RenameResponse)) sentToPuppet <- mkReg(?);
+    Vector#(NumberPuppets, Reg#(RenameResponse)) sentToPuppet <- replicateM(mkReg(?));
     // Clock.
     Reg#(Timestamp) cycle <- mkReg(0);
     // Store previous puppet state to detect when transactions finish running.
@@ -113,21 +113,19 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
+    function TransactionId getTid(RenamedTransaction renamedTr) = renamedTr.tid;
+
     function SchedulerTransaction getSchedTr(RenameResponse resp) = resp.schedulerTr;
-
-    function SchedulerTransaction getSchedTrIfValid(
-        RenameResponse resp, Integer i, PendingTransactionCount trCount
-    );
-        let emptySchedulerTr = SchedulerTransaction { readSet: 0, writeSet : 0 };
-        return fromInteger(i) < trCount ? resp.schedulerTr : emptySchedulerTr;
-    endfunction
-
-    function TransactionId getTid(RenameResponse resp) = resp.renamedTr.tid;
+    function RenamedTransaction getRenamedTr(RenameResponse resp) = resp.renamedTr;
 
     function Bool getIsDone(Puppet puppet) = puppet.isDone();
 
-    function Maybe#(a) ifPuppetBusy(a value, Puppet puppet) =
-        puppet.isDone() ? tagged Invalid : tagged Valid value;
+    function Maybe#(a) boolToMaybe(a value, Bool valid) =
+        valid ? tagged Valid value : tagged Invalid;
+
+    function SchedulerTransaction schedTrOrEmpty(SchedulerTransaction tr, Bool valid);
+        return valid ? tr : defaultValue();
+    endfunction
 
     function SchedulerTransaction maybeTrUnion(
             Vector#(vsize, Maybe#(SchedulerTransaction)) maybeTrs);
@@ -142,6 +140,21 @@ module mkPuppetmaster(Puppetmaster);
         end
         return result;
     endfunction
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Variables.
+    ////////////////////////////////////////////////////////////////////////////////
+    let pendingSchedTrs = map(getSchedTr, readVReg(pendingTrs));
+
+    let sentSchedTrs = map(getSchedTr, readVReg(sentToPuppet));
+    let sentRenamedTrs = map(getRenamedTr, readVReg(sentToPuppet));
+    let sentTids = map(getTid, sentRenamedTrs);
+
+    let puppetsDone = map(getIsDone, puppets);
+    let puppetsBusy = map(\not , puppetsDone);
+
+    let maybeRunningSchedTrs = zipWith(boolToMaybe, sentSchedTrs, puppetsBusy);
+    let runningSchedTr = maybeTrUnion(maybeRunningSchedTrs);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
@@ -185,38 +198,19 @@ module mkPuppetmaster(Puppetmaster);
         });
     endrule
 
-    // When pending transaction buffer is full, send scheduling request.
+    // When pending buffer is full or partial mode is active, send scheduling request.
     rule doSchedule if (
-        pendingTrCount[1] == fromInteger(maxPendingTransactions) && pendingTrFlags == 0
+        pendingTrFlags == 0 && (
+            pendingTrCount[1] == fromInteger(maxPendingTransactions) || (
+                0 < pendingTrCount[1]
+                && pendingTrCount[1] < fromInteger(maxPendingTransactions)
+                && partialMode
+            )
+        )
     );
-        let sentTransactions = map(getSchedTr, sentToPuppet);
-        let runningTransactions = zipWith(ifPuppetBusy, sentTransactions, puppets);
-        let runningTrSet = maybeTrUnion(runningTransactions);
-        let transactions = readVReg(pendingTrs);
-        let converted = map(getSchedTr, transactions);
-        let toSchedule = cons(runningTrSet, converted);
-        scheduler.request.put(toSchedule);
+        scheduler.request.put(cons(runningSchedTr, pendingSchedTrs));
 `ifdef DEBUG
         $display("[%8d] Puppetmaster: starting scheduler", cycle);
-`endif
-    endrule
-
-    // When pending transation buffer is not full in partial mode, send scheduling request.
-    rule doPartialSchedule if (
-        0 < pendingTrCount[1] && pendingTrCount[1] < fromInteger(maxPendingTransactions)
-        && pendingTrFlags == 0 && partialMode
-    );
-        let sentTransactions = map(getSchedTr, sentToPuppet);
-        let runningTransactions = zipWith(ifPuppetBusy, sentTransactions, puppets);
-        let runningTrSet = maybeTrUnion(runningTransactions);
-        let transactions = readVReg(pendingTrs);
-        let converted = zipWith3(
-            getSchedTrIfValid, transactions, genVector(), replicate(pendingTrCount[1])
-        );
-        let toSchedule = cons(runningTrSet, converted);
-        scheduler.request.put(toSchedule);
-`ifdef DEBUG
-        $display("[%8d] Puppetmaster: starting scheduler with partial buffer", cycle);
 `endif
     endrule
 
@@ -245,11 +239,12 @@ module mkPuppetmaster(Puppetmaster);
         sentToPuppet[puppetIndex] <= started;
         puppets[puppetIndex].start(started.renamedTr);
         // Move last transaction in pending transaction buffer to replace it.
-        if (0 < pendingTrCount[0]) begin
-            let newPendingTrCount = pendingTrCount[0] - 1;
+        let newPendingTrCount = pendingTrCount[0] - 1;
+        if (trIndex != newPendingTrCount) begin
             pendingTrs[trIndex] <= pendingTrs[newPendingTrCount];
-            pendingTrCount[0] <= newPendingTrCount;
         end
+        pendingTrs[newPendingTrCount] <= defaultValue();
+        pendingTrCount[0] <= newPendingTrCount;
 `ifdef DEBUG
         $display("[%8d] Puppetmaster: starting T#%h on puppet %0d", cycle,
                  started.renamedTr.tid, puppetIndex);
@@ -257,25 +252,26 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     rule sendMessages;
-        let puppetsDone = map(getIsDone, puppets);
         prevPuppetsDone <= puppetsDone;
         for (Integer i = 0; i < numPuppets; i = i + 1) begin
+            let renamedTr = sentToPuppet[i].renamedTr;
+            let tid = renamedTr.tid;
             case (tuple2(prevPuppetsDone[i], puppetsDone[i])) matches
                 {True, False} : begin
                     msgArbiter.users[i].request.put(PuppetmasterResponse {
-                        id: getTid(sentToPuppet[i]),
+                        id: tid,
                         status: Started,
                         timestamp: cycle
                     });
                 end
                 {False, True} : begin
                     msgArbiter.users[i].request.put(PuppetmasterResponse {
-                        id: getTid(sentToPuppet[i]),
+                        id: tid,
                         status: Finished,
                         timestamp: cycle
                     });
                     reqArbiter.users[i].request.put(DeleteRequest {
-                        renamedTr: sentToPuppet[i].renamedTr
+                        renamedTr: renamedTr
                     });
                 end
             endcase
@@ -300,7 +296,7 @@ module mkPuppetmaster(Puppetmaster);
 
     interface Get response = msgArbiter.master.request;
 
-    method pollPuppets = zipWith(ifPuppetBusy, map(getTid, sentToPuppet), puppets);
+    method pollPuppets = zipWith(boolToMaybe, sentTids, puppetsBusy);
 
     method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
         for (Integer i = 0; i < numPuppets; i = i + 1) begin

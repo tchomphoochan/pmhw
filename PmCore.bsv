@@ -2,6 +2,7 @@
 //  Filename      : PmCore.bsv
 //  Description   : Common types and constants used by multiple modules.
 ////////////////////////////////////////////////////////////////////////////////
+import DefaultValue::*;
 import Vector::*;
 
 import PmIfc::*;
@@ -40,6 +41,21 @@ typedef struct {
     ObjectSet readSet;
     ObjectSet writeSet;
 } SchedulerTransaction deriving(Bits, Eq, FShow);
+
+instance DefaultValue#(RenamedTransaction);
+    defaultValue = RenamedTransaction {
+        tid: ?,
+        trType: ?,
+        readObjects: ?,
+        writtenObjects: ?,
+        readObjectCount: 0,
+        writtenObjectCount: 0
+    };
+endinstance
+
+instance DefaultValue#(SchedulerTransaction);
+    defaultValue = SchedulerTransaction { readSet: 0, writeSet: 0 };
+endinstance
 
 Integer logMaxLiveObjects = valueOf(LogNumberLiveObjects);
 Integer maxLiveObjects = valueOf(NumberLiveObjects);

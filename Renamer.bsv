@@ -58,6 +58,13 @@ typedef struct {
 ////////////////////////////////////////////////////////////////////////////////
 /// Typeclasses.
 ////////////////////////////////////////////////////////////////////////////////
+instance DefaultValue#(RenameResponse);
+    defaultValue = RenameResponse {
+        renamedTr: defaultValue(),
+        schedulerTr: defaultValue()
+    };
+endinstance
+
 // Tells the arbiter whether we need to route responses back.
 instance ArbRequestTC#(RenameRequest);
     function Bool isReadRequest(a x) = True;
@@ -224,15 +231,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    let emptyRenamedTransaction = RenamedTransaction {
-        tid: ?,
-        trType: ?,
-        readObjects: ?,
-        writtenObjects: ?,
-        readObjectCount: 0,
-        writtenObjectCount: 0
-    };
-    Reg#(RenamedTransaction) req[2] <- mkCReg(2, emptyRenamedTransaction);
+    Reg#(RenamedTransaction) req[2] <- mkCReg(2, defaultValue());
 `ifdef DEBUG
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
