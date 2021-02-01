@@ -224,7 +224,11 @@ module mkPuppetmaster(Puppetmaster);
     rule getScheduled if (pendingTrFlags == 0);
         let scheduled <- scheduler.response.get();
         // Lowest bit corresponds to the currently running transactions, so remove it.
-        pendingTrFlags <= scheduled[maxRounds - 1 : 1];
+        let newPendingTrFlags = scheduled[maxRounds - 1 : 1];
+        // In partial mode, some of the "transactions" are just empty placeholders.
+        let mask = (1 << pendingTrCount[1]) - 1;
+        newPendingTrFlags = newPendingTrFlags & mask;
+        pendingTrFlags <= newPendingTrFlags;
 `ifdef DEBUG
         $display("[%8d] Puppetmaster: scheduler returned %b", cycle, scheduled);
 `endif
