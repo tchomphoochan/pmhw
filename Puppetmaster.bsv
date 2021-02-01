@@ -371,6 +371,7 @@ module mkPuppetmasterTestbench();
     Puppetmaster myPuppetmaster <- mkPuppetmaster();
 
     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 1)))) counter <- mkReg(0);
+    Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) renamedCounter[2] <- mkCReg(2, 0);
     Reg#(UInt#(32)) cycle <- mkReg(0);
     Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) prevResult <- mkReg(?);
 
@@ -387,7 +388,15 @@ module mkPuppetmasterTestbench();
     endrule
 
     rule drain;
-        let _ <- myPuppetmaster.response.get();
+        let msg <- myPuppetmaster.response.get();
+        case (msg.status) matches
+            Renamed : renamedCounter[0] <= renamedCounter[0] + 1;
+        endcase
+    endrule
+
+    rule clear if (renamedCounter[1] == fromInteger(numE2ETests));
+        renamedCounter[1] <= renamedCounter[1] + 1;
+        myPuppetmaster.clearState();
     endrule
 
     rule stream;
