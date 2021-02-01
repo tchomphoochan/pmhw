@@ -86,6 +86,7 @@ foreach module : modules
     obj_bsc_opts = common_bsc_opts + [
         '-bdir', '@OUTDIR@',
         '-aggressive-conditions',
+        '-suppress-warnings', 'G0023:S0073:S0080',
     ]
     link_bsc_opts = common_bsc_opts + [
         '-simdir', '@PRIVATE_DIR@',
