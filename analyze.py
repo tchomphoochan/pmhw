@@ -144,7 +144,7 @@ def load_file(file: TextIOBase) -> tuple[float, dict[int, int], dict[int, int]]:
                 first_start = timestamp
             else:
                 core_usage[n_cores_used] += timestamp - max(last_start, last_finish)
-                n_cores_used += 1
+            n_cores_used += 1
             last_start = timestamp
             n_transactions += 1
         elif verb == "finished":
