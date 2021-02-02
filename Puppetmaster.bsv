@@ -233,18 +233,22 @@ module mkPuppetmaster(Puppetmaster);
             &&& pendingTrFlags != 0);
         // Find first scheduled transaction and remove from pending set.
         PendingTransactionCount trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
-        pendingTrFlags <= pendingTrFlags & ~(1 << trIndex);
+        let newPendingTrFlags = pendingTrFlags & ~(1 << trIndex);
         // Start transaction on idle puppet.
         let started = pendingTrs[trIndex];
         sentToPuppet[puppetIndex] <= started;
         puppets[puppetIndex].start(started.renamedTr);
-        // Move last transaction in pending transaction buffer to replace it.
+        // If transaction is not the last in the buffer, move the last to this position.
         let newPendingTrCount = pendingTrCount[0] - 1;
         if (trIndex != newPendingTrCount) begin
+            newPendingTrFlags[trIndex] = newPendingTrFlags[newPendingTrCount];
             pendingTrs[trIndex] <= pendingTrs[newPendingTrCount];
         end
+        // Remove last transaction from buffer.
         pendingTrs[newPendingTrCount] <= defaultValue();
         pendingTrCount[0] <= newPendingTrCount;
+        newPendingTrFlags = newPendingTrFlags & ~(1 << newPendingTrCount);
+        pendingTrFlags <= newPendingTrFlags;
 `ifdef DEBUG
         $display("[%8d] Puppetmaster: starting T#%h on puppet %0d", cycle,
                  started.renamedTr.tid, puppetIndex);
