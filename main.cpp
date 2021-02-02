@@ -58,8 +58,9 @@ private:
 
     void log_message(TransactionId tid, Timestamp timestamp, std::string_view verb) {
         std::cout << "[" << std::setw(tsWidth) << std::setfill(' ') << std::dec
-                  << timestamp << "] PmTop: " << verb << " T#" << std::setw(sizeof(tid))
-                  << std::setfill('0') << std::hex << tid << std::endl;
+                  << timestamp << "] PmTop: " << verb << " T#"
+                  << std::setw(2 * sizeof(tid)) << std::setfill('0') << std::hex << tid
+                  << std::endl;
     }
 
 public:
