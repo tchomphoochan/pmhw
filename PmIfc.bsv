@@ -2,15 +2,16 @@
 //  Filename      : PmIfc.bsv
 //  Description   : External interface for Puppetmaster and associated types.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 64 LogMaxNumberTransactions;
+typedef 16 LogMaxNumberTransactions;
 typedef 32 LogSizeMemory;
 typedef 3 LogMaxNumberTransactionObjects;
+typedef 16 LogMaxClockMultiplier;
 
 typedef TAdd#(LogMaxNumberTransactionObjects, 1) LogMaxTransactionObjectCount;
 typedef TExp#(LogMaxNumberTransactionObjects) MaxNumberTransactionObjects;
 
 typedef Bit#(64) Timestamp;
-typedef Bit#(60) ClockMultiplier;
+typedef Bit#(LogMaxClockMultiplier) ClockMultiplier;
 typedef Bit#(LogMaxNumberTransactions) TransactionId;
 typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
