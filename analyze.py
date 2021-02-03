@@ -69,7 +69,7 @@ def main() -> None:
         plot_histogram(latencies, args.bins, min_latency, max_latency)
 
     # Output core utilization.
-    total_cores = max(core_usage)
+    total_cores = max(n for n, val in core_usage.items() if val > 0)
     total_cycles = sum(core_usage.values())
     print("Core usage:")
     for n_cores in range(total_cores + 1):
