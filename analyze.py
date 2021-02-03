@@ -99,45 +99,37 @@ def load_file(file: TextIOBase) -> tuple[float, dict[int, int], dict[int, int]]:
             continue
 
         try:
-            filename, message = entry.strip().split(":")
+            _, message = entry.strip().split(":")
         except ValueError:  # no or multiple :s
             continue
 
-        if filename.strip() != "PmTop":
+        verb, *phrase = message.strip().split(" ")
+
+        if not phrase or not phrase[0].startswith("T#"):
             continue
 
-        try:
-            verb, transaction_id_str = message.strip().split(" ")
-        except ValueError:
-            raise ValueError(f"unknown log entry format: {message}")
-
-        # Strip id prefix from newer logs
-        if transaction_id_str[:2] == "T#":
-            transaction_id_str = transaction_id_str[2:]
-
+        transaction_id_str = phrase[0][2:]
         try:
             transaction_id = int(transaction_id_str, base=16)
         except ValueError:
             raise ValueError(f"invalid transaction id: {transaction_id_str}")
 
         timestamp_str = timestamp_str.strip("[ ")
-        if set(timestamp_str) == {"-"}:
-            continue
         try:
             timestamp = int(timestamp_str)
-        except ValueError as e:
-            raise ValueError(f"invalid timestamp: {e}")
+        except ValueError:
+            continue
 
-        if verb == "received":
+        if verb == "receiving":
             if transaction_id in receive_times:
                 raise ValueError(
-                    f"duplicate 'received' entry for transaction {transaction_id}"
+                    f"duplicate 'receiving' entry for transaction {transaction_id}"
                 )
             receive_times[transaction_id] = timestamp
-        elif verb == "started":
+        elif verb == "starting":
             if transaction_id in start_times:
                 raise ValueError(
-                    f"duplicate 'started' entry for transaction {transaction_id}"
+                    f"duplicate 'starting' entry for transaction {transaction_id}"
                 )
             start_times[transaction_id] = timestamp
             if first_start is None:
@@ -147,7 +139,7 @@ def load_file(file: TextIOBase) -> tuple[float, dict[int, int], dict[int, int]]:
             n_cores_used += 1
             last_start = timestamp
             n_transactions += 1
-        elif verb == "finished":
+        elif verb == "finishing":
             core_usage[n_cores_used] += timestamp - max(last_start, last_finish)
             n_cores_used -= 1
             last_finish = timestamp
