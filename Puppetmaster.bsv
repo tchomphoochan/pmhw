@@ -7,6 +7,7 @@
 import Arbitrate::*;
 import ClientServer::*;
 import Connectable::*;
+import FIFO::*;
 import GetPut::*;
 import Vector::*;
 
@@ -29,29 +30,24 @@ typedef Bit#(TLog#(TAdd#(NumberPendingTransactions, 1))) PendingTransactionCount
 
 typedef InputTransaction PuppetmasterRequest;
 
-typedef enum {
-    Received,
-    Renamed,
-    Started,
-    Finished,
-    Freed,
-    Failed
-} TransactionStatus deriving (Bits, Eq, FShow);
-
 typedef struct {
     TransactionId id;
-    TransactionStatus status;
     Timestamp timestamp;
-} PuppetmasterResponse deriving (Bits, Eq, FShow);
+} StatusUpdate deriving (Bits, Eq, FShow);
 
-instance ArbRequestTC#(PuppetmasterResponse);
+instance ArbRequestTC#(StatusUpdate);
     function Bool isReadRequest(a x) = False;
     function Bool isWriteRequest(a x) = True;
 endinstance
 
 interface Puppetmaster;
     interface Put#(PuppetmasterRequest) request;
-    interface Get#(PuppetmasterResponse) response;
+    interface Get#(StatusUpdate) received;
+    interface Get#(StatusUpdate) renamed;
+    interface Get#(StatusUpdate) started;
+    interface Get#(StatusUpdate) finished;
+    interface Get#(StatusUpdate) freed;
+    interface Get#(StatusUpdate) failed;
     method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
     method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
     method Action clearState();
@@ -99,16 +95,21 @@ module mkPuppetmaster(Puppetmaster);
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
     Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkPuppet());
-    // Arbiter to serialize status messages.
-    let arb1 <- mkRoundRobin;
-    Arbiter#(TAdd#(NumberPuppets, 4), PuppetmasterResponse, void) msgArbiter <-
-        mkArbiter(arb1, 1);
-    // Arbiter to serialize transaction deletion requests.
-    let arb2 <- mkRoundRobin;
-    Arbiter#(NumberPuppets, DeleteRequest, void) reqArbiter <- mkArbiter(arb2, 1);
 
-    // Connect deletion request arbiter to renamer.
+    // Arbiter to serialize transaction deletion requests.
+    let rArb <- mkRoundRobin;
+    Arbiter#(NumberPuppets, DeleteRequest, void) reqArbiter <- mkArbiter(rArb, 1);
     mkConnection(reqArbiter.master.request, renamer.delete.request);
+
+    // Arbiters and fifos to serialize status messages.
+    FIFO#(StatusUpdate) receivedMsgFifo <- mkFIFO();
+    FIFO#(StatusUpdate) renamedMsgFifo <- mkFIFO();
+    let sArb <- mkRoundRobin;
+    Arbiter#(NumberPuppets, StatusUpdate, void) startedMsgArbiter <- mkArbiter(sArb, 1);
+    let fArb <- mkRoundRobin;
+    Arbiter#(NumberPuppets, StatusUpdate, void) finishedMsgArbiter <- mkArbiter(fArb, 1);
+    FIFO#(StatusUpdate) freedMsgFifo <- mkFIFO();
+    FIFO#(StatusUpdate) failedMsgFifo <- mkFIFO();
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -171,9 +172,8 @@ module mkPuppetmaster(Puppetmaster);
         let result <- renamer.rename.response.get();
         pendingTrs[pendingTrCount[1]] <= result;
         pendingTrCount[1] <= pendingTrCount[1] + 1;
-        msgArbiter.users[numPuppets + 1].request.put(PuppetmasterResponse {
+        toPut(renamedMsgFifo).put(StatusUpdate {
             id: result.renamedTr.tid,
-            status: Renamed,
             timestamp: cycle
         });
     endrule
@@ -181,9 +181,8 @@ module mkPuppetmaster(Puppetmaster);
     // Notify caller about failed transactions.
     rule getFailed;
         let result <- renamer.fail.get();
-        msgArbiter.users[numPuppets + 2].request.put(PuppetmasterResponse {
+        toPut(failedMsgFifo).put(StatusUpdate {
             id: result.tid,
-            status: Failed,
             timestamp: cycle
         });
     endrule
@@ -191,9 +190,8 @@ module mkPuppetmaster(Puppetmaster);
     // Notify caller about freed transactions.
     rule getFreed;
         let result <- renamer.delete.response.get();
-        msgArbiter.users[numPuppets + 3].request.put(PuppetmasterResponse {
+        toPut(freedMsgFifo).put(StatusUpdate {
             id: result.tid,
-            status: Freed,
             timestamp: cycle
         });
     endrule
@@ -262,16 +260,14 @@ module mkPuppetmaster(Puppetmaster);
             let tid = renamedTr.tid;
             case (tuple2(prevPuppetsDone[i], puppetsDone[i])) matches
                 {True, False} : begin
-                    msgArbiter.users[i].request.put(PuppetmasterResponse {
+                    startedMsgArbiter.users[i].request.put(StatusUpdate {
                         id: tid,
-                        status: Started,
                         timestamp: cycle
                     });
                 end
                 {False, True} : begin
-                    msgArbiter.users[i].request.put(PuppetmasterResponse {
+                    finishedMsgArbiter.users[i].request.put(StatusUpdate {
                         id: tid,
-                        status: Finished,
                         timestamp: cycle
                     });
                     reqArbiter.users[i].request.put(DeleteRequest {
@@ -290,15 +286,19 @@ module mkPuppetmaster(Puppetmaster);
         method Action put(InputTransaction inputTr);
             partialMode <= False;
             renamer.rename.request.put(RenameRequest { inputTr: inputTr });
-            msgArbiter.users[numPuppets].request.put(PuppetmasterResponse {
+            toPut(receivedMsgFifo).put(StatusUpdate {
                 id: inputTr.tid,
-                status: Received,
                 timestamp: cycle
             });
         endmethod
     endinterface
 
-    interface Get response = msgArbiter.master.request;
+    interface received = toGet(receivedMsgFifo);
+    interface renamed = toGet(renamedMsgFifo);
+    interface started = startedMsgArbiter.master.request;
+    interface finished = finishedMsgArbiter.master.request;
+    interface freed = toGet(freedMsgFifo);
+    interface failed = toGet(failedMsgFifo);
 
     method pollPuppets = zipWith(boolToMaybe, sentTids, puppetsBusy);
 
@@ -391,11 +391,29 @@ module mkPuppetmasterTestbench();
         myPuppetmaster.request.put(testInputs[counter]);
     endrule
 
-    rule drain;
-        let msg <- myPuppetmaster.response.get();
-        case (msg.status) matches
-            Renamed : renamedCounter[0] <= renamedCounter[0] + 1;
-        endcase
+    rule drainReceived;
+        let _ <- myPuppetmaster.received.get();
+    endrule
+
+    rule drainRenamed;
+        let msg <- myPuppetmaster.renamed.get();
+        renamedCounter[0] <= renamedCounter[0] + 1;
+    endrule
+
+    rule drainStarted;
+        let _ <- myPuppetmaster.started.get();
+    endrule
+
+    rule drainFinished;
+        let _ <- myPuppetmaster.finished.get();
+    endrule
+
+    rule drainFreed;
+        let _ <- myPuppetmaster.freed.get();
+    endrule
+
+    rule drainFailed;
+        let _ <- myPuppetmaster.failed.get();
     endrule
 
     rule clear if (renamedCounter[1] == fromInteger(numE2ETests));

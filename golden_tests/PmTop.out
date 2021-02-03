@@ -58,8 +58,8 @@
 [    2910] PmTop: finished T#0005
 [    2974] PmTop: freed T#0005
 [    3045] PmTop: finished T#0001
-[    3053] PmTop: started T#0011
 [    3052] PmTop: renamed T#0004
+[    3053] PmTop: started T#0011
 [    3088] PmTop: finished T#000c
 [    3109] PmTop: freed T#0001
 [    3151] PmTop: freed T#000c
@@ -70,8 +70,8 @@
 [    4919] PmTop: renamed T#0012
 [    4920] PmTop: freed T#0010
 [    4920] PmTop: started T#000b
-[    4927] PmTop: started T#0004
 [    4926] PmTop: renamed T#000d
+[    4927] PmTop: started T#0004
 [    4933] PmTop: renamed T#0007
 [    4934] PmTop: started T#0012
 [    4940] PmTop: renamed T#0015
@@ -94,8 +94,8 @@
 [    8933] PmTop: finished T#0012
 [    8978] PmTop: freed T#0012
 [    9073] PmTop: finished T#0018
-[    9085] PmTop: started T#001e
 [    9084] PmTop: renamed T#001f
+[    9085] PmTop: started T#001e
 [    9120] PmTop: freed T#0018
 [   10835] PmTop: finished T#000f
 [   10843] PmTop: renamed T#0014
@@ -106,8 +106,8 @@
 [   12983] PmTop: freed T#000b
 [   13015] PmTop: freed T#0007
 [   13084] PmTop: finished T#001e
-[   13095] PmTop: started T#001b
 [   13094] PmTop: renamed T#0013
+[   13095] PmTop: started T#001b
 [   13101] PmTop: renamed T#0017
 [   13102] PmTop: started T#0014
 [   13116] PmTop: freed T#001e
@@ -130,8 +130,8 @@
 [   41122] PmTop: finished T#001a
 [   41131] PmTop: renamed T#0019
 [   41132] PmTop: started T#001d
-[   41139] PmTop: started T#0016
 [   41138] PmTop: renamed T#001c
+[   41139] PmTop: started T#0016
 [   41154] PmTop: freed T#001a
 [   43131] PmTop: finished T#001d
 [   43138] PmTop: started T#0019

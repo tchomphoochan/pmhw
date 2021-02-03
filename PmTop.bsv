@@ -17,16 +17,34 @@ endinterface
 module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
     Puppetmaster pm <- mkPuppetmaster();
 
-    rule receiveResponseFromPm;
-        let result <- pm.response.get();
-        case (result.status) matches
-            Received : indication.transactionReceived(result.id, result.timestamp);
-            Renamed : indication.transactionRenamed(result.id, result.timestamp);
-            Started : indication.transactionStarted(result.id, result.timestamp);
-            Finished : indication.transactionFinished(result.id, result.timestamp);
-            Freed : indication.transactionFreed(result.id, result.timestamp);
-            Failed : indication.transactionFailed(result.id, result.timestamp);
-        endcase
+    rule sendReceivedMessages;
+        let msg <- pm.received.get();
+        indication.transactionReceived(msg.id, msg.timestamp);
+    endrule
+
+    rule sendRenamedMessages;
+        let msg <- pm.renamed.get();
+        indication.transactionRenamed(msg.id, msg.timestamp);
+    endrule
+
+    rule sendStartedMessages;
+        let msg <- pm.started.get();
+        indication.transactionStarted(msg.id, msg.timestamp);
+    endrule
+
+    rule sendFinishedMessages;
+        let msg <- pm.finished.get();
+        indication.transactionFinished(msg.id, msg.timestamp);
+    endrule
+
+    rule sendFreedMessages;
+        let msg <- pm.freed.get();
+        indication.transactionFreed(msg.id, msg.timestamp);
+    endrule
+
+    rule sendFailedMessages;
+        let msg <- pm.failed.get();
+        indication.transactionFailed(msg.id, msg.timestamp);
     endrule
 
     interface HostToPuppetmaster request;
