@@ -7,7 +7,7 @@
 import Arbitrate::*;
 import ClientServer::*;
 import Connectable::*;
-import FIFO::*;
+import FIFOF::*;
 import GetPut::*;
 import Vector::*;
 
@@ -30,24 +30,11 @@ typedef Bit#(TLog#(TAdd#(NumberPendingTransactions, 1))) PendingTransactionCount
 
 typedef InputTransaction PuppetmasterRequest;
 
-typedef struct {
-    TransactionId id;
-    Timestamp timestamp;
-} StatusUpdate deriving (Bits, Eq, FShow);
-
-instance ArbRequestTC#(StatusUpdate);
-    function Bool isReadRequest(a x) = False;
-    function Bool isWriteRequest(a x) = True;
-endinstance
-
 interface Puppetmaster;
     interface Put#(PuppetmasterRequest) request;
-    interface Get#(StatusUpdate) received;
-    interface Get#(StatusUpdate) renamed;
-    interface Get#(StatusUpdate) started;
-    interface Get#(StatusUpdate) finished;
-    interface Get#(StatusUpdate) freed;
-    interface Get#(StatusUpdate) failed;
+    interface Get#(TransactionId) renamed;
+    interface Get#(TransactionId) freed;
+    interface Get#(TransactionId) failed;
     method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
     method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
     method Action clearState();
@@ -101,15 +88,10 @@ module mkPuppetmaster(Puppetmaster);
     Arbiter#(NumberPuppets, DeleteRequest, void) reqArbiter <- mkArbiter(rArb, 1);
     mkConnection(reqArbiter.master.request, renamer.delete.request);
 
-    // Arbiters and fifos to serialize status messages.
-    FIFO#(StatusUpdate) receivedMsgFifo <- mkFIFO();
-    FIFO#(StatusUpdate) renamedMsgFifo <- mkFIFO();
-    let sArb <- mkRoundRobin;
-    Arbiter#(NumberPuppets, StatusUpdate, void) startedMsgArbiter <- mkArbiter(sArb, 1);
-    let fArb <- mkRoundRobin;
-    Arbiter#(NumberPuppets, StatusUpdate, void) finishedMsgArbiter <- mkArbiter(fArb, 1);
-    FIFO#(StatusUpdate) freedMsgFifo <- mkFIFO();
-    FIFO#(StatusUpdate) failedMsgFifo <- mkFIFO();
+    // Fifos to serialize status messages.
+    FIFOF#(TransactionId) renamedMsgFifo <- mkGFIFOF(True, False);
+    FIFOF#(TransactionId) freedMsgFifo <- mkGFIFOF(True, False);
+    FIFOF#(TransactionId) failedMsgFifo <- mkGFIFOF(True, False);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -172,28 +154,28 @@ module mkPuppetmaster(Puppetmaster);
         let result <- renamer.rename.response.get();
         pendingTrs[pendingTrCount[1]] <= result;
         pendingTrCount[1] <= pendingTrCount[1] + 1;
-        toPut(renamedMsgFifo).put(StatusUpdate {
-            id: result.renamedTr.tid,
-            timestamp: cycle
-        });
+        renamedMsgFifo.enq(result.renamedTr.tid);
+`ifdef DISPLAY_LOG
+            $display("[%8d] Puppetmaster: renamed T#%h", cycle, result.renamedTr.tid);
+`endif
     endrule
 
     // Notify caller about failed transactions.
     rule getFailed;
         let result <- renamer.fail.get();
-        toPut(failedMsgFifo).put(StatusUpdate {
-            id: result.tid,
-            timestamp: cycle
-        });
+        failedMsgFifo.enq(result.tid);
+`ifdef DISPLAY_LOG
+            $display("[%8d] Puppetmaster: failed T#%h", cycle, result.tid);
+`endif
     endrule
 
     // Notify caller about freed transactions.
     rule getFreed;
         let result <- renamer.delete.response.get();
-        toPut(freedMsgFifo).put(StatusUpdate {
-            id: result.tid,
-            timestamp: cycle
-        });
+        freedMsgFifo.enq(result.tid);
+`ifdef DISPLAY_LOG
+            $display("[%8d] Puppetmaster: freed T#%h", cycle, result.tid);
+`endif
     endrule
 
     // When pending buffer is full or partial mode is active, send scheduling request.
@@ -258,23 +240,11 @@ module mkPuppetmaster(Puppetmaster);
         for (Integer i = 0; i < numPuppets; i = i + 1) begin
             let renamedTr = sentToPuppet[i].renamedTr;
             let tid = renamedTr.tid;
-            case (tuple2(prevPuppetsDone[i], puppetsDone[i])) matches
-                {True, False} : begin
-                    startedMsgArbiter.users[i].request.put(StatusUpdate {
-                        id: tid,
-                        timestamp: cycle
-                    });
-                end
-                {False, True} : begin
-                    finishedMsgArbiter.users[i].request.put(StatusUpdate {
-                        id: tid,
-                        timestamp: cycle
-                    });
-                    reqArbiter.users[i].request.put(DeleteRequest {
-                        renamedTr: renamedTr
-                    });
-                end
-            endcase
+            if (!prevPuppetsDone[i] && puppetsDone[i]) begin
+                reqArbiter.users[i].request.put(DeleteRequest {
+                    renamedTr: renamedTr
+                });
+            end
         end
     endrule
 
@@ -286,17 +256,13 @@ module mkPuppetmaster(Puppetmaster);
         method Action put(InputTransaction inputTr);
             partialMode <= False;
             renamer.rename.request.put(RenameRequest { inputTr: inputTr });
-            toPut(receivedMsgFifo).put(StatusUpdate {
-                id: inputTr.tid,
-                timestamp: cycle
-            });
+`ifdef DISPLAY_LOG
+            $display("[%8d] Puppetmaster: receiving T#%h", cycle, inputTr.tid);
+`endif
         endmethod
     endinterface
 
-    interface received = toGet(receivedMsgFifo);
     interface renamed = toGet(renamedMsgFifo);
-    interface started = startedMsgArbiter.master.request;
-    interface finished = finishedMsgArbiter.master.request;
     interface freed = toGet(freedMsgFifo);
     interface failed = toGet(failedMsgFifo);
 
@@ -391,29 +357,13 @@ module mkPuppetmasterTestbench();
         myPuppetmaster.request.put(testInputs[counter]);
     endrule
 
-    rule drainReceived;
-        let _ <- myPuppetmaster.received.get();
-    endrule
-
     rule drainRenamed;
         let msg <- myPuppetmaster.renamed.get();
         renamedCounter[0] <= renamedCounter[0] + 1;
     endrule
 
-    rule drainStarted;
-        let _ <- myPuppetmaster.started.get();
-    endrule
-
-    rule drainFinished;
-        let _ <- myPuppetmaster.finished.get();
-    endrule
-
     rule drainFreed;
         let _ <- myPuppetmaster.freed.get();
-    endrule
-
-    rule drainFailed;
-        let _ <- myPuppetmaster.failed.get();
     endrule
 
     rule clear if (renamedCounter[1] == fromInteger(numE2ETests));

@@ -17,34 +17,19 @@ endinterface
 module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
     Puppetmaster pm <- mkPuppetmaster();
 
-    rule sendReceivedMessages;
-        let msg <- pm.received.get();
-        indication.transactionReceived(msg.id, msg.timestamp);
-    endrule
-
     rule sendRenamedMessages;
-        let msg <- pm.renamed.get();
-        indication.transactionRenamed(msg.id, msg.timestamp);
-    endrule
-
-    rule sendStartedMessages;
-        let msg <- pm.started.get();
-        indication.transactionStarted(msg.id, msg.timestamp);
-    endrule
-
-    rule sendFinishedMessages;
-        let msg <- pm.finished.get();
-        indication.transactionFinished(msg.id, msg.timestamp);
+        let tid <- pm.renamed.get();
+        indication.transactionRenamed(tid);
     endrule
 
     rule sendFreedMessages;
-        let msg <- pm.freed.get();
-        indication.transactionFreed(msg.id, msg.timestamp);
+        let tid <- pm.freed.get();
+        indication.transactionFreed(tid);
     endrule
 
     rule sendFailedMessages;
-        let msg <- pm.failed.get();
-        indication.transactionFailed(msg.id, msg.timestamp);
+        let tid <- pm.failed.get();
+        indication.transactionFailed(tid);
     endrule
 
     interface HostToPuppetmaster request;
@@ -110,28 +95,16 @@ endmodule
 // PmTop tests (these reuse the Puppetmaster end-to-end test data).
 ////////////////////////////////////////////////////////////////////////////////
 module mkTestIndication(PuppetmasterToHostIndication);
-    method Action transactionReceived(TransactionId tid, Timestamp timestamp);
-        $display("[%8d] PmTop: received T#%h", timestamp, tid);
+    method Action transactionRenamed(TransactionId tid);
+        $display("renamed T#%h", tid);
     endmethod
 
-    method Action transactionRenamed(TransactionId tid, Timestamp timestamp);
-        $display("[%8d] PmTop: renamed T#%h", timestamp, tid);
+    method Action transactionFreed(TransactionId tid);
+        $display("freed T#%h", tid);
     endmethod
 
-    method Action transactionStarted(TransactionId tid, Timestamp timestamp);
-        $display("[%8d] PmTop: started T#%h", timestamp, tid);
-    endmethod
-
-    method Action transactionFinished(TransactionId tid, Timestamp timestamp);
-        $display("[%8d] PmTop: finished T#%h", timestamp, tid);
-    endmethod
-
-    method Action transactionFreed(TransactionId tid, Timestamp timestamp);
-        $display("[%8d] PmTop: freed T#%h", timestamp, tid);
-    endmethod
-
-    method Action transactionFailed(TransactionId tid, Timestamp timestamp);
-        $display("[%8d] PmTop: failed T#%h", timestamp, tid);
+    method Action transactionFailed(TransactionId tid);
+        $display("failed T#%h", tid);
     endmethod
 endmodule
 

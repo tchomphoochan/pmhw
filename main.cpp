@@ -21,7 +21,6 @@
 
 constexpr std::size_t objSetSize = 8;
 constexpr std::size_t poolSize = 8;
-constexpr std::size_t tsWidth = 8;
 
 typedef std::array<ObjectAddress, objSetSize> InputObjects;
 
@@ -45,8 +44,7 @@ bool set_contains(std::unordered_set<type>& set, type& key) {
 
 // Helper function to print log messages.
 void print_log(std::string_view msg) {
-    std::cout << "[" << std::setw(tsWidth + 1) << std::setfill('-') << "]"
-              << " main.cpp: " << msg << std::endl;
+    std::cout << "[        ] main.cpp: " << msg << std::endl;
 }
 
 // Handler for messages received from the FPGA
@@ -56,44 +54,32 @@ private:
     int numRenamed = 0;
     int numFreed = 0;
 
-    void log_message(TransactionId tid, Timestamp timestamp, std::string_view verb) {
-        std::cout << "[" << std::setw(tsWidth) << std::setfill(' ') << std::dec
-                  << timestamp << "] PmTop: " << verb << " T#"
-                  << std::setw(2 * sizeof(tid)) << std::setfill('0') << std::hex << tid
-                  << std::endl;
+    void log_message(TransactionId tid, std::string_view verb) {
+        std::ostringstream msg;
+        msg << verb << " T#" << std::setw(2 * sizeof(tid)) << std::setfill('0')
+            << std::hex << tid;
+        print_log(msg.str());
     }
 
 public:
-    void transactionReceived(TransactionId tid, Timestamp timestamp) {
-        log_message(tid, timestamp, "received");
-    }
-
-    void transactionRenamed(TransactionId tid, Timestamp timestamp) {
-        log_message(tid, timestamp, "renamed");
+    void transactionRenamed(TransactionId tid) {
+        log_message(tid, "renamed");
         if (++numRenamed == numTansactions) {
             numRenamed = 0;
             sem_post(&sem_all_renamed);
         }
     }
 
-    void transactionStarted(TransactionId tid, Timestamp timestamp) {
-        log_message(tid, timestamp, "started");
-    }
-
-    void transactionFinished(TransactionId tid, Timestamp timestamp) {
-        log_message(tid, timestamp, "finished");
-    }
-
-    void transactionFreed(TransactionId tid, Timestamp timestamp) {
-        log_message(tid, timestamp, "freed");
+    void transactionFreed(TransactionId tid) {
+        log_message(tid, "freed");
         if (++numFreed == numTansactions) {
             numFreed = 0;
             sem_post(&sem_all_freed);
         }
     }
 
-    void transactionFailed(TransactionId tid, Timestamp timestamp) {
-        log_message(tid, timestamp, "failed");
+    void transactionFailed(TransactionId tid) {
+        log_message(tid, "failed");
         // Failed transactions skip both the renaming and the freeing step.
         if (++numRenamed == numTansactions) {
             numRenamed = 0;

@@ -11,10 +11,9 @@ CPPFILES += main.cpp
 CONNECTALFLAGS += --mainclockperiod=20
 CONNECTALFLAGS += --cxxflags="-std=c++17"
 CONNECTALFLAGS += --nonstrict
-ifeq ($(strip $(DEBUG)),)
-CONNECTALFLAGS += --bscflags="+RTS -K1G -H6G -RTS"
-else
-CONNECTALFLAGS += --bscflags="+RTS -K1G -H6G -RTS -D DEBUG"
+CONNECTALFLAGS += --bscflags="+RTS -K1G -H6G -RTS -D DISPLAY_LOG"
+ifneq ($(strip $(DEBUG)),)
+CONNECTALFLAGS += -D DEBUG
 endif
 
 

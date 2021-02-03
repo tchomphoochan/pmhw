@@ -26,12 +26,9 @@ typedef enum {
 } TransactionType deriving (Bits, Eq, FShow);
 
 interface PuppetmasterToHostIndication;
-    method Action transactionReceived(TransactionId tid, Timestamp timestamp);
-    method Action transactionRenamed(TransactionId tid, Timestamp timestamp);
-    method Action transactionStarted(TransactionId tid, Timestamp timestamp);
-    method Action transactionFinished(TransactionId tid, Timestamp timestamp);
-    method Action transactionFreed(TransactionId tid, Timestamp timestamp);
-    method Action transactionFailed(TransactionId tid, Timestamp timestamp);
+    method Action transactionRenamed(TransactionId tid);
+    method Action transactionFreed(TransactionId tid);
+    method Action transactionFailed(TransactionId tid);
 endinterface
 
 interface HostToPuppetmaster;
