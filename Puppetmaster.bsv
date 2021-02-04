@@ -70,11 +70,10 @@ module mkPuppetmaster(Puppetmaster);
     // For each valid transaction: 0 = waiting to be scheduled, 1 = already scheduled.
     Reg#(Bit#(NumberPendingTransactions)) pendingTrFlags <- mkReg(0);
     // Last transaction sent to each puppet.
-    Vector#(NumberPuppets, Reg#(RenameResponse)) sentToPuppet <- replicateM(mkReg(?));
+    Vector#(NumberPuppets, Reg#(SchedulerTransaction)) sentSchedTrs <-
+        replicateM(mkReg(?));
     // Clock.
     Reg#(Timestamp) cycle <- mkReg(0);
-    // Store previous puppet state to detect when transactions finish running.
-    Reg#(Vector#(NumberPuppets, Bool)) prevPuppetsDone <- mkReg(replicate(True));
     // Whether we should execute all remaining pending transactions.
     Reg#(Bool) partialMode <- mkReg(?);
 
@@ -83,10 +82,12 @@ module mkPuppetmaster(Puppetmaster);
     let scheduler <- mkScheduler();
     Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkPuppet());
 
-    // Arbiter to serialize transaction deletion requests.
-    let rArb <- mkRoundRobin;
-    Arbiter#(NumberPuppets, DeleteRequest, void) reqArbiter <- mkArbiter(rArb, 1);
-    mkConnection(reqArbiter.master.request, renamer.delete.request);
+    // Arbiter and connections to serialize puppet responses.
+    let arb <- mkRoundRobin;
+    Arbiter#(NumberPuppets, PuppetResponse, void) puppetRespArbiter <- mkArbiter(arb, 1);
+    for (Integer i = 0; i < numPuppets; i = i + 1) begin
+        mkConnection(puppets[i].finish, puppetRespArbiter.users[i].request);
+    end
 
     // Fifos to serialize status messages.
     FIFOF#(TransactionId) renamedMsgFifo <- mkGFIFOF(True, False);
@@ -96,12 +97,11 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
     ////////////////////////////////////////////////////////////////////////////////
-    function TransactionId getTid(RenamedTransaction renamedTr) = renamedTr.tid;
-
     function SchedulerTransaction getSchedTr(RenameResponse resp) = resp.schedulerTr;
     function RenamedTransaction getRenamedTr(RenameResponse resp) = resp.renamedTr;
 
     function Bool getIsDone(Puppet puppet) = puppet.isDone();
+    function TransactionId getCurrentTid(Puppet puppet) = puppet.currentTid();
 
     function Maybe#(a) boolToMaybe(a value, Bool valid) =
         valid ? tagged Valid value : tagged Invalid;
@@ -129,14 +129,12 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     let pendingSchedTrs = map(getSchedTr, readVReg(pendingTrs));
 
-    let sentSchedTrs = map(getSchedTr, readVReg(sentToPuppet));
-    let sentRenamedTrs = map(getRenamedTr, readVReg(sentToPuppet));
-    let sentTids = map(getTid, sentRenamedTrs);
+    let sentTids = map(getCurrentTid, puppets);
 
     let puppetsDone = map(getIsDone, puppets);
     let puppetsBusy = map(\not , puppetsDone);
 
-    let maybeRunningSchedTrs = zipWith(boolToMaybe, sentSchedTrs, puppetsBusy);
+    let maybeRunningSchedTrs = zipWith(boolToMaybe, readVReg(sentSchedTrs), puppetsBusy);
     let runningSchedTr = maybeTrUnion(maybeRunningSchedTrs);
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -216,8 +214,8 @@ module mkPuppetmaster(Puppetmaster);
         let newPendingTrFlags = pendingTrFlags & ~(1 << trIndex);
         // Start transaction on idle puppet.
         let started = pendingTrs[trIndex];
-        sentToPuppet[puppetIndex] <= started;
-        puppets[puppetIndex].start(started.renamedTr);
+        sentSchedTrs[puppetIndex] <= started.schedulerTr;
+        puppets[puppetIndex].start.put(PuppetRequest { renamedTr: started.renamedTr });
         // If transaction is not the last in the buffer, move the last to this position.
         let newPendingTrCount = pendingTrCount[0] - 1;
         if (trIndex != newPendingTrCount) begin
@@ -235,17 +233,10 @@ module mkPuppetmaster(Puppetmaster);
 `endif
     endrule
 
-    rule sendMessages;
-        prevPuppetsDone <= puppetsDone;
-        for (Integer i = 0; i < numPuppets; i = i + 1) begin
-            let renamedTr = sentToPuppet[i].renamedTr;
-            let tid = renamedTr.tid;
-            if (!prevPuppetsDone[i] && puppetsDone[i]) begin
-                reqArbiter.users[i].request.put(DeleteRequest {
-                    renamedTr: renamedTr
-                });
-            end
-        end
+    (* fire_when_enabled *)
+    rule forwardDeletionRequests;
+        let puppetResp <- puppetRespArbiter.master.request.get();
+        renamer.delete.request.put(DeleteRequest { renamedTr: puppetResp.renamedTr });
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
