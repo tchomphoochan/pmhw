@@ -34,8 +34,5 @@ For the commands below to work, two environment variables need to be set:
 
 ```
 $ make build.verilator
-$ cp builddir/mem.vmh verilator/mem.vmh
 $ make run.verilator
 ```
-
-If the second command gives an error, the Bluesim design needs to be compiled (see above).

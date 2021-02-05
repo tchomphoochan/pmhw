@@ -48,25 +48,6 @@ dep_indices = {
     'PmTop': [0, 2, 7],
 }
 
-# Non-Bluespec build targets.
-memfile = custom_target('memfile',
-    input: [
-        'make_memfile.py',
-        'PmCore.bsv',
-        'PmIfc.bsv',
-        'Shard.bsv'
-    ],
-    output: 'mem.vmh',
-    command: [
-        prog_python,
-        '@INPUT0@',
-        '@INPUT1@',
-        '@INPUT2@',
-        '@INPUT3@',
-        '@OUTPUT@',
-    ],
-)
-
 # Bluespec build targets.
 obj_targets = []
 foreach module : modules
