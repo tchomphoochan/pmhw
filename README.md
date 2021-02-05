@@ -14,6 +14,10 @@ Requirements
 - [bsc-contrib](https://github.com/B-Lang-org/bsc-contrib) (for FPGA synthesis)
 - [verilator](https://www.veripool.org/wiki/verilator)  (for FPGA simulation)
 
+Configuration
+-------------
+Rename `DefaultPmConfig.bsv` to `PmConfig.bsv` and change the values as desired.
+
 Compiling and running tests in Bluesim
 --------------------------------------
 ```

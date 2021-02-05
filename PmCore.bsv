@@ -5,9 +5,8 @@
 import DefaultValue::*;
 import Vector::*;
 
+import PmConfig::*;
 import PmIfc::*;
-
-typedef 10 LogNumberLiveObjects;
 
 typedef TExp#(LogNumberLiveObjects) NumberLiveObjects;
 

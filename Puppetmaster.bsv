@@ -11,6 +11,7 @@ import FIFOF::*;
 import GetPut::*;
 import Vector::*;
 
+import PmConfig::*;
 import PmCore::*;
 import PmIfc::*;
 import Puppet::*;
@@ -21,8 +22,6 @@ import Shard::*;
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 3 LogNumberPuppets;
-
 typedef TSub#(SizeSchedulingPool, 1) NumberPendingTransactions;
 typedef TExp#(LogNumberPuppets) NumberPuppets;
 

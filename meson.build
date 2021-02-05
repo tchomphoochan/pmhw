@@ -8,6 +8,7 @@ prog_python = import('python').find_installation('python3')
 # List of modules in the project.
 modules = [
     'PmIfc',
+    'PmConfig',
     'PmCore',
     'Shard',
     'Renamer',
@@ -38,13 +39,13 @@ synthesized = {
 # Bluespec module dependencies. Values are arrays of indices into the `modules` array.
 # This workaround is needed because Meson dictionaries are immutable.
 dep_indices = {
-    'PmCore': [0],
-    'Shard': [0, 1],
-    'Renamer': [0, 1, 2],
-    'Scheduler': [0, 1],
-    'Puppet': [0, 1],
-    'Puppetmaster': [0, 1, 2, 3, 4, 5],
-    'PmTop': [0, 1, 6],
+    'PmCore': [0, 1],
+    'Shard': [0, 1, 2],
+    'Renamer': [0, 1, 2, 3],
+    'Scheduler': [0, 1, 2],
+    'Puppet': [0, 2],
+    'Puppetmaster': [0, 1, 2, 3, 4, 5, 6],
+    'PmTop': [0, 2, 7],
 }
 
 # Non-Bluespec build targets.

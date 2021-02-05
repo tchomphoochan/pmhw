@@ -7,15 +7,13 @@ import ClientServer::*;
 import GetPut::*;
 import Vector::*;
 
+import PmConfig::*;
 import PmCore::*;
 import PmIfc::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 3 LogSizeSchedulingPool;
-typedef 1 LogNumberComparators;
-
 typedef TMul#(2, NumberComparators) SizeComparisonPool;
 typedef TDiv#(SizeSchedulingPool, NumberComparators) NumberComparisonChunks;
 

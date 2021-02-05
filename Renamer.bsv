@@ -8,6 +8,7 @@ import Connectable::*;
 import GetPut::*;
 import Vector::*;
 
+import PmConfig::*;
 import PmCore::*;
 import PmIfc::*;
 import Shard::*;
@@ -45,8 +46,6 @@ endinterface
 ////////////////////////////////////////////////////////////////////////////////
 /// Internal types.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 3 LogSizeRenamerBuffer;
-
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
 
 typedef Bit#(LogSizeRenamerBuffer) RenamerBufferIndex;

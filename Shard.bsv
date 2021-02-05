@@ -7,15 +7,13 @@ import Arbitrate::*;
 import BRAM::*;
 import Vector::*;
 
+import PmConfig::*;
 import PmCore::*;
 import PmIfc::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 3 LogNumberShards;
-typedef 3 LogNumberHashes;
-
 typedef TSub#(LogNumberLiveObjects, LogNumberShards) LogSizeShard;
 typedef TAdd#(1, LogNumberLiveObjects) ObjectCount;
 
