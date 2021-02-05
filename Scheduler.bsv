@@ -14,11 +14,14 @@ import PmIfc::*;
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
-typedef TMul#(2, NumberComparators) SizeComparisonPool;
-typedef TDiv#(SizeSchedulingPool, NumberComparators) NumberComparisonChunks;
+typedef TAdd#(LogNumberComparators, 1) LogSizeComparisonPool;
+typedef TAdd#(LogSizeComparisonPool, LogNumberSchedulingRounds) LogSizeSchedulingPool;
 
 typedef TExp#(LogSizeSchedulingPool) SizeSchedulingPool;
 typedef TExp#(LogNumberComparators) NumberComparators;
+typedef TExp#(LogSizeComparisonPool) SizeComparisonPool;
+
+typedef TDiv#(SizeSchedulingPool, NumberComparators) NumberComparisonChunks;
 
 typedef Bit#(LogSizeSchedulingPool) SchedulingPoolIndex;
 typedef Bit#(SizeSchedulingPool) ContainedTransactions;

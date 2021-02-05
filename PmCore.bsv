@@ -8,6 +8,7 @@ import Vector::*;
 import PmConfig::*;
 import PmIfc::*;
 
+typedef TAdd#(LogNumberShards, LogSizeShard) LogNumberLiveObjects;
 typedef TExp#(LogNumberLiveObjects) NumberLiveObjects;
 
 typedef Bit#(LogNumberLiveObjects) ObjectName;
