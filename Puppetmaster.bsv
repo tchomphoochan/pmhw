@@ -91,7 +91,7 @@ module mkPuppetmaster(Puppetmaster);
 
     // Fifos to serialize status messages.
     FIFOF#(TransactionId) renamedMsgFifo <- mkGFIFOF(True, False);
-    FIFOF#(TransactionId) freedMsgFifo <- mkGFIFOF(True, False);
+    FIFOF#(TransactionId) freedMsgFifo <- mkGSizedFIFOF(True, False, 4);
     FIFOF#(TransactionId) failedMsgFifo <- mkGFIFOF(True, False);
 
     ////////////////////////////////////////////////////////////////////////////////
