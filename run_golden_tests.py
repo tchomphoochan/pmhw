@@ -5,7 +5,7 @@ import signal
 import subprocess
 import sys
 from argparse import ArgumentParser, Namespace
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from threading import Thread
 from typing import List
