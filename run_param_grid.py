@@ -1,23 +1,82 @@
 #!/usr/bin/env python3
 """Explore a grid of design parameters for Puppetmaster."""
-import itertools
 import subprocess
 import traceback
 from pathlib import Path
 
 # Fixed parameters.
 tr_count = 1024
-mem_size = 1024
+mem_size = 65536
 
-# Variable parameters (logarithmic).
-buffer_sizes = [1, 2, 3, 4]
-shard_sizes = [7]
-shard_counts = [3]
-hash_counts = [3]
-comparator_counts = [1]
-scheduling_counts = [1]
-puppet_counts = [3]
-transaction_times = [128]
+# Variable parameters.
+# 1. LogSizeRenamerBuffer
+# 2. LogSizeShard
+# 3. LogNumberShards
+# 4. LogNumberHashes
+# 5. LogNumberComparators
+# 6. LogNumberSchedulingRounds
+# 7. LogNumberPuppets
+# 8. transaction time multiplier
+param_combs = [
+    # base
+    # (3, 7, 3, 3, 1, 1, 5, 512),
+    # rename buffer
+    (1, 7, 3, 3, 1, 1, 5, 512),
+    (2, 7, 3, 3, 1, 1, 5, 512),
+    (4, 7, 3, 3, 1, 1, 5, 512),
+    (6, 7, 3, 3, 1, 1, 5, 512),
+    (8, 7, 3, 3, 1, 1, 5, 512),
+    (10, 7, 3, 3, 1, 1, 5, 512),
+    # sharding
+    (3, 10, 0, 3, 1, 1, 8, 512),
+    (3, 8, 2, 3, 1, 1, 5, 512),
+    (3, 6, 4, 3, 1, 1, 5, 512),
+    (3, 4, 6, 3, 1, 1, 5, 512),
+    (3, 2, 8, 3, 1, 1, 5, 512),
+    # hashing
+    (3, 7, 3, 1, 1, 1, 5, 512),
+    (3, 7, 3, 2, 1, 1, 5, 512),
+    (3, 7, 3, 4, 1, 1, 5, 512),
+    (3, 7, 3, 6, 1, 1, 5, 512),
+    # comparators with pool size 8
+    (3, 7, 3, 3, 2, 0, 5, 512),
+    (3, 7, 3, 3, 0, 2, 5, 512),
+    # comparators with pool size 32
+    (3, 7, 3, 3, 4, 0, 5, 512),
+    (3, 7, 3, 3, 2, 2, 5, 512),
+    (3, 7, 3, 3, 3, 1, 5, 512),
+    (3, 7, 3, 3, 0, 4, 5, 512),
+    # comparators with pool size 128
+    (3, 7, 3, 3, 6, 0, 5, 512),
+    (3, 7, 3, 3, 4, 2, 5, 512),
+    (3, 7, 3, 3, 2, 4, 5, 512),
+    (3, 7, 3, 3, 1, 5, 5, 512),
+    (3, 7, 3, 3, 0, 6, 5, 512),
+    # transaction times on 32 puppets
+    (3, 7, 3, 3, 1, 1, 5, 256),
+    (3, 7, 3, 3, 1, 1, 5, 512),
+    (3, 7, 3, 3, 1, 1, 5, 1024),
+    # transaction times on 64 puppets
+    (3, 7, 3, 3, 1, 1, 6, 512),
+    (3, 7, 3, 3, 1, 1, 6, 1024),
+    (3, 7, 3, 3, 1, 1, 6, 2048),
+    # transaction times on 128 puppets
+    (3, 7, 3, 3, 1, 1, 7, 1024),
+    (3, 7, 3, 3, 1, 1, 7, 2048),
+    (3, 7, 3, 3, 1, 1, 7, 4096),
+    # transaction times on 256 puppets
+    (3, 7, 3, 3, 1, 1, 8, 2048),
+    (3, 7, 3, 3, 1, 1, 8, 4096),
+    (3, 7, 3, 3, 1, 1, 8, 8192),
+    # transaction times on 512 puppets
+    (3, 7, 3, 3, 1, 1, 9, 4096),
+    (3, 7, 3, 3, 1, 1, 9, 8192),
+    (3, 7, 3, 3, 1, 1, 9, 16192),
+    # transaction times on 1024 puppets
+    (3, 7, 3, 3, 1, 1, 10, 8192),
+    (3, 7, 3, 3, 1, 1, 10, 16192),
+    (3, 7, 3, 3, 1, 1, 10, 32384),
+]
 
 # Fixed paths.
 src_dir = Path.cwd()
@@ -109,16 +168,6 @@ def main() -> None:
     )
 
     # Run every possible parameter combination.
-    param_combs = itertools.product(
-        buffer_sizes,
-        shard_sizes,
-        shard_counts,
-        hash_counts,
-        comparator_counts,
-        scheduling_counts,
-        puppet_counts,
-        transaction_times,
-    )
     for bufsize, shardsize, shards, hashes, comps, scheds, puppets, tr_t in param_combs:
         try:
             run_sim(bufsize, shardsize, shards, hashes, comps, scheds, puppets, tr_t)
