@@ -18,3 +18,4 @@ compile_commands.json
 
 # Project configuration
 PmConfig.bsv
+param_grid_config.py
