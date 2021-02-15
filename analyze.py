@@ -64,7 +64,7 @@ def main() -> None:
     min_latency = latencies[0]
     max_latency = latencies[int(len(latencies) * args.cutoff) - 1]
     print("Latency:")
-    print_histogram(latencies, args.bins, min_latency, max_latency)
+    print_cutoff_sums(latencies, 2)
     if not args.text_only:
         plot_histogram(latencies, args.bins, min_latency, max_latency)
 
@@ -185,6 +185,21 @@ def print_histogram(values: Sequence[int], n_bins: int, min_val: int, max_val: i
         low = min_val if i == 0 else round(bin_limits[i - 1])
         high = float("inf") if i == len(bin_limits) else round(bin_limits[i])
         print(f"\t{low:{val_width}} < x <= {high:{val_width}}: {count:{count_width}}")
+
+
+def print_cutoff_sums(values: Sequence[int], n_orders: int):
+    """Print cumulative sum of counts up to certain cutoffs."""
+    cutoff_prec = abs(n_orders) - 2
+    val_width = len(str(values[-1]))
+    for n in range(abs(n_orders)):
+        half_cutoff = 1 - 1 / (2 * 10 ** n)
+        half_index = int(len(values) * half_cutoff) - 1
+        half_value = values[half_index]
+        print(f"\t{half_cutoff:.{cutoff_prec}%} below: {half_value:{val_width}}")
+        tenth_cutoff = 1 - 1 / 10 ** (n + 1)
+        tenth_index = int(len(values) * tenth_cutoff) - 1
+        tenth_value = values[tenth_index]
+        print(f"\t{tenth_cutoff:.{cutoff_prec}%} below: {tenth_value:{val_width}}")
 
 
 if __name__ == "__main__":
