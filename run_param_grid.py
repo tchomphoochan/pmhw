@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Explore a grid of design parameters for Puppetmaster."""
 import subprocess
+import sys
 import traceback
 from pathlib import Path
 
@@ -79,7 +80,7 @@ param_combs = [
 ]
 
 # Fixed paths.
-src_dir = Path.cwd()
+src_dir = Path(sys.argv[1]).resolve() if sys.argv[1:] else Path.cwd()
 data_dir = src_dir / "csv"
 log_dir = src_dir / "log"
 build_dir = src_dir / "verilator"
