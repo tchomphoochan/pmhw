@@ -26,7 +26,7 @@ def main() -> None:
         "--frequency",
         help="frequency used for throughput calculation (in MHz)",
         type=int,
-        default=250,
+        default=200,
     )
     parser.add_argument(
         "-b",
