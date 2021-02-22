@@ -4,8 +4,7 @@
 /bluesim/
 
 # Cache directories.
-__pycache__/
-.cache/
+[._]*cache*/
 
 # JSON compilation database (contains absolute paths).
 compile_commands.json
