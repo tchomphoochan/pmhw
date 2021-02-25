@@ -38,7 +38,6 @@ Inductive pm_final : pm_state -> Prop :=
   -> Renamed state = nil
   -> Scheduled state = nil
   -> Running state = nil
-  -> Finished state = nil
   -> pm_final state.
 
 (* Renaming step. TODO: pick a transaction non-deterministically. *)
