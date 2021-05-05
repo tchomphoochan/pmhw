@@ -284,12 +284,12 @@ function Vector#(NumberE2ETests, PuppetmasterRequest) makeE2ETests();
     Vector#(NumberE2ETests, PuppetmasterRequest) testInputs = newVector;
     for (Integer i = 0; i < numE2ETests; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
-        testInputs[i].trType = case (i % 4) matches
+        testInputs[i].trData = extend(pack(case (i % 4) matches
             0 : DatabaseRead;
             1 : DatabaseWrite;
             2 : DatabaseIncrement;
             3 : DatabaseSwap;
-        endcase;
+        endcase));
         testInputs[i].readObjectCount = fromInteger(objSetSize);
         testInputs[i].writtenObjectCount = fromInteger(objSetSize);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin

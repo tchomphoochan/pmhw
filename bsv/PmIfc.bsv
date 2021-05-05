@@ -2,18 +2,17 @@
 //  Filename      : PmIfc.bsv
 //  Description   : External interface for Puppetmaster and associated types.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 16 LogMaxNumberTransactions;
-typedef 32 LogSizeMemory;
-typedef 3 LogMaxNumberTransactionObjects;
-typedef 16 LogMaxClockMultiplier;
+// Sizes determined by C++ interface.
+typedef Bit#(64) TransactionId;
+typedef Bit#(64) TransactionData;
+typedef Bit#(64) ObjectAddress;
+typedef Bit#(32) Timestamp;
+typedef Bit#(16) ClockMultiplier;
 
+// Sizes determined by design.
+typedef 3 LogMaxNumberTransactionObjects;
 typedef TAdd#(LogMaxNumberTransactionObjects, 1) LogMaxTransactionObjectCount;
 typedef TExp#(LogMaxNumberTransactionObjects) MaxNumberTransactionObjects;
-
-typedef Bit#(64) Timestamp;
-typedef Bit#(LogMaxClockMultiplier) ClockMultiplier;
-typedef Bit#(LogMaxNumberTransactions) TransactionId;
-typedef Bit#(LogSizeMemory) ObjectAddress;
 typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
 
 typedef enum {
@@ -34,7 +33,7 @@ endinterface
 interface HostToPuppetmaster;
     method Action enqueueTransaction(
         TransactionId tid,
-        TransactionType trType,
+        TransactionData trData,
         TransactionObjectCounter readObjectCount,
         ObjectAddress readObj1,
         ObjectAddress readObj2,

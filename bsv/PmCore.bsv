@@ -21,7 +21,7 @@ typedef enum { ReadObject, WrittenObject } ObjectType deriving (Bits, Eq, FShow)
 
 typedef struct {
     TransactionId tid;
-    TransactionType trType;
+    TransactionData trData;
     InputObjects readObjects;
     InputObjects writtenObjects;
     TransactionObjectCounter readObjectCount;
@@ -30,7 +30,7 @@ typedef struct {
 
 typedef struct {
     TransactionId tid;
-    TransactionType trType;
+    TransactionData trData;
     RenamedObjects readObjects;
     RenamedObjects writtenObjects;
     TransactionObjectCounter readObjectCount;
@@ -45,7 +45,7 @@ typedef struct {
 instance DefaultValue#(RenamedTransaction);
     defaultValue = RenamedTransaction {
         tid: ?,
-        trType: ?,
+        trData: ?,
         readObjects: ?,
         writtenObjects: ?,
         readObjectCount: 0,

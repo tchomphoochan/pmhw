@@ -301,23 +301,23 @@ module mkShardTestbench();
     Shard myShard <- mkShard();
 
     Vector#(NumberShardTests, ShardRequest) testInputs;
-    testInputs[0] = makeRenameReq(32'h00000000, ReadObject);
-    testInputs[1] = makeRenameReq(32'h00000205, WrittenObject);
-    testInputs[2] = makeRenameReq(32'hA0000406, ReadObject);
-    testInputs[3] = makeRenameReq(32'h00000300, ReadObject);
-    testInputs[4] = makeRenameReq(32'hA0000406, WrittenObject);
-    testInputs[5] = makeRenameReq(32'hB0000406, ReadObject);
-    testInputs[6] = makeRenameReq(32'hC0000406, ReadObject);
-    testInputs[7] = makeRenameReq(32'hD0000406, ReadObject);
-    testInputs[8] = makeRenameReq(32'hE0000406, ReadObject);
-    testInputs[9] = makeRenameReq(32'hF0000406, WrittenObject);
-    testInputs[10] = makeRenameReq(32'hF0000806, ReadObject);
-    testInputs[11] = makeRenameReq(32'hF0000C06, ReadObject);
+    testInputs[0] = makeRenameReq(64'h00000000, ReadObject);
+    testInputs[1] = makeRenameReq(64'h00000205, WrittenObject);
+    testInputs[2] = makeRenameReq(64'hA0000406, ReadObject);
+    testInputs[3] = makeRenameReq(64'h00000300, ReadObject);
+    testInputs[4] = makeRenameReq(64'hA0000406, WrittenObject);
+    testInputs[5] = makeRenameReq(64'hB0000406, ReadObject);
+    testInputs[6] = makeRenameReq(64'hC0000406, ReadObject);
+    testInputs[7] = makeRenameReq(64'hD0000406, ReadObject);
+    testInputs[8] = makeRenameReq(64'hE0000406, ReadObject);
+    testInputs[9] = makeRenameReq(64'hF0000406, WrittenObject);
+    testInputs[10] = makeRenameReq(64'hF0000806, ReadObject);
+    testInputs[11] = makeRenameReq(64'hF0000C06, ReadObject);
     testInputs[12] = makeDeleteReq(10'h00B);
-    testInputs[13] = makeRenameReq(32'hF0000C06, ReadObject);
+    testInputs[13] = makeRenameReq(64'hF0000C06, ReadObject);
     testInputs[14] = makeDeleteReq(10'h006);
     testInputs[15] = makeDeleteReq(10'h006);
-    testInputs[16] = makeRenameReq(32'hA0000006, ReadObject);
+    testInputs[16] = makeRenameReq(64'hA0000006, ReadObject);
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 

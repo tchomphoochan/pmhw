@@ -107,7 +107,8 @@ module mkPuppet(Puppet);
 
     interface Put start;
         method Action put(PuppetRequest req) if (timeLeft[1] == 0);
-            timeLeft[1] <= getDuration(req.renamedTr.trType) * extend(multiplier);
+            TransactionType trType = unpack(truncate(req.renamedTr.trData));
+            timeLeft[1] <= getDuration(trType) * extend(multiplier);
             tr <= req.renamedTr;
 `ifdef DISPLAY_LOG
             $display("[%8d] Puppet: starting T#%h", cycle, req.renamedTr.tid);

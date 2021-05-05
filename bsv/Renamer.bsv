@@ -371,7 +371,7 @@ module mkResponseAggregator(ResponseAggregator);
         method Action put(InputTransaction inputTr) if (!isValid(maybeRenamedTr[1]));
             maybeRenamedTr[1] <= tagged Valid RenamedTransaction {
                 tid: inputTr.tid,
-                trType: inputTr.trType,
+                trData: inputTr.trData,
                 readObjects: ?,
                 writtenObjects: ?,
                 readObjectCount: 0,
@@ -633,7 +633,7 @@ function RenameRequest makeRenameReq(
 );
     return RenameRequest { inputTr: InputTransaction {
         tid: i,
-        trType: MessagePost,
+        trData: extend(pack(MessagePost)),
         readObjects: arrayToVector(r),
         writtenObjects: arrayToVector(w),
         readObjectCount: fromInteger(objSetSize),

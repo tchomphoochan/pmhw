@@ -35,7 +35,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
     interface HostToPuppetmaster request;
         method Action enqueueTransaction(
             TransactionId tid,
-            TransactionType trType,
+            TransactionData trData,
             TransactionObjectCounter readObjectCount,
             ObjectAddress readObj1,
             ObjectAddress readObj2,
@@ -77,7 +77,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
             };
             pm.request.put(InputTransaction {
                 tid: tid,
-                trType: trType,
+                trData: trData,
                 readObjects: arrayToVector(readObjects),
                 writtenObjects: arrayToVector(writtenObjects),
                 readObjectCount: readObjectCount,
@@ -129,7 +129,7 @@ module mkPmTopTestbench();
         let writtenObjs = testInput.writtenObjects;
         myPmTop.request.enqueueTransaction(
             testInput.tid,
-            testInput.trType,
+            testInput.trData,
             testInput.readObjectCount,
             readObjs[0],
             readObjs[1],
