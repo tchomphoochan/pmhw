@@ -98,7 +98,7 @@ foreach module : modules
 
     # Build target for generating Bluesim object file.
     obj_target = custom_target(obj_target_name,
-        input: '@0@.bsv'.format(module),
+        input: 'bsv/@0@.bsv'.format(module),
         output: obj_outputs,
         command: [bsc] + obj_bsc_opts + ['@INPUT@'],
         depends: deps,

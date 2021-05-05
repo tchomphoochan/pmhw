@@ -4,7 +4,7 @@ endif
 
 S2H_INTERFACES = HostToPuppetmaster:PmTop.request
 H2S_INTERFACES = PmTop:PuppetmasterToHostIndication
-BSVFILES += PmIfc.bsv
+BSVFILES += bsv/PmIfc.bsv
 BSVPATH += $(CONNECTALDIR)/bsv
 CPPFILES += main.cpp
 

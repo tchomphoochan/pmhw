@@ -16,7 +16,7 @@ Requirements
 
 Configuration
 -------------
-Rename `DefaultPmConfig.bsv` to `PmConfig.bsv` and change the values as desired.
+Copy `DefaultPmConfig.bsv` to `bsv/PmConfig.bsv` and change the values as desired.
 
 Compiling and running tests in Bluesim
 --------------------------------------
