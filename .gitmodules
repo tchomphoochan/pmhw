@@ -1,0 +1,3 @@
+[submodule "DBx1000"]
+	path = DBx1000
+	url = git@github.com:CyanoKobalamyne/DBx1000.git
