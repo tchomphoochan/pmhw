@@ -11,7 +11,7 @@ import PmIfc::*;
 import Puppetmaster::*;
 
 interface PmTop;
-    interface HostToPuppetmaster request;
+    interface HostToPuppetmasterRequest request;
 endinterface
 
 module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
@@ -32,7 +32,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
         indication.transactionFailed(tid);
     endrule
 
-    interface HostToPuppetmaster request;
+    interface HostToPuppetmasterRequest request;
         method Action enqueueTransaction(
             TransactionId tid,
             TransactionData trData,

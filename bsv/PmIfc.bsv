@@ -30,7 +30,7 @@ interface PuppetmasterToHostIndication;
     method Action transactionFailed(TransactionId tid);
 endinterface
 
-interface HostToPuppetmaster;
+interface HostToPuppetmasterRequest;
     method Action enqueueTransaction(
         TransactionId tid,
         TransactionData trData,
@@ -55,8 +55,4 @@ interface HostToPuppetmaster;
     );
     method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
     method Action clearState();
-endinterface
-
-interface PmTop;
-    interface HostToPuppetmaster request;
 endinterface

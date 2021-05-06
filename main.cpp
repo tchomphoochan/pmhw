@@ -16,7 +16,7 @@
 #include <vector>
 
 #include "GeneratedTypes.h"
-#include "HostToPuppetmaster.h"
+#include "HostToPuppetmasterRequest.h"
 #include "PuppetmasterToHostIndication.h"
 
 constexpr std::size_t objSetSize = 8;
@@ -248,8 +248,8 @@ int main(int argc, char** argv) {
     // Run tests.
     print_log("Connectal setting up...");
 
-    HostToPuppetmasterProxy* fpga =
-        new HostToPuppetmasterProxy(IfcNames_HostToPuppetmasterS2H);
+    HostToPuppetmasterRequestProxy* fpga =
+        new HostToPuppetmasterRequestProxy(IfcNames_HostToPuppetmasterRequestS2H);
     print_log("Initialized the request interface to the FPGA");
 
     PuppetmasterToHostIndication puppetmasterToHost(

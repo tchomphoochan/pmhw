@@ -7,7 +7,7 @@
 #include <string_view>
 
 #include "GeneratedTypes.h"
-#include "HostToPuppetmaster.h"
+#include "HostToPuppetmasterRequest.h"
 #include "PuppetmasterToHostIndication.h"
 #include "extern_cc.h"
 
@@ -22,7 +22,7 @@ void print_log(std::string_view msg) {
     std::cout << "[        ] db.cpp: " << msg << std::endl;
 }
 
-HostToPuppetmasterProxy* fpga;
+HostToPuppetmasterRequestProxy* fpga;
 
 // Function called from database for scheduling transactions.
 void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* writes[],
@@ -68,7 +68,7 @@ PuppetmasterToHostIndication* pmToHost;
 int main(int argc, char** argv) {
     print_log("Connectal setting up...");
 
-    fpga = new HostToPuppetmasterProxy(IfcNames_HostToPuppetmasterS2H);
+    fpga = new HostToPuppetmasterRequestProxy(IfcNames_HostToPuppetmasterRequestS2H);
     print_log("Initialized the request interface to the FPGA");
 
     pmToHost =
