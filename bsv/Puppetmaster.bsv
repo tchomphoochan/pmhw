@@ -14,7 +14,7 @@ import Vector::*;
 import PmConfig::*;
 import PmCore::*;
 import PmIfc::*;
-import Puppet::*;
+import Puppets::*;
 import Renamer::*;
 import Scheduler::*;
 import Shard::*;
@@ -23,7 +23,6 @@ import Shard::*;
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
 typedef TSub#(SizeSchedulingPool, 1) NumberPendingTransactions;
-typedef TExp#(LogNumberPuppets) NumberPuppets;
 
 typedef Bit#(TLog#(TAdd#(NumberPendingTransactions, 1))) PendingTransactionCount;
 
@@ -35,14 +34,13 @@ interface Puppetmaster;
     interface Get#(TransactionId) freed;
     interface Get#(TransactionId) failed;
     method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
-    method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
+    method Action transactionFinished(PuppetId pid);
     method Action clearState();
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Numeric constants.
 ////////////////////////////////////////////////////////////////////////////////
-Integer numPuppets = valueOf(NumberPuppets);
 Integer maxPendingTransactions = valueOf(NumberPendingTransactions);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,8 +54,7 @@ Integer maxPendingTransactions = valueOf(NumberPendingTransactions);
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-(* synthesize *)
-module mkPuppetmaster(Puppetmaster);
+module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
@@ -66,11 +63,12 @@ module mkPuppetmaster(Puppetmaster);
         replicateM(mkReg(defaultValue()));
     // Number of (valid) transactions in the above vector.
     Reg#(PendingTransactionCount) pendingTrCount[2] <- mkCReg(2, 0);
-    // For each valid transaction: 0 = waiting to be scheduled, 1 = already scheduled.
+    // For each transaction in pendingTrs, 1 if scheduled to run.
     Reg#(Bit#(NumberPendingTransactions)) pendingTrFlags <- mkReg(0);
-    // Last transaction sent to each puppet.
-    Vector#(NumberPuppets, Reg#(SchedulerTransaction)) sentSchedTrs <-
-        replicateM(mkReg(?));
+    // Transactions running on each puppet.
+    Vector#(NumberPuppets, Reg#(RenameResponse)) runningTrs <- replicateM(mkReg(?));
+    // For each transaction in runningTrs, True if running.
+    Reg#(Vector#(NumberPuppets, Bool)) runningTrFlags <- mkReg(replicate(False));
     // Clock.
     Reg#(Timestamp) cycle <- mkReg(0);
     // Whether we should execute all remaining pending transactions.
@@ -79,14 +77,6 @@ module mkPuppetmaster(Puppetmaster);
     // Submodules.
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
-    Vector#(NumberPuppets, Puppet) puppets <- replicateM(mkPuppet());
-
-    // Arbiter and connections to serialize puppet responses.
-    let arb <- mkRoundRobin;
-    Arbiter#(NumberPuppets, PuppetResponse, void) puppetRespArbiter <- mkArbiter(arb, 1);
-    for (Integer i = 0; i < numPuppets; i = i + 1) begin
-        mkConnection(puppets[i].finish, puppetRespArbiter.users[i].request);
-    end
 
     // Fifos to serialize status messages.
     FIFOF#(TransactionId) renamedMsgFifo <- mkGFIFOF(True, False);
@@ -98,16 +88,10 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     function SchedulerTransaction getSchedTr(RenameResponse resp) = resp.schedulerTr;
     function RenamedTransaction getRenamedTr(RenameResponse resp) = resp.renamedTr;
-
-    function Bool getIsDone(Puppet puppet) = puppet.isDone();
-    function TransactionId getCurrentTid(Puppet puppet) = puppet.currentTid();
+    function TransactionId getTid(RenameResponse resp) = resp.renamedTr.tid;
 
     function Maybe#(a) boolToMaybe(a value, Bool valid) =
         valid ? tagged Valid value : tagged Invalid;
-
-    function SchedulerTransaction schedTrOrEmpty(SchedulerTransaction tr, Bool valid);
-        return valid ? tr : defaultValue();
-    endfunction
 
     function SchedulerTransaction maybeTrUnion(
             Vector#(vsize, Maybe#(SchedulerTransaction)) maybeTrs);
@@ -128,13 +112,10 @@ module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     let pendingSchedTrs = map(getSchedTr, readVReg(pendingTrs));
 
-    let sentTids = map(getCurrentTid, puppets);
-
-    let puppetsDone = map(getIsDone, puppets);
-    let puppetsBusy = map(\not , puppetsDone);
-
-    let maybeRunningSchedTrs = zipWith(boolToMaybe, readVReg(sentSchedTrs), puppetsBusy);
+    let runningSchedTrs = map(getSchedTr, readVReg(runningTrs));
+    let maybeRunningSchedTrs = zipWith(boolToMaybe, runningSchedTrs, runningTrFlags);
     let runningSchedTr = maybeTrUnion(maybeRunningSchedTrs);
+    let runningTids = map(getTid, readVReg(runningTrs));
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
@@ -206,15 +187,18 @@ module mkPuppetmaster(Puppetmaster);
     endrule
 
     // Send first (lowest-index) pending transaction to first idle puppet.
-    rule sendTransaction if (findIndex(getIsDone, puppets) matches tagged Valid .puppetIndex
+    rule sendTransaction if (findElem(False, runningTrFlags) matches tagged Valid .puppetIndex
             &&& pendingTrFlags != 0);
         // Find first scheduled transaction and remove from pending set.
         PendingTransactionCount trIndex = truncate(pack(countZerosLSB(pendingTrFlags)));
         let newPendingTrFlags = pendingTrFlags & ~(1 << trIndex);
         // Start transaction on idle puppet.
         let started = pendingTrs[trIndex];
-        sentSchedTrs[puppetIndex] <= started.schedulerTr;
-        puppets[puppetIndex].start.put(PuppetRequest { renamedTr: started.renamedTr });
+        runningTrs[puppetIndex] <= started;
+        runningTrFlags[puppetIndex] <= True;
+        puppetIndication.startTransaction(
+            puppetIndex, started.renamedTr.tid, started.renamedTr.trData
+        );
         // If transaction is not the last in the buffer, move the last to this position.
         let newPendingTrCount = pendingTrCount[0] - 1;
         if (trIndex != newPendingTrCount) begin
@@ -230,12 +214,6 @@ module mkPuppetmaster(Puppetmaster);
         $display("[%8d] Puppetmaster: starting T#%h on puppet %0d", cycle,
                  started.renamedTr.tid, puppetIndex);
 `endif
-    endrule
-
-    (* fire_when_enabled *)
-    rule forwardDeletionRequests;
-        let puppetResp <- puppetRespArbiter.master.request.get();
-        renamer.delete.request.put(DeleteRequest { renamedTr: puppetResp.renamedTr });
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -256,12 +234,13 @@ module mkPuppetmaster(Puppetmaster);
     interface freed = toGet(freedMsgFifo);
     interface failed = toGet(failedMsgFifo);
 
-    method pollPuppets = zipWith(boolToMaybe, sentTids, puppetsBusy);
+    method pollPuppets = zipWith(boolToMaybe, runningTids, runningTrFlags);
 
-    method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
-        for (Integer i = 0; i < numPuppets; i = i + 1) begin
-            puppets[i].setClockMultiplier(multiplier);
-        end
+    method Action transactionFinished(PuppetId pid);
+        runningTrFlags[pid] <= False;
+        renamer.delete.request.put(DeleteRequest {
+            renamedTr: runningTrs[pid].renamedTr
+        });
     endmethod
 
     method Action clearState();
@@ -328,7 +307,8 @@ function PuppetStatus toStatus(Maybe#(TransactionId) maybeTid);
 endfunction
 
 module mkPuppetmasterTestbench();
-    Puppetmaster myPuppetmaster <- mkPuppetmaster();
+    Puppets myPuppets <- mkPuppets();
+    Puppetmaster myPuppetmaster <- mkPuppetmaster(myPuppets.indication);
 
     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 1)))) counter <- mkReg(0);
     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) renamedCounter[2] <- mkCReg(2, 0);
@@ -340,6 +320,11 @@ module mkPuppetmasterTestbench();
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
+    endrule
+
+    rule connectPuppets;
+        let pid <- myPuppets.finish.get();
+        myPuppetmaster.transactionFinished(pid);
     endrule
 
     rule feed if (counter < fromInteger(numE2ETests));

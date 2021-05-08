@@ -1,40 +1,30 @@
 ////////////////////////////////////////////////////////////////////////////////
-//  Filename      : Puppet.bsv
-//  Description   : Execution unit for Puppetmaster.
+//  Filename      : Puppets.bsv
+//  Description   : Hardware-based execution units for Puppetmaster.
 ////////////////////////////////////////////////////////////////////////////////
 import Arbitrate::*;
 import GetPut::*;
+import Vector::*;
 
+import PmConfig::*;
 import PmCore::*;
 import PmIfc::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.
 ////////////////////////////////////////////////////////////////////////////////
-typedef struct {
-    RenamedTransaction renamedTr;
-} PuppetRequest deriving (Bits, Eq, FShow);
+typedef TExp#(LogNumberPuppets) NumberPuppets;
 
-typedef struct {
-    RenamedTransaction renamedTr;
-} PuppetResponse deriving (Bits, Eq, FShow);
-
-interface Puppet;
-    interface Put#(PuppetRequest) start;
-    interface Get#(PuppetResponse) finish;
-    method Bool isDone();
-    method TransactionId currentTid();
+interface Puppets;
+    interface PuppetToHostIndication indication;
+    interface Get#(PuppetId) finish;
     method Action setClockMultiplier(ClockMultiplier multiplier);
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Typeclasses.
+/// Numeric constants.
 ////////////////////////////////////////////////////////////////////////////////
-// Tells the arbiter whether we need to route responses back.
-instance ArbRequestTC#(PuppetResponse);
-    function Bool isReadRequest(a x) = False;
-    function Bool isWriteRequest(a x) = True;
-endinstance
+Integer numPuppets = valueOf(NumberPuppets);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Public functions.
@@ -56,20 +46,23 @@ endfunction
 /// Puppet implementation.
 ///
 /// Simulates executing a transaction by waiting for a number of cycles. This
-/// number is calculated by multiplying TransactionDelayBase by the number of
-/// objects (total, not distinct) in the transaction.
+/// number is calculated by multiplying a fixed number depending on the
+/// transaction type by the clock multiplier.
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 (* synthesize *)
-module mkPuppet(Puppet);
+module mkPuppets(Puppets);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
-    Reg#(Timestamp) timeLeft[2] <- mkCReg(2, 0);
+    Vector#(NumberPuppets, Array#(Reg#(Timestamp))) timeLeft <-
+        replicateM(mkCReg(2, 0));
     Reg#(ClockMultiplier) multiplier <- mkReg(2000);
-    Reg#(RenamedTransaction) tr <- mkReg(?);
     Reg#(Timestamp) cycle <- mkReg(0);
+
+    Vector#(NumberPuppets, Vector#(2, Reg#(Timestamp))) timeLeftV =
+        map(arrayToVector, timeLeft);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
@@ -80,38 +73,37 @@ module mkPuppet(Puppet);
     endrule
 
     (* no_implicit_conditions, fire_when_enabled *)
-    rule incTime if (1 < timeLeft[0]);
-        timeLeft[0] <= timeLeft[0] - 1;
+    rule incTime;
+        for (Integer i = 0; i < numPuppets; i = i + 1) begin
+            if (1 < timeLeft[i][0]) begin
+                timeLeft[i][0] <= timeLeft[i][0] - 1;
+            end
+        end
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     interface Get finish;
-        method ActionValue#(PuppetResponse) get() if (timeLeft[0] == 1);
-            timeLeft[0] <= 0;
+        method ActionValue#(PuppetId) get() if (
+            findElem(1, readVReg(map(last, timeLeftV))) matches tagged Valid .pid
+        );
+            timeLeft[pid][1] <= 0;
 `ifdef DISPLAY_LOG
-            $display("[%8d] Puppet: finishing T#%h", cycle, tr.tid);
+            $display("[%8d] Puppet %d finished", cycle, pid);
 `endif
-            return PuppetResponse { renamedTr: tr };
+            return pid;
         endmethod
     endinterface
 
-    method Bool isDone();
-        return timeLeft[1] == 0;
-    endmethod
-
-    method TransactionId currentTid();
-        return tr.tid;
-    endmethod
-
-    interface Put start;
-        method Action put(PuppetRequest req) if (timeLeft[1] == 0);
-            TransactionType trType = unpack(truncate(req.renamedTr.trData));
-            timeLeft[1] <= getDuration(trType) * extend(multiplier);
-            tr <= req.renamedTr;
+    interface PuppetToHostIndication indication;
+        method Action startTransaction(
+                PuppetId pid, TransactionId tid, TransactionData trData
+            );
+            TransactionType trType = unpack(truncate(trData));
+            timeLeft[pid][1] <= getDuration(trType) * extend(multiplier);
 `ifdef DISPLAY_LOG
-            $display("[%8d] Puppet: starting T#%h", cycle, req.renamedTr.tid);
+            $display("[%8d] Puppet: starting T#%h", cycle, tid);
 `endif
         endmethod
     endinterface

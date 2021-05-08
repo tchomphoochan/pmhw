@@ -2,6 +2,8 @@
 //  Filename      : PmIfc.bsv
 //  Description   : External interface for Puppetmaster and associated types.
 ////////////////////////////////////////////////////////////////////////////////
+import PmConfig::*;
+
 // Sizes determined by C++ interface.
 typedef Bit#(64) TransactionId;
 typedef Bit#(64) TransactionData;
@@ -14,6 +16,9 @@ typedef 3 LogMaxNumberTransactionObjects;
 typedef TAdd#(LogMaxNumberTransactionObjects, 1) LogMaxTransactionObjectCount;
 typedef TExp#(LogMaxNumberTransactionObjects) MaxNumberTransactionObjects;
 typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
+
+// Sizes determined by config.
+typedef UInt#(LogNumberPuppets) PuppetId;
 
 typedef enum {
     DatabaseRead,
@@ -55,4 +60,12 @@ interface HostToPuppetmasterRequest;
     );
     method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
     method Action clearState();
+endinterface
+
+interface PuppetToHostIndication;
+    method Action startTransaction(
+        PuppetId pid,
+        TransactionId tid,
+        TransactionData trData
+    );
 endinterface

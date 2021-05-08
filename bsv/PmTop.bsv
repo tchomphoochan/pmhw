@@ -9,13 +9,20 @@ import Vector::*;
 import PmCore::*;
 import PmIfc::*;
 import Puppetmaster::*;
+import Puppets::*;
 
 interface PmTop;
     interface HostToPuppetmasterRequest request;
 endinterface
 
 module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
-    Puppetmaster pm <- mkPuppetmaster();
+    Puppets puppets <- mkPuppets();
+    Puppetmaster pm <- mkPuppetmaster(puppets.indication);
+
+    rule connectPuppets;
+        let pid <- puppets.finish.get();
+        pm.transactionFinished(pid);
+    endrule
 
     rule sendRenamedMessages;
         let tid <- pm.renamed.get();
@@ -85,7 +92,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
             });
 	    endmethod
 
-        method setPuppetClockMultiplier = pm.setPuppetClockMultiplier;
+        method setPuppetClockMultiplier = puppets.setClockMultiplier;
 
         method clearState = pm.clearState;
 	endinterface
