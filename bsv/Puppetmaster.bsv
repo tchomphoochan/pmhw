@@ -309,6 +309,7 @@ endfunction
 module mkPuppetmasterTestbench();
     Puppets myPuppets <- mkPuppets();
     Puppetmaster myPuppetmaster <- mkPuppetmaster(myPuppets.indication);
+    mkConnection(myPuppets.finish, toPut(myPuppetmaster.transactionFinished));
 
     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 1)))) counter <- mkReg(0);
     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) renamedCounter[2] <- mkCReg(2, 0);
@@ -322,18 +323,13 @@ module mkPuppetmasterTestbench();
         cycle <= cycle + 1;
     endrule
 
-    rule connectPuppets;
-        let pid <- myPuppets.finish.get();
-        myPuppetmaster.transactionFinished(pid);
-    endrule
-
     rule feed if (counter < fromInteger(numE2ETests));
         counter <= counter + 1;
         myPuppetmaster.request.put(testInputs[counter]);
     endrule
 
     rule drainRenamed;
-        let msg <- myPuppetmaster.renamed.get();
+        let _ <- myPuppetmaster.renamed.get();
         renamedCounter[0] <= renamedCounter[0] + 1;
     endrule
 

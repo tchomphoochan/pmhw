@@ -3,6 +3,7 @@
 //  Description   : Connectal-friendly wrapper for Puppetmaster.
 ////////////////////////////////////////////////////////////////////////////////
 import ClientServer::*;
+import Connectable::*;
 import GetPut::*;
 import Vector::*;
 
@@ -18,26 +19,11 @@ endinterface
 module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
     Puppets puppets <- mkPuppets();
     Puppetmaster pm <- mkPuppetmaster(puppets.indication);
+    mkConnection(puppets.finish, toPut(pm.transactionFinished));
 
-    rule connectPuppets;
-        let pid <- puppets.finish.get();
-        pm.transactionFinished(pid);
-    endrule
-
-    rule sendRenamedMessages;
-        let tid <- pm.renamed.get();
-        indication.transactionRenamed(tid);
-    endrule
-
-    rule sendFreedMessages;
-        let tid <- pm.freed.get();
-        indication.transactionFreed(tid);
-    endrule
-
-    rule sendFailedMessages;
-        let tid <- pm.failed.get();
-        indication.transactionFailed(tid);
-    endrule
+    mkConnection(pm.renamed, toPut(indication.transactionRenamed));
+    mkConnection(pm.freed, toPut(indication.transactionFreed));
+    mkConnection(pm.failed, toPut(indication.transactionFailed));
 
     interface HostToPuppetmasterRequest request;
         method Action enqueueTransaction(
