@@ -176,7 +176,8 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     rule getScheduled if (pendingTrFlags == 0);
         let scheduled <- scheduler.response.get();
         // Lowest bit corresponds to the currently running transactions, so remove it.
-        let newPendingTrFlags = scheduled[maxRounds - 1 : 1];
+        match {.realScheduled, .*} = split(scheduled);
+        Bit#(NumberPendingTransactions) newPendingTrFlags = realScheduled;
         // In partial mode, some of the "transactions" are just empty placeholders.
         let mask = (1 << pendingTrCount[1]) - 1;
         newPendingTrFlags = newPendingTrFlags & mask;
