@@ -44,8 +44,8 @@ def collect_tests(test_dir: str, test_pattern: str) -> dict[str, list[str]]:
     tests = {}
     test_path = Path(test_dir).resolve()
     for test_file in test_path.iterdir():
-        test_name = test_file.stem
-        if test_pattern not in test_name:
+        test_name, test_ext = test_file.stem, test_file.suffix
+        if test_pattern not in test_name or test_ext != ".out":
             continue
         with open(test_file, "rt") as f:
             tests[test_name] = f.read().splitlines()
