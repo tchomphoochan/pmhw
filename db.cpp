@@ -4,18 +4,29 @@
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 
 #include "GeneratedTypes.h"
 #include "HostToPuppetmasterRequest.h"
+#include "PuppetToHostIndication.h"
 #include "PuppetmasterToHostIndication.h"
 #include "extern_cc.h"
+#include "row.h"
+#include "test.h"
+#include "txn.h"
 
 int run();
 
 constexpr std::size_t objSetSize = 8;
 
 typedef std::array<ObjectAddress, objSetSize> InputObjects;
+
+std::mutex g_tr_map_lock;
+std::unordered_map<base_query*, std::pair<InputObjects, InputObjects>>
+    transactionObjects;
 
 // Helper function to print log messages.
 void print_log(std::string_view msg) {
@@ -35,6 +46,12 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
     }
     for (std::size_t i = 0; i < num_writes; i++) {
         writtenObjects[i] = reinterpret_cast<ObjectAddress>(writes[i]);
+    }
+
+    {
+        std::scoped_lock trMapGuard(g_tr_map_lock);
+        transactionObjects.insert_or_assign(
+            m_query, std::make_pair(readObjects, writtenObjects));
     }
 
     fpga->enqueueTransaction(
@@ -63,7 +80,40 @@ public:
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
 };
 
+// Handler for messages between FPGA and puppets.
+class PuppetToHostIndication : public PuppetToHostIndicationWrapper {
+public:
+    void startTransaction(const PuppetId pid, const TransactionId tid,
+                          const TransactionData trData) {
+        txn_man* m_txn = reinterpret_cast<txn_man*>(tid);
+        base_query* m_query = reinterpret_cast<base_query*>(trData);
+
+        std::pair<InputObjects, InputObjects> objects;
+        {
+            std::scoped_lock trMapGuard(g_tr_map_lock);
+            objects = transactionObjects.at(m_query);
+            transactionObjects.erase(m_query);
+        }
+        row_t* reads = reinterpret_cast<row_t*>(objects.first.data());
+        row_t* writes = reinterpret_cast<row_t*>(objects.second.data());
+
+        if (WORKLOAD == TEST) {
+            if (g_test_case == READ_WRITE) {
+                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 0, &reads, &writes);
+                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 1, &reads, &writes);
+                printf("READ_WRITE TEST PASSED\n");
+            } else if (g_test_case == CONFLICT) {
+                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 0, &reads, &writes);
+            }
+        } else {
+            m_txn->commit_txn(m_query, &reads, &writes);
+        }
+    }
+    PuppetToHostIndication(int id) : PuppetToHostIndicationWrapper(id) {}
+};
+
 PuppetmasterToHostIndication* pmToHost;
+PuppetToHostIndication* puppetsToHost;
 
 int main(int argc, char** argv) {
     print_log("Connectal setting up...");
@@ -73,7 +123,8 @@ int main(int argc, char** argv) {
 
     pmToHost =
         new PuppetmasterToHostIndication(IfcNames_PuppetmasterToHostIndicationH2S);
-    print_log("Initialized the indication interface");
+    puppetsToHost = new PuppetToHostIndication(IfcNames_PuppetToHostIndicationH2S);
+    print_log("Initialized the indication interfaces");
 
     // Set up db.
     g_params["abort_buffer_enable"] = ABORT_BUFFER_ENABLE ? "true" : "false";
