@@ -85,6 +85,9 @@ foreach module : modules
     else
         obj_bsc_opts += ['-no-warn-action-shadowing']
     endif
+    if get_option('external_puppets')
+        obj_bsc_opts += ['-D', 'EXTERNAL_PUPPETS']
+    endif
 
     # Compute dependencies.
     deps = []

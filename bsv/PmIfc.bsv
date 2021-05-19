@@ -69,3 +69,7 @@ interface PuppetToHostIndication;
         TransactionData trData
     );
 endinterface
+
+interface HostToPuppetRequest;
+    method Action transactionFinished(PuppetId pid);
+endinterface

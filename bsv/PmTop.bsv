@@ -14,13 +14,24 @@ import Puppets::*;
 
 interface PmTop;
     interface HostToPuppetmasterRequest request;
+`ifdef EXTERNAL_PUPPETS
+    interface HostToPuppetRequest puppetRequest;
+`endif
 endinterface
 
+`ifdef EXTERNAL_PUPPETS
+module mkPmTop#(
+    PuppetmasterToHostIndication indication,
+    PuppetToHostIndication puppetIndication
+)(PmTop);
+    Puppetmaster pm <- mkPuppetmaster(puppetIndication);
+`else
 (* descending_urgency = "mkConnectionGetPut, pm_sendTransaction" *)
 module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
     Puppets puppets <- mkPuppets();
     Puppetmaster pm <- mkPuppetmaster(puppets.indication);
     mkConnection(puppets.finish, toPut(pm.transactionFinished));
+`endif
 
     mkConnection(pm.renamed, toPut(indication.transactionRenamed));
     mkConnection(pm.freed, toPut(indication.transactionFreed));
@@ -79,10 +90,24 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
             });
 	    endmethod
 
+`ifdef EXTERNAL_PUPPETS
+        method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
+            // Do nothing, puppets are external.
+        endmethod
+`else
         method setPuppetClockMultiplier = puppets.setClockMultiplier;
+`endif
 
         method clearState = pm.clearState;
 	endinterface
+
+`ifdef EXTERNAL_PUPPETS
+    interface HostToPuppetRequest puppetRequest;
+        method Action transactionFinished(PuppetId pid);
+            pm.transactionFinished(pid);
+        endmethod
+    endinterface
+`endif
 endmodule
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,9 +127,18 @@ module mkTestIndication(PuppetmasterToHostIndication);
     endmethod
 endmodule
 
+`ifdef EXTERNAL_PUPPETS
+(* descending_urgency = "mkConnectionGetPut, myPmTop_pm_sendTransaction" *)
+`endif
 module mkPmTopTestbench();
     let myIndication <- mkTestIndication();
+`ifdef EXTERNAL_PUPPETS
+    Puppets puppets <- mkPuppets();
+    PmTop myPmTop <- mkPmTop(myIndication, puppets.indication);
+    mkConnection(puppets.finish, toPut(myPmTop.puppetRequest.transactionFinished));
+`else
     PmTop myPmTop <- mkPmTop(myIndication);
+`endif
 
     Reg#(Bit#(32)) testIndex <- mkReg(0);
     Reg#(Timestamp) cycle <- mkReg(0);
