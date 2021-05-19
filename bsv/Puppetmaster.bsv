@@ -168,7 +168,8 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     );
         scheduler.request.put(cons(runningSchedTr, pendingSchedTrs));
 `ifdef DEBUG
-        $display("[%8d] Puppetmaster: starting scheduler", cycle);
+        $display("[%8d] Puppetmaster: starting scheduler with ", cycle,
+                 fshow(map(getRenamedTr, readVReg(pendingTrs))));
 `endif
     endrule
 
@@ -183,7 +184,8 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         newPendingTrFlags = newPendingTrFlags & mask;
         pendingTrFlags <= newPendingTrFlags;
 `ifdef DEBUG
-        $display("[%8d] Puppetmaster: scheduler returned %b", cycle, scheduled);
+        $display("[%8d] Puppetmaster: scheduler returned %b, new flags %b", cycle,
+                 scheduled, newPendingTrFlags);
 `endif
     endrule
 
@@ -212,8 +214,8 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         newPendingTrFlags = newPendingTrFlags & ~(1 << newPendingTrCount);
         pendingTrFlags <= newPendingTrFlags;
 `ifdef DEBUG
-        $display("[%8d] Puppetmaster: starting T#%h on puppet %0d", cycle,
-                 started.renamedTr.tid, puppetIndex);
+        $display("[%8d] Puppetmaster: starting T#%h on puppet %0d, new flags %b", cycle,
+                 started.renamedTr.tid, puppetIndex, newPendingTrFlags);
 `endif
     endrule
 
