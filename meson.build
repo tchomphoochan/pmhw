@@ -81,7 +81,7 @@ foreach module : modules
         obj_bsc_opts += ['-g', 'mk@0@Testbench'.format(module)]
     endif
     if get_option('debug')
-        obj_bsc_opts += ['-D', 'DEBUG=1']
+        obj_bsc_opts += ['-D', 'DEBUG=1', '-D', 'DISPLAY_LOG=1']
     else
         obj_bsc_opts += ['-no-warn-action-shadowing']
     endif

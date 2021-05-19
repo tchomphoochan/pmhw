@@ -347,7 +347,11 @@ module mkPuppetmasterTestbench();
         let result = myPuppetmaster.pollPuppets();
         prevResult <= result;
         if (prevResult != result) begin
+`ifdef DISPLAY_LOG
+            $display("[%8d] Puppetmaster: running ", cycle, fshow(map(toStatus, result)));
+`else
             $display("%5d: ", cycle, fshow(map(toStatus, result)));
+`endif
         end
     endrule
 endmodule
