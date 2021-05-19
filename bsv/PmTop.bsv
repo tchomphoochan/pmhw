@@ -16,6 +16,7 @@ interface PmTop;
     interface HostToPuppetmasterRequest request;
 endinterface
 
+(* descending_urgency = "mkConnectionGetPut, pm_sendTransaction" *)
 module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
     Puppets puppets <- mkPuppets();
     Puppetmaster pm <- mkPuppetmaster(puppets.indication);

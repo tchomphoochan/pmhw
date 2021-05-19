@@ -309,6 +309,8 @@ function PuppetStatus toStatus(Maybe#(TransactionId) maybeTid);
     return PuppetStatus { maybeTid : maybeTid };
 endfunction
 
+(* mutually_exclusive = "feed, clear" *)
+(* descending_urgency = "mkConnectionGetPut, myPuppetmaster_sendTransaction" *)
 module mkPuppetmasterTestbench();
     Puppets myPuppets <- mkPuppets();
     Puppetmaster myPuppetmaster <- mkPuppetmaster(myPuppets.indication);
