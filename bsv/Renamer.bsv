@@ -179,7 +179,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                                 objType <= WrittenObject;
                             end
                         end
-`ifdef DEBUG
+`ifdef DEBUG_R
                     $display(
                         "[%8d] Renamer: renaming read object %0d from T#%h on shard %0d",
                         cycle, objIndex, inputTr.tid, getIndex(inputTr));
@@ -193,7 +193,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                             objIndex <= 0;
                             maybeInputTr <= tagged Invalid;
                         end
-`ifdef DEBUG
+`ifdef DEBUG_R
                     $display(
                         "[%8d] Renamer: renaming written object %0d from T#%h on shard %0d",
                         cycle, objIndex, inputTr.tid, getIndex(inputTr));
@@ -234,7 +234,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     Reg#(RenamedTransaction) req[3] <- mkCReg(3, defaultValue());
-`ifdef DEBUG
+`ifdef DEBUG_R
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
@@ -256,7 +256,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-`ifdef DEBUG
+`ifdef DEBUG_R
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
@@ -278,14 +278,14 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                     case (currentObj.objType) matches
                         ReadObject : begin
                             req[0].readObjectCount <= req[0].readObjectCount - 1;
-`ifdef DEBUG
+`ifdef DEBUG_R
                     $display("[%8d] Renamer: deleting read object %0d from T#%h", cycle,
                              req[0].readObjectCount - 1, req[0].tid);
 `endif
                         end
                         WrittenObject : begin
                             req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
-`ifdef DEBUG
+`ifdef DEBUG_R
                     $display("[%8d] Renamer: deleting written object %0d from T#%h",
                              cycle, req[0].writtenObjectCount - 1, req[0].tid);
 `endif
@@ -337,7 +337,7 @@ module mkResponseAggregator(ResponseAggregator);
     Reg#(TransactionObjectCounter) totalWrittenObjectCount <- mkReg(?);
     Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
-`ifdef DEBUG
+`ifdef DEBUG_R
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
@@ -355,7 +355,7 @@ module mkResponseAggregator(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-`ifdef DEBUG
+`ifdef DEBUG_R
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
@@ -403,7 +403,7 @@ module mkResponseAggregator(ResponseAggregator);
                         newTr.readObjects[newTr.readObjectCount] = name;
                         newTr.readObjectCount = newTr.readObjectCount + 1;
                         readSet <= readSet | (1 << name);
-`ifdef DEBUG
+`ifdef DEBUG_R
             $display("[%8d] Renamer: renamed read object %0d", cycle, readObjectCount);
 `endif
                     end
@@ -411,7 +411,7 @@ module mkResponseAggregator(ResponseAggregator);
                         newTr.writtenObjects[newTr.writtenObjectCount] = name;
                         newTr.writtenObjectCount = newTr.writtenObjectCount + 1;
                         writeSet <= writeSet | (1 << name);
-`ifdef DEBUG
+`ifdef DEBUG_R
             $display("[%8d] Renamer: renamed written object %0d", cycle, writtenObjectCount);
 `endif
                     end
@@ -440,7 +440,7 @@ module mkResponseAggregator(ResponseAggregator);
             && !isSuccess(renamedTr)
         );
             maybeRenamedTr[0] <= tagged Invalid;
-`ifdef DEBUG
+`ifdef DEBUG_R
             $display("[%8d] Renamer: failed to rename T#%h", cycle, renamedTr.tid);
 `endif
             return FailedRename { renamedTr : renamedTr };

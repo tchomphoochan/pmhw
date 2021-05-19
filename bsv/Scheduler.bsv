@@ -106,7 +106,7 @@ module mkScheduler(Scheduler);
     Reg#(SchedulingPoolIndex) round <- mkReg(0);
     // Number of transactions that have already been merged in this round.
     Reg#(SchedulingPoolIndex) offset <- mkReg(0);
-`ifdef DEBUG
+`ifdef DEBUG_S
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
@@ -124,7 +124,7 @@ module mkScheduler(Scheduler);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-`ifdef DEBUG
+`ifdef DEBUG_S
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
@@ -157,7 +157,7 @@ module mkScheduler(Scheduler);
         if (newOffset == 0) begin
             round <= round + 1;
         end
-`ifdef DEBUG
+`ifdef DEBUG_S
         $display("[%8d] Scheduler: round %0d, offset %0d", cycle, round, offset);
 `endif
     endrule

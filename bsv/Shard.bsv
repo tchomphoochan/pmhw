@@ -119,7 +119,7 @@ module mkShard(Shard);
     Reg#(Bool) isDone <- mkReg(False);
     // True if rename was successful.
     Reg#(Bool) isSuccess <- mkReg(?);
-`ifdef DEBUG
+`ifdef DEBUG_SH
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
@@ -158,7 +158,7 @@ module mkShard(Shard);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-`ifdef DEBUG
+`ifdef DEBUG_SH
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
@@ -172,7 +172,7 @@ module mkShard(Shard);
         lastKey <= getNextKey(req);
         tries <= tries + 1;
         bram.portA.request.put(makeReadRequest(getNextKey(req)));
-`ifdef DEBUG
+`ifdef DEBUG_SH
         $display("[%8d] Shard: start renaming O#%h", cycle, req.address);
 `endif
     endrule
@@ -190,7 +190,7 @@ module mkShard(Shard);
                 objectId: req.address
             };
             bram.portA.request.put(makeWriteRequest(lastKey, newEntry));
-`ifdef DEBUG
+`ifdef DEBUG_SH
             $display("[%8d] Shard: done renaming O#%h to O'#%h", cycle, req.address,
                      keyToName(req, lastKey));
 `endif
@@ -200,7 +200,7 @@ module mkShard(Shard);
             // Rename request failed: slot is full or hash functions exhausted.
             isDone <= True;
             isSuccess <= False;
-`ifdef DEBUG
+`ifdef DEBUG_SH
             $display("[%8d] Shard: failed to rename O#%h", cycle, req.address);
 `endif
         end else begin
@@ -208,7 +208,7 @@ module mkShard(Shard);
             lastKey <= getNextKey(req);
             tries <= tries + 1;
             bram.portA.request.put(makeReadRequest(getNextKey(req)));
-`ifdef DEBUG
+`ifdef DEBUG_SH
             $display("[%8d] Shard: try %0d of renaming O#%h", cycle, tries, req.address);
 `endif
         end
@@ -217,7 +217,7 @@ module mkShard(Shard);
     rule startDelete (maybeReq matches tagged Valid .sreq
                       &&& sreq matches tagged Delete .req &&& !isDone);
         bram.portA.request.put(makeReadRequest(getKey(req.name)));
-`ifdef DEBUG
+`ifdef DEBUG_SH
         $display("[%8d] Shard: start deleting O'#%h", cycle, req.name);
 `endif
     endrule
@@ -231,7 +231,7 @@ module mkShard(Shard);
             objectId: entry.objectId
         };
         bram.portA.request.put(makeWriteRequest(getKey(req.name), newEntry));
-`ifdef DEBUG
+`ifdef DEBUG_SH
         $display("[%8d] Shard: done deleting O'#%h", cycle, req.name);
 `endif
     endrule
@@ -257,7 +257,7 @@ module mkShard(Shard);
             maybeReq <= tagged Valid request;
             lastKey <= 0;
             tries <= 0;
-`ifdef DEBUG
+`ifdef DEBUG_SH
         $display("[%8d] Shard: received request", cycle);
 `endif
         endmethod
@@ -270,7 +270,7 @@ module mkShard(Shard);
             maybeReq <= tagged Invalid;
             isDone <= False;
             let name = keyToName(req, lastKey);
-`ifdef DEBUG
+`ifdef DEBUG_SH
         $display("[%8d] Shard: finished renaming O#%h", cycle, req.address);
 `endif
             if (isSuccess) begin
