@@ -1,16 +1,56 @@
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Lists.List.
-Require Import Coq.Lists.ListSet.
 
 Import Coq.Lists.List.ListNotations.
 
 Scheme Equality for list.
 
+(* Object set: sorted list of numbers (ascending). *)
+Definition obj_set := list nat.
+
+Definition empty_set : obj_set := [].
+
+Definition set_eq (a b : obj_set) : bool := list_beq nat Nat.eqb a b.
+
+Fixpoint set_add (set : obj_set) (obj : nat) : obj_set :=
+    match set with
+    | [] => [obj]
+    | elt :: set' => if obj <? elt then obj :: set
+                     else if obj =? elt then set
+                     else elt :: set_add set' obj
+    end.
+
+Fixpoint set_union (a b : obj_set) : obj_set :=
+    let fix set_union' b :=
+    match a with
+    | [] => b
+    | a_elt :: a' => match b with
+                   | [] => a
+                   | b_elt :: b' => if a_elt <? b_elt then a_elt :: set_union a' b
+                                    else if a_elt =? b_elt then a_elt :: set_union a' b'
+                                    else b_elt :: set_union' b'
+                   end
+    end
+    in set_union' b.
+
+Fixpoint set_inter (a b : obj_set) : obj_set :=
+    let fix set_inter' b :=
+    match a with
+    | [] => b
+    | a_elt :: a' => match b with
+                   | [] => []
+                   | b_elt :: b' => if a_elt <? b_elt then set_inter a' b
+                                   else if a_elt =? b_elt then a_elt :: set_inter a' b'
+                                   else set_inter' b'
+                   end
+    end
+    in set_inter' b.
+
 (* Transaction type. *)
 Record transaction := {
-    WriteSet : list nat;
-    ReadSet : list nat;
+    WriteSet : obj_set;
+    ReadSet : obj_set;
 }.
 
 (* State for our transition system. *)
@@ -50,19 +90,19 @@ Definition rename_transaction (state : pm_state) : pm_state :=
 (* Scheduling helpers. *)
 Record transaction_set := mkTrSet {
     SetTransactions : list transaction;
-    SetReadSet : list nat;
-    SetWriteSet : list nat;
+    SetReadSet : obj_set;
+    SetWriteSet : obj_set;
 }.
 
 Definition merge_tr_sets (a: transaction_set) (b : transaction_set) : transaction_set :=
-    mkTrSet ((SetTransactions a) ++ (SetTransactions b)) (set_union Nat.eq_dec (SetReadSet a) (SetReadSet b)) (set_union Nat.eq_dec (SetWriteSet a) (SetWriteSet b)).
+    mkTrSet ((SetTransactions a) ++ (SetTransactions b)) (set_union (SetReadSet a) (SetReadSet b)) (set_union (SetWriteSet a) (SetWriteSet b)).
 
 Definition tr_to_set (tr : transaction) : transaction_set := mkTrSet  [tr] (ReadSet tr) (WriteSet tr).
 
 Definition tr_compatible (a : transaction_set) (b : transaction_set) :=
-    andb (list_beq nat Nat.eqb (set_inter Nat.eq_dec (SetReadSet a) (SetWriteSet b)) nil)
-         (andb (list_beq nat Nat.eqb (set_inter Nat.eq_dec (SetWriteSet a) (SetWriteSet b)) nil)
-         (list_beq nat Nat.eqb (set_inter Nat.eq_dec (SetWriteSet a) (SetReadSet b)) nil)).
+    andb  (set_eq (set_inter (SetReadSet a) (SetWriteSet b)) empty_set)
+    (andb (set_eq (set_inter (SetWriteSet a) (SetWriteSet b)) empty_set)
+          (set_eq (set_inter (SetWriteSet a) (SetReadSet b)) empty_set)).
 
 (* Single round of the tournament. *)
 Fixpoint tournament_round (source : list transaction_set) (target : list transaction_set) : list transaction_set * list transaction :=
