@@ -33,8 +33,8 @@ std::mutex g_fpga_lock;
 // Function called from database for scheduling transactions.
 void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* writes[],
                   std::size_t num_reads, std::size_t num_writes) {
-    InputObjects readObjects;
-    InputObjects writtenObjects;
+    InputObjects readObjects{};
+    InputObjects writtenObjects{};
 
     for (std::size_t i = 0; i < num_reads; i++) {
         readObjects[i] = reinterpret_cast<ObjectAddress>(reads[i]);
