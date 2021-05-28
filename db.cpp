@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <sstream>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -28,10 +29,11 @@ std::mutex g_tr_map_lock;
 std::unordered_map<base_query*, std::pair<InputObjects, InputObjects>>
     transactionObjects;
 
-// Helper function to print log messages.
-void print_log(std::string_view msg) {
-    std::cout << "[        ] db.cpp: " << msg << std::endl;
-}
+// Helper macro to print log messages.
+#define PRINT_LOG(msg)                                                             \
+    std::cout << static_cast<std::ostringstream&>(                                 \
+                     std::ostringstream() << "[        ] db.cpp: " << msg << "\n") \
+                     .str();
 
 HostToPuppetmasterRequestProxy* fpga;
 std::mutex g_fpga_lock;
@@ -71,10 +73,8 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 private:
     void log_message(TransactionId tid, std::string_view verb) {
-        std::ostringstream msg;
-        msg << verb << " T#" << std::setw(2 * sizeof(tid)) << std::setfill('0')
-            << std::hex << tid;
-        print_log(msg.str());
+        PRINT_LOG(verb << " T#" << std::setw(2 * sizeof(tid)) << std::setfill('0')
+                       << std::hex << tid);
     }
 
 public:
@@ -120,15 +120,15 @@ PuppetmasterToHostIndication* pmToHost;
 PuppetToHostIndication* puppetsToHost;
 
 int main(int argc, char** argv) {
-    print_log("Connectal setting up...");
+    PRINT_LOG("Connectal setting up...");
 
     fpga = new HostToPuppetmasterRequestProxy(IfcNames_HostToPuppetmasterRequestS2H);
-    print_log("Initialized the request interface to the FPGA");
+    PRINT_LOG("Initialized the request interface to the FPGA");
 
     pmToHost =
         new PuppetmasterToHostIndication(IfcNames_PuppetmasterToHostIndicationH2S);
     puppetsToHost = new PuppetToHostIndication(IfcNames_PuppetToHostIndicationH2S);
-    print_log("Initialized the indication interfaces");
+    PRINT_LOG("Initialized the indication interfaces");
 
     // Set up db.
     g_params["abort_buffer_enable"] = ABORT_BUFFER_ENABLE ? "true" : "false";
