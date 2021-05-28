@@ -60,8 +60,8 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
     {
         std::scoped_lock fpgaGuard(g_fpga_lock);
         fpga->enqueueTransaction(
-            reinterpret_cast<TransactionId>(m_txn),
-            reinterpret_cast<TransactionData>(m_query), num_reads, readObjects[0],
+            reinterpret_cast<TransactionId>(m_query),
+            reinterpret_cast<TransactionData>(m_txn), num_reads, readObjects[0],
             readObjects[1], readObjects[2], readObjects[3], readObjects[4],
             readObjects[5], readObjects[6], readObjects[7], num_writes,
             writtenObjects[0], writtenObjects[1], writtenObjects[2], writtenObjects[3],
@@ -89,8 +89,8 @@ class PuppetToHostIndication : public PuppetToHostIndicationWrapper {
 public:
     void startTransaction(const PuppetId pid, const TransactionId tid,
                           const TransactionData trData) {
-        txn_man* m_txn = reinterpret_cast<txn_man*>(tid);
-        base_query* m_query = reinterpret_cast<base_query*>(trData);
+        base_query* m_query = reinterpret_cast<base_query*>(tid);
+        txn_man* m_txn = reinterpret_cast<txn_man*>(trData);
 
         std::pair<InputObjects, InputObjects> objects;
         {
