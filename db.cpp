@@ -1,5 +1,3 @@
-#include <bits/c++config.h>
-
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
