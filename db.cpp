@@ -13,6 +13,7 @@
 #include "PuppetToHostIndication.h"
 #include "PuppetmasterToHostIndication.h"
 #include "extern_cc.h"
+#include "global.h"
 #include "row.h"
 #include "test.h"
 #include "txn.h"
@@ -26,13 +27,6 @@ typedef std::array<ObjectAddress, objSetSize> InputObjects;
 std::mutex g_tr_map_lock;
 std::unordered_map<base_query*, std::pair<InputObjects, InputObjects>>
     transactionObjects;
-
-// Helper macro to print log messages.
-#define PRINT_LOG(msg)                                                             \
-    std::cout << static_cast<std::ostringstream&>(                                 \
-                     std::ostringstream() << "[        ] db.cpp: " << msg << "\n") \
-                     .str();
-
 HostToPuppetmasterRequestProxy* fpga;
 std::mutex g_fpga_lock;
 
@@ -71,8 +65,8 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 private:
     void log_message(TransactionId tid, std::string_view verb) {
-        PRINT_LOG(verb << " T#" << std::setw(2 * sizeof(tid)) << std::setfill('0')
-                       << std::hex << tid);
+        CXX_MSG(verb << " T#" << std::setw(2 * sizeof(tid)) << std::setfill('0')
+                     << std::hex << tid);
     }
 
 public:
@@ -118,15 +112,15 @@ PuppetmasterToHostIndication* pmToHost;
 PuppetToHostIndication* puppetsToHost;
 
 int main(int argc, char** argv) {
-    PRINT_LOG("Connectal setting up...");
+    CXX_MSG("Connectal setting up...");
 
     fpga = new HostToPuppetmasterRequestProxy(IfcNames_HostToPuppetmasterRequestS2H);
-    PRINT_LOG("Initialized the request interface to the FPGA");
+    CXX_MSG("Initialized the request interface to the FPGA");
 
     pmToHost =
         new PuppetmasterToHostIndication(IfcNames_PuppetmasterToHostIndicationH2S);
     puppetsToHost = new PuppetToHostIndication(IfcNames_PuppetToHostIndicationH2S);
-    PRINT_LOG("Initialized the indication interfaces");
+    CXX_MSG("Initialized the indication interfaces");
 
     // Set up db.
     g_params["abort_buffer_enable"] = ABORT_BUFFER_ENABLE ? "true" : "false";
