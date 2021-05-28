@@ -90,19 +90,19 @@ public:
             objects = transactionObjects.at(m_query);
             transactionObjects.erase(m_query);
         }
-        row_t* reads = reinterpret_cast<row_t*>(objects.first.data());
-        row_t* writes = reinterpret_cast<row_t*>(objects.second.data());
+        row_t** reads = reinterpret_cast<row_t**>(objects.first.data());
+        row_t** writes = reinterpret_cast<row_t**>(objects.second.data());
 
         if (WORKLOAD == TEST) {
             if (g_test_case == READ_WRITE) {
-                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 0, &reads, &writes);
-                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 1, &reads, &writes);
+                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 0, reads, writes);
+                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 1, reads, writes);
                 printf("READ_WRITE TEST PASSED\n");
             } else if (g_test_case == CONFLICT) {
-                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 0, &reads, &writes);
+                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 0, reads, writes);
             }
         } else {
-            m_txn->commit_txn(m_query, &reads, &writes);
+            m_txn->commit_txn(m_query, reads, writes);
         }
     }
     PuppetToHostIndication(int id) : PuppetToHostIndicationWrapper(id) {}
