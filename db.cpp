@@ -34,6 +34,7 @@ void print_log(std::string_view msg) {
 }
 
 HostToPuppetmasterRequestProxy* fpga;
+std::mutex g_fpga_lock;
 
 // Function called from database for scheduling transactions.
 void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* writes[],
@@ -54,13 +55,16 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
             m_query, std::make_pair(readObjects, writtenObjects));
     }
 
-    fpga->enqueueTransaction(
-        reinterpret_cast<TransactionId>(m_txn),
-        reinterpret_cast<TransactionData>(m_query), num_reads, readObjects[0],
-        readObjects[1], readObjects[2], readObjects[3], readObjects[4], readObjects[5],
-        readObjects[6], readObjects[7], num_writes, writtenObjects[0],
-        writtenObjects[1], writtenObjects[2], writtenObjects[3], writtenObjects[4],
-        writtenObjects[5], writtenObjects[6], writtenObjects[7]);
+    {
+        std::scoped_lock fpgaGuard(g_fpga_lock);
+        fpga->enqueueTransaction(
+            reinterpret_cast<TransactionId>(m_txn),
+            reinterpret_cast<TransactionData>(m_query), num_reads, readObjects[0],
+            readObjects[1], readObjects[2], readObjects[3], readObjects[4],
+            readObjects[5], readObjects[6], readObjects[7], num_writes,
+            writtenObjects[0], writtenObjects[1], writtenObjects[2], writtenObjects[3],
+            writtenObjects[4], writtenObjects[5], writtenObjects[6], writtenObjects[7]);
+    }
 }
 
 // Handler for messages received from the FPGA
