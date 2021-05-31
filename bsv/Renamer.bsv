@@ -129,7 +129,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     Reg#(Maybe#(InputTransaction)) maybeInputTr <- mkReg(tagged Invalid);
     Reg#(ObjectType) objType <- mkReg(?);
     Reg#(TransactionObjectCounter) objIndex <- mkReg(0);
-`ifdef DEBUG
+`ifdef DEBUG_R
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
 
@@ -145,7 +145,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-`ifdef DEBUG
+`ifdef DEBUG_R
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
