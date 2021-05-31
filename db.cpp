@@ -20,18 +20,38 @@
 #include "test.h"
 #include "txn.h"
 
+// ----------------------------------------------------------------------------
+// Forward declarations.
+
+/// Runs configured workload. Defined in DBx1000/system/run.cpp.
 int run();
 
+// ----------------------------------------------------------------------------
+// Constants and types.
+
+/// Size of transaction read and write sets.
 constexpr std::size_t objSetSize = 8;
 
+/// Wrapper for transaction read and write sets.
 typedef std::array<ObjectAddress, objSetSize> InputObjects;
 
-std::mutex g_tr_map_lock;
+// ----------------------------------------------------------------------------
+// Global variables.
+
+/// Maps query pointer to array of associated read and written objects.
 std::unordered_map<base_query*, std::pair<InputObjects, InputObjects>>
     transactionObjects;
+/// Forwards requests to hardware.
 HostToPuppetmasterRequestProxy* fpga;
+/// Mutex for transactionObjects.
+std::mutex g_tr_map_lock;
+/// Mutex for fpga.
 std::mutex g_fpga_lock;
 
+// ----------------------------------------------------------------------------
+// Helper function definitions.
+
+/// Pretty-print object arrays.
 std::ostream& operator<<(std::ostream& os, const InputObjects& objs) {
     os << "[";
     std::copy(objs.begin(), objs.end(), std::ostream_iterator<std::size_t>(os, ", "));
@@ -39,7 +59,7 @@ std::ostream& operator<<(std::ostream& os, const InputObjects& objs) {
     return os;
 }
 
-// Function called from database for scheduling transactions.
+/// Function called from database for scheduling transactions.
 void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* writes[],
                   std::size_t num_reads, std::size_t num_writes) {
     InputObjects readObjects{};
@@ -70,7 +90,10 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
     }
 }
 
-// Handler for messages received from the FPGA
+// ----------------------------------------------------------------------------
+// Helper class definitions.
+
+/// Handler for messages received from the FPGA.
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 private:
     void log_message(TransactionId tid, std::string_view verb) {
@@ -85,7 +108,7 @@ public:
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
 };
 
-// Handler for messages between FPGA and puppets.
+/// Handler for messages between FPGA and puppets.
 class PuppetToHostIndication : public PuppetToHostIndicationWrapper {
 public:
     void startTransaction(const PuppetId pid, const TransactionId tid,
@@ -117,9 +140,18 @@ public:
     PuppetToHostIndication(int id) : PuppetToHostIndicationWrapper(id) {}
 };
 
+// ----------------------------------------------------------------------------
+// Global helper class instances.
+
+/// Indication interface for general progress messages.
 PuppetmasterToHostIndication* pmToHost;
+
+/// Indication interface for simulating puppets in software.
 PuppetToHostIndication* puppetsToHost;
 
+// ----------------------------------------------------------------------------
+
+/// Program entry point. Initializes globals and portals. Runs database.
 int main(int argc, char** argv) {
     CXX_MSG("Connectal setting up...");
 
