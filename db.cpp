@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <mutex>
 #include <sstream>
 #include <string_view>
@@ -29,6 +31,13 @@ std::unordered_map<base_query*, std::pair<InputObjects, InputObjects>>
     transactionObjects;
 HostToPuppetmasterRequestProxy* fpga;
 std::mutex g_fpga_lock;
+
+std::ostream& operator<<(std::ostream& os, const InputObjects& objs) {
+    os << "[";
+    std::copy(objs.begin(), objs.end(), std::ostream_iterator<std::size_t>(os, ", "));
+    os << "]";
+    return os;
+}
 
 // Function called from database for scheduling transactions.
 void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* writes[],
