@@ -5,3 +5,4 @@ typedef 3 LogNumberHashes;
 typedef 1 LogNumberComparators;
 typedef 1 LogNumberSchedulingRounds;
 typedef 3 LogNumberPuppets;
+typedef 4 NumberAddressOffsetBits;

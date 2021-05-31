@@ -275,7 +275,8 @@ function Vector#(NumberE2ETests, PuppetmasterRequest) makeE2ETests();
         testInputs[i].readObjectCount = fromInteger(objSetSize);
         testInputs[i].writtenObjectCount = fromInteger(objSetSize);
         for (Integer j = 0; j < objSetSize; j = j + 1) begin
-            testInputs[i].readObjects[j] = fromInteger(objSetSize * i * 2 + j * 2);
+            testInputs[i].readObjects[j] =
+                fromInteger(objSetSize * i * 2 + j * 2) << addrOffset;
             testInputs[i].writtenObjects[j] = fromInteger(
                 case (i / maxScheduledObjects) matches
                     0 : (objSetSize * i           * 2 + j * 2 + 1);  // conflict with none
@@ -283,7 +284,7 @@ function Vector#(NumberE2ETests, PuppetmasterRequest) makeE2ETests();
                     2 : (objSetSize * (i % 2)     * 2 + j * 2 + 1);  // conflict with half
                     3 : (objSetSize               * 2 + j * 2 + 1);  // conflict with all
                 endcase
-            );
+            ) << addrOffset;
         end
     end
     return testInputs;

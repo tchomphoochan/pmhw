@@ -75,18 +75,21 @@ Integer numShards = valueOf(NumberShards);
 Integer logMaxShardObjects = valueOf(LogSizeShard);
 Integer maxHashes = valueOf(NumberHashes);
 Integer numKeys = valueOf(SizeShard);
+Integer addrOffset = valueOf(NumberAddressOffsetBits);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Helper functions.
 ////////////////////////////////////////////////////////////////////////////////
-// Return the shard index for a given address, which are the low order bits
-// preceding the key used by the shards.
-function ShardIndex getShard(Bit#(n) address) provisos (Min#(LogNumberLiveObjects, n, LogNumberLiveObjects));
-    return address[logMaxLiveObjects - 1 : logMaxShardObjects];
+// Convert address to object name.
+function ObjectName addressToName(ObjectAddress address);
+    return truncate(address >> addrOffset);
 endfunction
 
-// Return the key for a given address used by the shards.
-function ShardKey getKey(Bit#(n) address) provisos (Min#(LogSizeShard, n, LogSizeShard));
+// Split object name into shard index and key.
+function ShardIndex getShard(ObjectName address);
+    return address[logMaxLiveObjects - 1 : logMaxShardObjects];
+endfunction
+function ShardKey getKey(ObjectName address);
     return address[logMaxShardObjects - 1 : 0];
 endfunction
 
@@ -126,14 +129,14 @@ module mkShard(Shard);
     ////////////////////////////////////////////////////////////////////////////////
     /// Helper functions.
     ////////////////////////////////////////////////////////////////////////////////
-    // Computes hash function h_i(x) = (x + i) % b.
-    // x: address, i: offset (tries), b: base (SizeShard)
+    // Computes hash function h_i(x) = ((x >> o) + i) % b.
+    // x: address, o: offset, i: hash index (try), b: base (SizeShard)
     function ShardKey getNextKey(ShardRenameRequest req);
-        return getKey(req.address + zeroExtend(tries));
+        return getKey(addressToName(req.address)) + zeroExtend(tries);
     endfunction
 
     function ObjectName keyToName(ShardRenameRequest req, ShardKey key);
-        return {getShard(req.address), key};
+        return {getShard(addressToName(req.address)), key};
     endfunction
 
     function BRAMRequest#(ShardKey, RenameTableEntry) makeReadRequest(ShardKey bramAddr);
@@ -290,7 +293,7 @@ endmodule
 typedef 17 NumberShardTests;
 
 function ShardRequest makeRenameReq(ObjectAddress addr, ObjectType t);
-    return tagged Rename ShardRenameRequest { address: addr, objType: t };
+    return tagged Rename ShardRenameRequest { address: addr << addrOffset, objType: t };
 endfunction
 
 function ShardRequest makeDeleteReq(ObjectName name);

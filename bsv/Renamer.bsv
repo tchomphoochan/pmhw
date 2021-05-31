@@ -139,7 +139,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     function ShardIndex getIndex(InputTransaction inputTr);
         let readObject = inputTr.readObjects[objIndex];
         let writtenObject = inputTr.writtenObjects[objIndex];
-        return getShard(objType == ReadObject ? readObject : writtenObject);
+        return getShard(addressToName(objType == ReadObject ? readObject : writtenObject));
     endfunction
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -628,14 +628,18 @@ typedef 5 NumberRenamerTests;
 
 Integer numTests = valueOf(NumberRenamerTests);
 
+function ObjectAddress addOffset(ObjectAddress address);
+    return address << addrOffset;
+endfunction
+
 function RenameRequest makeRenameReq(
     TransactionId i, ObjectAddress r[], ObjectAddress w[]
 );
     return RenameRequest { inputTr: InputTransaction {
         tid: i,
         trData: extend(pack(MessagePost)),
-        readObjects: arrayToVector(r),
-        writtenObjects: arrayToVector(w),
+        readObjects: map(addOffset, arrayToVector(r)),
+        writtenObjects: map(addOffset, arrayToVector(w)),
         readObjectCount: fromInteger(objSetSize),
         writtenObjectCount: fromInteger(objSetSize)
     }};
