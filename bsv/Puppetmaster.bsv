@@ -312,6 +312,7 @@ endfunction
 
 (* mutually_exclusive = "feed, clear" *)
 (* descending_urgency = "mkConnectionGetPut, myPuppetmaster_sendTransaction" *)
+(* descending_urgency = "drainFailed, drainFreed" *)
 module mkPuppetmasterTestbench();
     Puppets myPuppets <- mkPuppets();
     Puppetmaster myPuppetmaster <- mkPuppetmaster(myPuppets.indication);
@@ -319,6 +320,7 @@ module mkPuppetmasterTestbench();
 
     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 1)))) counter <- mkReg(0);
     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) renamedCounter[2] <- mkCReg(2, 0);
+    Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) finishedCounter[2] <- mkCReg(2, 0);
     Reg#(UInt#(32)) cycle <- mkReg(0);
     Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) prevResult <- mkReg(?);
 
@@ -341,11 +343,21 @@ module mkPuppetmasterTestbench();
 
     rule drainFreed;
         let _ <- myPuppetmaster.freed.get();
+        finishedCounter[0] <= finishedCounter[0] + 1;
+    endrule
+
+    rule drainFailed;
+        let _ <- myPuppetmaster.failed.get();
+        finishedCounter[0] <= finishedCounter[0] + 1;
     endrule
 
     rule clear if (renamedCounter[1] == fromInteger(numE2ETests));
         renamedCounter[1] <= renamedCounter[1] + 1;
         myPuppetmaster.clearState();
+    endrule
+
+    rule finish if (finishedCounter[1] == fromInteger(numE2ETests));
+        $finish();
     endrule
 
     rule stream;
