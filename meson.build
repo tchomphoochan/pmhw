@@ -33,7 +33,6 @@ synthesized = {
     'Renamer': ['mkRenameRequestDistributor', 'mkDeleteRequestDistributor', 'mkRenamer'],
     'Scheduler': ['mkScheduler'],
     'Puppets': ['mkPuppets'],
-    'Puppetmaster': ['mkPuppetmaster'],
 }
 
 # Bluespec module dependencies. Values are arrays of indices into the `modules` array.
