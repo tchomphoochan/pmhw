@@ -81,7 +81,7 @@ def run_golden_test(executable: str, expected: Sequence[str], timeout: int) -> N
         thread.start()
         thread.join(timeout)
         if thread.is_alive():
-            print("test timed out.", end="")
+            print("\ntest timed out.", end="")
             break
         result = results[-1].rstrip()
         if result != expected[i]:
