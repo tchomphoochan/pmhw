@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "GeneratedTypes.h"
+#include "HostToPuppetRequest.h"
 #include "HostToPuppetmasterRequest.h"
 #include "PuppetToHostIndication.h"
 #include "PuppetmasterToHostIndication.h"
@@ -43,10 +44,14 @@ std::unordered_map<base_query*, std::pair<InputObjects, InputObjects>>
     transactionObjects;
 /// Forwards requests to hardware.
 HostToPuppetmasterRequestProxy* fpga;
+/// Sends feedback to puppets interface.
+HostToPuppetRequestProxy* puppets;
 /// Mutex for transactionObjects.
 std::mutex g_tr_map_lock;
 /// Mutex for fpga.
 std::mutex g_fpga_lock;
+/// Mutex for puppets.
+std::mutex g_puppets_lock;
 
 // ----------------------------------------------------------------------------
 // Helper function definitions.
@@ -136,6 +141,11 @@ public:
         } else {
             m_txn->commit_txn(m_query, reads, writes);
         }
+
+        {
+            std::scoped_lock puppetsGuard(g_puppets_lock);
+            puppets->transactionFinished(pid);
+        }
     }
     PuppetToHostIndication(int id) : PuppetToHostIndicationWrapper(id) {}
 };
@@ -156,6 +166,7 @@ int main(int argc, char** argv) {
     CXX_MSG("Connectal setting up...");
 
     fpga = new HostToPuppetmasterRequestProxy(IfcNames_HostToPuppetmasterRequestS2H);
+    puppets = new HostToPuppetRequestProxy(IfcNames_HostToPuppetRequestS2H);
     CXX_MSG("Initialized the request interface to the FPGA");
 
     pmToHost =
