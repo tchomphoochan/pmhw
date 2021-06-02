@@ -244,6 +244,10 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         renamer.delete.request.put(DeleteRequest {
             renamedTr: runningTrs[pid].renamedTr
         });
+`ifdef DISPLAY_LOG
+        $display("[%8d] Puppetmaster: finished T#%h on puppet %0d", cycle,
+                 runningTrs[pid].renamedTr.tid, pid);
+`endif
     endmethod
 
     method Action clearState();
