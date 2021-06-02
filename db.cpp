@@ -201,8 +201,12 @@ int main(int argc, char** argv) {
         g_init_parallelism = g_thread_cnt;
     }
 
+    int64_t startTime = get_server_clock();
+
     // Call db runner.
     run();
+
+    int64_t runEndTime = get_server_clock();
 
     // Wait until fewer transactions are left than what the scheduler expects.
     {
@@ -221,6 +225,11 @@ int main(int argc, char** argv) {
         std::unique_lock trMapGuard(g_tr_map_lock);
         g_tr_map_cv.wait(trMapGuard, [] { return transactionObjects.empty(); });
     }
+
+    int64_t endTime = get_server_clock();
+    std::cout << "Commit time: " << endTime - runEndTime << "\n";
+    std::cout << "Total time: " << endTime - startTime << "\n";
+
     // Wait a few more seconds for messages to be sent.
     std::this_thread::sleep_for(chrono::seconds(1));
 }
