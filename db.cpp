@@ -24,6 +24,10 @@
 #include "test.h"
 #include "txn.h"
 
+#define PM_LOG(verb, tid, rest)                                                        \
+    CXX_MSG(verb << " T#" << std::setw(2 * sizeof(TransactionId)) << std::setfill('0') \
+                 << std::hex << tid << std::setfill(' ') << std::dec << rest)
+
 // ----------------------------------------------------------------------------
 // Forward declarations.
 
@@ -65,9 +69,9 @@ std::condition_variable g_tr_map_cv;
 
 /// Pretty-print object arrays.
 std::ostream& operator<<(std::ostream& os, const InputObjects& objs) {
-    os << "[";
+    os << "[" << std::hex;
     std::copy(objs.begin(), objs.end(), std::ostream_iterator<std::size_t>(os, ", "));
-    os << "]";
+    os << "]" << std::dec;
     return os;
 }
 
@@ -90,15 +94,21 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
             m_query, std::make_pair(readObjects, writtenObjects));
     }
 
+    TransactionId tid = reinterpret_cast<TransactionId>(m_query);
+    TransactionData trData = reinterpret_cast<TransactionData>(m_txn);
+
+    PM_LOG("enqueuing", tid,
+           ", " << num_reads << " reads: " << readObjects << ", " << num_writes
+                << " writes: " << writtenObjects);
+
     {
         std::scoped_lock fpgaGuard(g_fpga_lock);
         fpga->enqueueTransaction(
-            reinterpret_cast<TransactionId>(m_query),
-            reinterpret_cast<TransactionData>(m_txn), num_reads, readObjects[0],
-            readObjects[1], readObjects[2], readObjects[3], readObjects[4],
-            readObjects[5], readObjects[6], readObjects[7], num_writes,
-            writtenObjects[0], writtenObjects[1], writtenObjects[2], writtenObjects[3],
-            writtenObjects[4], writtenObjects[5], writtenObjects[6], writtenObjects[7]);
+            tid, trData, num_reads, readObjects[0], readObjects[1], readObjects[2],
+            readObjects[3], readObjects[4], readObjects[5], readObjects[6],
+            readObjects[7], num_writes, writtenObjects[0], writtenObjects[1],
+            writtenObjects[2], writtenObjects[3], writtenObjects[4], writtenObjects[5],
+            writtenObjects[6], writtenObjects[7]);
     }
 }
 
@@ -107,16 +117,10 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
 
 /// Handler for messages received from the FPGA.
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
-private:
-    void log_message(TransactionId tid, std::string_view verb) {
-        CXX_MSG(verb << " T#" << std::setw(2 * sizeof(tid)) << std::setfill('0')
-                     << std::hex << tid);
-    }
-
 public:
-    void transactionRenamed(TransactionId tid) { log_message(tid, "renamed"); }
-    void transactionFreed(TransactionId tid) { log_message(tid, "freed"); }
-    void transactionFailed(TransactionId tid) { log_message(tid, "failed"); }
+    void transactionRenamed(TransactionId tid) { PM_LOG("renamed", tid, ""); }
+    void transactionFreed(TransactionId tid) { PM_LOG("freed", tid, ""); }
+    void transactionFailed(TransactionId tid) { PM_LOG("failed", tid, ""); }
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
 };
 
@@ -138,6 +142,9 @@ public:
         row_t** reads = reinterpret_cast<row_t**>(objects.first.data());
         row_t** writes = reinterpret_cast<row_t**>(objects.second.data());
 
+        PM_LOG("started", tid,
+               ", reads: " << objects.first << ", writes: " << objects.second);
+
         if (WORKLOAD == TEST) {
             if (g_test_case == READ_WRITE) {
                 ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 0, reads, writes);
@@ -149,6 +156,8 @@ public:
         } else {
             m_txn->commit_txn(m_query, reads, writes);
         }
+
+        PM_LOG("finishing", tid, " on puppet " << +pid);
 
         {
             std::scoped_lock puppetsGuard(g_puppets_lock);
