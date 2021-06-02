@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
@@ -7,6 +9,7 @@
 #include <mutex>
 #include <sstream>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 
@@ -32,6 +35,8 @@ int run();
 
 /// Size of transaction read and write sets.
 constexpr std::size_t objSetSize = 8;
+/// Number of transactions considered by scheduler (1 represents running transactions).
+constexpr std::size_t schedulingPoolSize = 8;
 
 /// Wrapper for transaction read and write sets.
 typedef std::array<ObjectAddress, objSetSize> InputObjects;
@@ -52,6 +57,8 @@ std::mutex g_tr_map_lock;
 std::mutex g_fpga_lock;
 /// Mutex for puppets.
 std::mutex g_puppets_lock;
+/// Condition variable for transactionObjects;
+std::condition_variable g_tr_map_cv;
 
 // ----------------------------------------------------------------------------
 // Helper function definitions.
@@ -127,6 +134,7 @@ public:
             objects = transactionObjects.at(m_query);
             transactionObjects.erase(m_query);
         }
+        g_tr_map_cv.notify_all();
         row_t** reads = reinterpret_cast<row_t**>(objects.first.data());
         row_t** writes = reinterpret_cast<row_t**>(objects.second.data());
 
@@ -186,4 +194,24 @@ int main(int argc, char** argv) {
 
     // Call db runner.
     run();
+
+    // Wait until fewer transactions are left than what the scheduler expects.
+    {
+        std::unique_lock trMapGuard(g_tr_map_lock);
+        g_tr_map_cv.wait(trMapGuard, [] {
+            return transactionObjects.size() == schedulingPoolSize - 2;
+        });
+    }
+    // Run remaining transactions.
+    {
+        std::scoped_lock fpgaGuard(g_fpga_lock);
+        fpga->clearState();
+    }
+    // Wait for all of them to finish.
+    {
+        std::unique_lock trMapGuard(g_tr_map_lock);
+        g_tr_map_cv.wait(trMapGuard, [] { return transactionObjects.empty(); });
+    }
+    // Wait a few more seconds for messages to be sent.
+    std::this_thread::sleep_for(chrono::seconds(1));
 }
