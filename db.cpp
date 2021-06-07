@@ -118,7 +118,16 @@ class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper 
 public:
     void transactionRenamed(TransactionId tid) { PM_LOG("renamed", tid, ""); }
     void transactionFreed(TransactionId tid) { PM_LOG("freed", tid, ""); }
-    void transactionFailed(TransactionId tid) { PM_LOG("failed", tid, ""); }
+    void transactionFailed(TransactionId tid) {
+        PM_LOG("failed", tid, "");
+
+        // Remove failed transaction from global set.
+        base_query* m_query = reinterpret_cast<base_query*>(tid);
+        {
+            std::scoped_lock trMapGuard(g_tr_map_lock);
+            transactionObjects.erase(m_query);
+        }
+    }
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
 };
 
