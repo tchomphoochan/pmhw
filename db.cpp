@@ -57,10 +57,8 @@ HostToPuppetmasterRequestProxy* fpga;
 HostToPuppetRequestProxy* puppets;
 /// Mutex for transactionObjects.
 std::mutex g_tr_map_lock;
-/// Mutex for fpga.
-std::mutex g_fpga_lock;
-/// Mutex for puppets.
-std::mutex g_puppets_lock;
+/// Mutex shared by fpga and puppets.
+std::mutex g_hw_request_lock;
 /// Condition variable for transactionObjects;
 std::condition_variable g_tr_map_cv;
 
@@ -102,7 +100,7 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
                 << " writes: " << writtenObjects);
 
     {
-        std::scoped_lock fpgaGuard(g_fpga_lock);
+        std::scoped_lock hwGuard(g_hw_request_lock);
         fpga->enqueueTransaction(
             tid, trData, num_reads, readObjects[0], readObjects[1], readObjects[2],
             readObjects[3], readObjects[4], readObjects[5], readObjects[6],
@@ -160,7 +158,7 @@ public:
         PM_LOG("finishing", tid, " on puppet " << +pid);
 
         {
-            std::scoped_lock puppetsGuard(g_puppets_lock);
+            std::scoped_lock hwGuard(g_hw_request_lock);
             puppets->transactionFinished(pid);
         }
     }
@@ -217,7 +215,7 @@ int main(int argc, char** argv) {
     }
     // Run remaining transactions.
     {
-        std::scoped_lock fpgaGuard(g_fpga_lock);
+        std::scoped_lock hwGuard(g_hw_request_lock);
         fpga->clearState();
     }
     // Wait for all of them to finish.
