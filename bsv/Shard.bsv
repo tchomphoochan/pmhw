@@ -290,7 +290,7 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 // Shard tests.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 17 NumberShardTests;
+typedef 25 NumberShardTests;
 
 function ShardRequest makeRenameReq(ObjectAddress addr, ObjectType t);
     return tagged Rename ShardRenameRequest { address: addr << addrOffset, objType: t };
@@ -315,12 +315,20 @@ module mkShardTestbench();
     testInputs[8] = makeRenameReq(64'hE0000406, ReadObject);
     testInputs[9] = makeRenameReq(64'hF0000406, WrittenObject);
     testInputs[10] = makeRenameReq(64'hF0000806, ReadObject);
-    testInputs[11] = makeRenameReq(64'hF0000C06, ReadObject);
-    testInputs[12] = makeDeleteReq(10'h00B);
-    testInputs[13] = makeRenameReq(64'hF0000C06, ReadObject);
-    testInputs[14] = makeDeleteReq(10'h006);
-    testInputs[15] = makeDeleteReq(10'h006);
-    testInputs[16] = makeRenameReq(64'hA0000006, ReadObject);
+    testInputs[11] = makeRenameReq(64'hF1000806, ReadObject);
+    testInputs[12] = makeRenameReq(64'hF2000806, ReadObject);
+    testInputs[13] = makeRenameReq(64'hF3000806, ReadObject);
+    testInputs[14] = makeRenameReq(64'hF4000806, ReadObject);
+    testInputs[15] = makeRenameReq(64'hF5000806, ReadObject);
+    testInputs[16] = makeRenameReq(64'hF6000806, ReadObject);
+    testInputs[17] = makeRenameReq(64'hF7000806, ReadObject);
+    testInputs[18] = makeRenameReq(64'hF8000806, ReadObject);
+    testInputs[19] = makeRenameReq(64'hF0000C06, ReadObject);
+    testInputs[20] = makeDeleteReq(10'h00B);
+    testInputs[21] = makeRenameReq(64'hF0000C06, ReadObject);
+    testInputs[22] = makeDeleteReq(10'h006);
+    testInputs[23] = makeDeleteReq(10'h006);
+    testInputs[24] = makeRenameReq(64'hA0000006, ReadObject);
 
     Reg#(UInt#(32)) counter <- mkReg(0);
 
