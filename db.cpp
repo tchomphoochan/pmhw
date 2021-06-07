@@ -234,8 +234,8 @@ int main(int argc, char** argv) {
     }
 
     int64_t endTime = get_server_clock();
-    std::cout << "Commit time: " << endTime - runEndTime << "\n";
-    std::cout << "Total time: " << endTime - startTime << "\n";
+    CXX_MSG("Commit time: " << endTime - runEndTime);
+    CXX_MSG("Total time: " << endTime - startTime);
 
     // Wait a few more seconds for messages to be sent.
     std::this_thread::sleep_for(chrono::seconds(1));
