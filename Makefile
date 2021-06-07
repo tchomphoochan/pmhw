@@ -28,6 +28,9 @@ ifneq ($(strip $(DB)),)
 CONNECTALFLAGS += $(foreach dir, $(DB_SRC_DIRS), -I./DBx1000/$(dir))
 CONNECTALFLAGS += -D EXTERNAL_PUPPETS
 endif
+ifneq ($(strip $(QUIET)),)
+CONNECTALFLAGS += -D QUIET
+endif
 ifneq ($(strip $(DEBUG)),)
 CONNECTALFLAGS += -D DEBUG
 endif

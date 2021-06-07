@@ -24,9 +24,13 @@
 #include "test.h"
 #include "txn.h"
 
+#ifdef QUIET
+#define PM_LOG(verb, tid, rest)
+#else
 #define PM_LOG(verb, tid, rest)                                                        \
     CXX_MSG(verb << " T#" << std::setw(2 * sizeof(TransactionId)) << std::setfill('0') \
                  << std::hex << tid << std::setfill(' ') << std::dec << rest)
+#endif
 
 // ----------------------------------------------------------------------------
 // Forward declarations.
