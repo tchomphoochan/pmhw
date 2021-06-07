@@ -68,7 +68,7 @@ foreach module : modules
     obj_bsc_opts = common_bsc_opts + [
         '-bdir', '@OUTDIR@',
         '-aggressive-conditions',
-        '-suppress-warnings', 'G0023:G0024:S0073:S0080',
+        '-suppress-warnings', 'G0020:G0023:G0024:S0073:S0080',
     ]
     link_bsc_opts = common_bsc_opts + [
         '-simdir', '@PRIVATE_DIR@',
@@ -80,7 +80,7 @@ foreach module : modules
         obj_bsc_opts += ['-g', 'mk@0@Testbench'.format(module)]
     endif
     if get_option('debug')
-        obj_bsc_opts += ['-D', 'DEBUG=1', '-D', 'DISPLAY_LOG=1']
+        obj_bsc_opts += ['-D', 'DEBUG=1']
     else
         obj_bsc_opts += ['-no-warn-action-shadowing']
     endif

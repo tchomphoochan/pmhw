@@ -63,7 +63,7 @@ def run_golden_test(executable: str, expected: Sequence[str], timeout: int) -> N
         [proc_path],
         cwd=proc_dir,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.DEVNULL,
         text=True,
         bufsize=1,
         preexec_fn=os.setsid,  # necessary for the os.killpg call to work

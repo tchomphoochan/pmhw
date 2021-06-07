@@ -133,27 +133,21 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         pendingTrs[pendingTrCount[1]] <= result;
         pendingTrCount[1] <= pendingTrCount[1] + 1;
         renamedMsgFifo.enq(result.renamedTr.tid);
-`ifdef DISPLAY_LOG
-            $display("[%8d] Puppetmaster: renamed T#%h", cycle, result.renamedTr.tid);
-`endif
+        $fdisplay(stderr, "[%8d] Puppetmaster: renamed T#%h", cycle, result.renamedTr.tid);
     endrule
 
     // Notify caller about failed transactions.
     rule getFailed;
         let result <- renamer.fail.get();
         failedMsgFifo.enq(result.tid);
-`ifdef DISPLAY_LOG
-            $display("[%8d] Puppetmaster: failed T#%h", cycle, result.tid);
-`endif
+        $fdisplay(stderr, "[%8d] Puppetmaster: failed T#%h", cycle, result.tid);
     endrule
 
     // Notify caller about freed transactions.
     rule getFreed;
         let result <- renamer.delete.response.get();
         freedMsgFifo.enq(result.tid);
-`ifdef DISPLAY_LOG
-            $display("[%8d] Puppetmaster: freed T#%h", cycle, result.tid);
-`endif
+        $fdisplay(stderr, "[%8d] Puppetmaster: freed T#%h", cycle, result.tid);
     endrule
 
     // When pending buffer is full or partial mode is active, send scheduling request.
@@ -168,8 +162,8 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     );
         scheduler.request.put(cons(runningSchedTr, pendingSchedTrs));
 `ifdef DEBUG
-        $display("[%8d] Puppetmaster: starting scheduler with ", cycle,
-                 fshow(map(getRenamedTr, readVReg(pendingTrs))));
+        $fdisplay(stderr, "[%8d] Puppetmaster: starting scheduler with ", cycle,
+                  fshow(map(getRenamedTr, readVReg(pendingTrs))));
 `endif
     endrule
 
@@ -184,8 +178,8 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         newPendingTrFlags = newPendingTrFlags & mask;
         pendingTrFlags <= newPendingTrFlags;
 `ifdef DEBUG
-        $display("[%8d] Puppetmaster: scheduler returned %b, new flags %b", cycle,
-                 scheduled, newPendingTrFlags);
+        $fdisplay(stderr, "[%8d] Puppetmaster: scheduler returned %b, new flags %b",
+                  cycle, scheduled, newPendingTrFlags);
 `endif
     endrule
 
@@ -213,9 +207,10 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         pendingTrCount[0] <= newPendingTrCount;
         newPendingTrFlags = newPendingTrFlags & ~(1 << newPendingTrCount);
         pendingTrFlags <= newPendingTrFlags;
+        $fdisplay(stderr, "[%8d] Puppetmaster: starting T#%h on puppet %0d", cycle,
+                  started.renamedTr.tid, puppetIndex);
 `ifdef DEBUG
-        $display("[%8d] Puppetmaster: starting T#%h on puppet %0d, new flags %b", cycle,
-                 started.renamedTr.tid, puppetIndex, newPendingTrFlags);
+        $fdisplay(stderr, "[%8d] Puppetmaster: new flags are %b", newPendingTrFlags);
 `endif
     endrule
 
@@ -227,9 +222,7 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         method Action put(InputTransaction inputTr);
             partialMode <= False;
             renamer.rename.request.put(RenameRequest { inputTr: inputTr });
-`ifdef DISPLAY_LOG
-            $display("[%8d] Puppetmaster: receiving T#%h", cycle, inputTr.tid);
-`endif
+            $fdisplay(stderr, "[%8d] Puppetmaster: enqueued T#%h", cycle, inputTr.tid);
         endmethod
     endinterface
 
@@ -244,16 +237,14 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         renamer.delete.request.put(DeleteRequest {
             renamedTr: runningTrs[pid].renamedTr
         });
-`ifdef DISPLAY_LOG
-        $display("[%8d] Puppetmaster: finished T#%h on puppet %0d", cycle,
-                 runningTrs[pid].renamedTr.tid, pid);
-`endif
+        $fdisplay(stderr, "[%8d] Puppetmaster: finished T#%h on puppet %0d", cycle,
+                  runningTrs[pid].renamedTr.tid, pid);
     endmethod
 
     method Action clearState();
         partialMode <= True;
 `ifdef DEBUG
-        $display("[%8d] Puppetmaster: clearing state", cycle);
+        $fdisplay(stderr, "[%8d] Puppetmaster: clearing state", cycle);
 `endif
     endmethod
 endmodule
@@ -368,11 +359,9 @@ module mkPuppetmasterTestbench();
         let result = myPuppetmaster.pollPuppets();
         prevResult <= result;
         if (prevResult != result) begin
-`ifdef DISPLAY_LOG
-            $display("[%8d] Puppetmaster: running ", cycle, fshow(map(toStatus, result)));
-`else
+            $fdisplay(stderr, "[%8d] Puppetmaster: running ", cycle,
+                      fshow(map(toStatus, result)));
             $display("%5d: ", cycle, fshow(map(toStatus, result)));
-`endif
         end
     endrule
 endmodule

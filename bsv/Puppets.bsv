@@ -89,9 +89,7 @@ module mkPuppets(Puppets);
             findElem(1, readVReg(map(last, timeLeftV))) matches tagged Valid .pid
         );
             timeLeft[pid][1] <= 0;
-`ifdef DISPLAY_LOG
-            $display("[%8d] Puppet %d finished", cycle, pid);
-`endif
+            $fdisplay(stderr, "[%8d] Puppet %d finished", cycle, pid);
             return pid;
         endmethod
     endinterface
@@ -102,9 +100,7 @@ module mkPuppets(Puppets);
             );
             TransactionType trType = unpack(truncate(trData));
             timeLeft[pid][1] <= getDuration(trType) * extend(multiplier);
-`ifdef DISPLAY_LOG
-            $display("[%8d] Puppet: starting T#%h", cycle, tid);
-`endif
+            $fdisplay(stderr, "[%8d] Puppet: starting T#%h", cycle, tid);
         endmethod
     endinterface
 
