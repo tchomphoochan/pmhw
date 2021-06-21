@@ -22,7 +22,6 @@ endif
 
 CONNECTALFLAGS += --mainclockperiod=20
 CONNECTALFLAGS += --cxxflags="-std=c++17 -D NOGRAPHITE=1"
-CONNECTALFLAGS += --nonstrict
 CONNECTALFLAGS += --bscflags="+RTS -K1G -H6G -RTS"
 ifneq ($(strip $(DB)),)
 CONNECTALFLAGS += $(foreach dir, $(DB_SRC_DIRS), -I./DBx1000/$(dir))
