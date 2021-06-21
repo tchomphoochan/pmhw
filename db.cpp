@@ -11,7 +11,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
-#include <utility>
+#include <unordered_set>
 
 #include "GeneratedTypes.h"
 #include "HostToPuppetRequest.h"
@@ -49,17 +49,24 @@ constexpr std::size_t schedulingPoolSize = 8;
 /// Wrapper for transaction read and write sets.
 typedef std::array<ObjectAddress, objSetSize> InputObjects;
 
+typedef struct {
+    txn_man* m_txn;
+    std::size_t num_reads;
+    std::size_t num_writes;
+    InputObjects readObjects;
+    InputObjects writtenObjects;
+} TransactionProps;
+
 // ----------------------------------------------------------------------------
 // Global variables.
 
 /// Maps query pointer to array of associated read and written objects.
-std::unordered_map<base_query*, std::pair<InputObjects, InputObjects>>
-    transactionObjects;
+std::unordered_map<TransactionId, TransactionProps> activeTransactions;
 /// Forwards requests to hardware.
 HostToPuppetmasterRequestProxy* fpga;
 /// Sends feedback to puppets interface.
 HostToPuppetRequestProxy* puppets;
-/// Mutex for transactionObjects.
+/// Mutex for activeTransactions.
 std::mutex g_tr_map_lock;
 /// Mutex shared by fpga and puppets.
 std::mutex g_hw_request_lock;
@@ -90,14 +97,14 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
         writtenObjects[i] = reinterpret_cast<ObjectAddress>(writes[i]);
     }
 
-    {
-        std::scoped_lock trMapGuard(g_tr_map_lock);
-        transactionObjects.insert_or_assign(
-            m_query, std::make_pair(readObjects, writtenObjects));
-    }
-
     TransactionId tid = reinterpret_cast<TransactionId>(m_query);
     TransactionData trData = reinterpret_cast<TransactionData>(m_txn);
+
+    {
+        std::scoped_lock trMapGuard(g_tr_map_lock);
+        activeTransactions[tid] =
+            TransactionProps{m_txn, num_reads, num_writes, readObjects, writtenObjects};
+    }
 
     PM_LOG("enqueuing", tid,
            ", " << num_reads << " reads: " << readObjects << ", " << num_writes
@@ -126,10 +133,9 @@ public:
         PM_LOG("failed", tid, "");
 
         // Remove failed transaction from global set.
-        base_query* m_query = reinterpret_cast<base_query*>(tid);
         {
             std::scoped_lock trMapGuard(g_tr_map_lock);
-            transactionObjects.erase(m_query);
+            activeTransactions.erase(tid);
         }
     }
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
@@ -140,32 +146,31 @@ class PuppetToHostIndication : public PuppetToHostIndicationWrapper {
 public:
     void startTransaction(const PuppetId pid, const TransactionId tid,
                           const TransactionData trData) {
-        base_query* m_query = reinterpret_cast<base_query*>(tid);
-        txn_man* m_txn = reinterpret_cast<txn_man*>(trData);
-
-        std::pair<InputObjects, InputObjects> objects;
+        TransactionProps tp;
         {
             std::scoped_lock trMapGuard(g_tr_map_lock);
-            objects = transactionObjects.at(m_query);
-            transactionObjects.erase(m_query);
+            tp = activeTransactions.at(tid);
+            activeTransactions.erase(tid);
         }
         g_tr_map_cv.notify_all();
-        row_t** reads = reinterpret_cast<row_t**>(objects.first.data());
-        row_t** writes = reinterpret_cast<row_t**>(objects.second.data());
+
+        base_query* m_query = reinterpret_cast<base_query*>(tid);
+        row_t** reads = reinterpret_cast<row_t**>(tp.readObjects.data());
+        row_t** writes = reinterpret_cast<row_t**>(tp.writtenObjects.data());
 
         PM_LOG("started", tid,
-               ", reads: " << objects.first << ", writes: " << objects.second);
+               ", reads: " << tp.readObjects << ", writes: " << tp.writtenObjects);
 
         if (WORKLOAD == TEST) {
             if (g_test_case == READ_WRITE) {
-                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 0, reads, writes);
-                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 1, reads, writes);
+                ((TestTxnMan*)tp.m_txn)->commit_txn(g_test_case, 0, reads, writes);
+                ((TestTxnMan*)tp.m_txn)->commit_txn(g_test_case, 1, reads, writes);
                 printf("READ_WRITE TEST PASSED\n");
             } else if (g_test_case == CONFLICT) {
-                ((TestTxnMan*)m_txn)->commit_txn(g_test_case, 0, reads, writes);
+                ((TestTxnMan*)tp.m_txn)->commit_txn(g_test_case, 0, reads, writes);
             }
         } else {
-            m_txn->commit_txn(m_query, reads, writes);
+            tp.m_txn->commit_txn(m_query, reads, writes);
         }
 
         PM_LOG("finishing", tid, " on puppet " << +pid);
@@ -223,7 +228,7 @@ int main(int argc, char** argv) {
     {
         std::unique_lock trMapGuard(g_tr_map_lock);
         g_tr_map_cv.wait(trMapGuard, [] {
-            return transactionObjects.size() == schedulingPoolSize - 2;
+            return activeTransactions.size() == schedulingPoolSize - 2;
         });
     }
     // Run remaining transactions.
@@ -234,7 +239,7 @@ int main(int argc, char** argv) {
     // Wait for all of them to finish.
     {
         std::unique_lock trMapGuard(g_tr_map_lock);
-        g_tr_map_cv.wait(trMapGuard, [] { return transactionObjects.empty(); });
+        g_tr_map_cv.wait(trMapGuard, [] { return activeTransactions.empty(); });
     }
 
     int64_t endTime = get_server_clock();
