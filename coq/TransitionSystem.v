@@ -65,6 +65,12 @@ Record spec_state := mkSpecState {
     SpecRunning : list transaction;
 }.
 
+(* Helper function that states when two transactions are compatible. *)
+Definition compatible (t1 t2 : transaction) : Prop :=
+    set_inter (ReadSet t1) (WriteSet t2) = empty_set
+    /\ set_inter (WriteSet t1) (ReadSet t2) = empty_set
+    /\ set_inter (WriteSet t1) (WriteSet t2) = empty_set.
+
 (* Specification traces. *)
 Inductive spec_trace : spec_state -> list action -> spec_state -> Prop :=
 | SpecAdd : forall s s' s'' tr new_t ts1 ts2,
@@ -79,10 +85,7 @@ Inductive spec_trace : spec_state -> list action -> spec_state -> Prop :=
     -> SpecQueued s' = ts1 ++ ts2
     -> SpecRunning s = ts1' ++ ts2'
     -> SpecRunning s' = ts1' ++ [started_t] ++ ts2'
-    -> forall ts1'' ts2'' running_t, (SpecRunning s' = ts1'' ++ [running_t] ++ ts2''
-        -> set_inter (ReadSet started_t) (WriteSet running_t) = empty_set
-        -> set_inter (WriteSet started_t) (ReadSet running_t) = empty_set
-        -> set_inter (WriteSet started_t) (WriteSet running_t) = empty_set)
+    -> List.Forall (compatible started_t) (SpecRunning s')
     -> spec_trace s (Start started_t :: tr) s''
 | SpecFinish : forall s s' s'' tr finished_t ts1 ts2,
     spec_trace s' tr s''
@@ -119,7 +122,7 @@ Definition merge_tr_sets (a: transaction_set) (b : transaction_set) : transactio
 
 Definition tr_to_set (tr : transaction) : transaction_set := mkTrSet  [tr] (ReadSet tr) (WriteSet tr).
 
-Definition tr_compatible (a : transaction_set) (b : transaction_set) :=
+Definition set_compatible (a : transaction_set) (b : transaction_set) :=
     andb  (set_eq (set_inter (SetReadSet a) (SetWriteSet b)) empty_set)
     (andb (set_eq (set_inter (SetWriteSet a) (SetWriteSet b)) empty_set)
           (set_eq (set_inter (SetWriteSet a) (SetReadSet b)) empty_set)).
@@ -127,7 +130,7 @@ Definition tr_compatible (a : transaction_set) (b : transaction_set) :=
 (* Single round of the tournament. *)
 Fixpoint tournament_round (source : list transaction_set) (target : list transaction_set) : list transaction_set * list transaction :=
     match source with
-    | t1 :: t2 :: rest => match tr_compatible t1 t2 with
+    | t1 :: t2 :: rest => match set_compatible t1 t2 with
                           | true => tournament_round rest (merge_tr_sets t1 t2 :: target)
                           | false => let (sched, rem) := tournament_round rest (t1 :: target) in (sched, (SetTransactions t2) ++ rem)
                           end
