@@ -67,11 +67,13 @@ Record spec_state := mkSpecState {
 
 (* Specification traces. *)
 Inductive spec_trace : spec_state -> list action -> spec_state -> Prop :=
-| SpecAdd : forall s s' s'' tr new_t ts1 ts2, spec_trace s' tr s''
+| SpecAdd : forall s s' s'' tr new_t ts1 ts2,
+    spec_trace s' tr s''
     -> SpecQueued s = ts1 ++ ts2
     -> SpecQueued s' = ts1 ++ [new_t] ++ ts2
     -> spec_trace s (Add new_t :: tr) s''
-| SpecStart : forall s s' s'' tr started_t ts1 ts2 ts1' ts2', spec_trace s' tr s''
+| SpecStart : forall s s' s'' tr started_t ts1 ts2 ts1' ts2',
+    spec_trace s' tr s''
     -> SpecQueued s = ts1 ++ [started_t] ++ ts2
     -> SpecQueued s' = ts1 ++ ts2
     -> SpecRunning s = ts1' ++ ts2'
@@ -81,7 +83,8 @@ Inductive spec_trace : spec_state -> list action -> spec_state -> Prop :=
         -> set_inter (WriteSet started_t) (ReadSet running_t) = empty_set
         -> set_inter (WriteSet started_t) (WriteSet running_t) = empty_set)
     -> spec_trace s (Start started_t :: tr) s''
-| SpecFinish : forall s s' s'' tr finished_t ts1 ts2, spec_trace s' tr s''
+| SpecFinish : forall s s' s'' tr finished_t ts1 ts2,
+    spec_trace s' tr s''
     -> SpecRunning s = ts1 ++ [finished_t] ++ ts2
     -> SpecRunning s' = ts1 ++ ts2
     -> spec_trace s (Finish finished_t :: tr) s''.
@@ -157,21 +160,26 @@ Definition schedule_transactions (n : nat) (s : pm_state) : pm_state :=
 
 (* Implementation traces. *)
 Inductive pm_trace : pm_state -> list action -> pm_state -> Prop :=
-| PmAdd : forall s s' s'' tr new_t ts1 ts2, pm_trace s' tr s''
+| PmAdd : forall s s' s'' tr new_t ts1 ts2,
+    pm_trace s' tr s''
     -> Queued s = ts1 ++ ts2
     -> Queued s' = ts1 ++ [new_t] ++ ts2
     -> pm_trace s (Add new_t :: tr) s''
-| PmRename : forall s s' s'' tr, pm_trace s' tr s''
+| PmRename : forall s s' s'' tr,
+    pm_trace s' tr s''
     -> s' = rename_transaction s
     -> pm_trace s tr s''
-| PmSchedule : forall s s' s'' tr n, pm_trace s' tr s''
+| PmSchedule : forall s s' s'' tr n,
+    pm_trace s' tr s''
     -> s' = schedule_transactions n s
     -> pm_trace s tr s''
-| PmStart : forall s s' s'' tr started_t, pm_trace s' tr s''
+| PmStart : forall s s' s'' tr started_t,
+    pm_trace s' tr s''
     -> Scheduled s = started_t :: Scheduled s'
     -> started_t :: Running s = Running s'
     -> pm_trace s (Start started_t :: tr) s''
-| PmFinish : forall s s' s'' tr finished_t ts1 ts2, pm_trace s' tr s''
+| PmFinish : forall s s' s'' tr finished_t ts1 ts2,
+    pm_trace s' tr s''
     -> Running s = ts1 ++ [finished_t] ++ ts2
     -> Running s' = ts1 ++ ts2
     -> pm_trace s (Finish finished_t :: tr) s''.
