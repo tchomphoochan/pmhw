@@ -324,10 +324,10 @@ module mkShardTestbench();
     testInputs[17] = makeRenameReq(64'hF7000806, ReadObject);
     testInputs[18] = makeRenameReq(64'hF8000806, ReadObject);
     testInputs[19] = makeRenameReq(64'hF0000C06, ReadObject);
-    testInputs[20] = makeDeleteReq(10'h00B);
+    testInputs[20] = makeDeleteReq('h00B);
     testInputs[21] = makeRenameReq(64'hF0000C06, ReadObject);
-    testInputs[22] = makeDeleteReq(10'h006);
-    testInputs[23] = makeDeleteReq(10'h006);
+    testInputs[22] = makeDeleteReq('h006);
+    testInputs[23] = makeDeleteReq('h006);
     testInputs[24] = makeRenameReq(64'hA0000006, ReadObject);
 
     Reg#(UInt#(32)) counter <- mkReg(0);
