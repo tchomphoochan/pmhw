@@ -73,6 +73,8 @@ Definition compatible (t1 t2 : transaction) : Prop :=
 
 (* Specification traces. *)
 Inductive spec_trace : spec_state -> list action -> spec_state -> Prop :=
+| SpecNoop : forall s,
+    spec_trace s [] s
 | SpecAdd : forall s s' s'' tr new_t ts1 ts2,
     spec_trace s' tr s''
     -> SpecQueued s = ts1 ++ ts2
@@ -165,6 +167,8 @@ Definition schedule_transactions (n : nat) (s : pm_state) : pm_state :=
 
 (* Implementation traces. *)
 Inductive pm_trace : pm_state -> list action -> pm_state -> Prop :=
+| PmNoop : forall s,
+    pm_trace s [] s
 | PmAdd : forall s s' s'' tr new_t ts1 ts2,
     pm_trace s' tr s''
     -> Queued s = ts1 ++ ts2
