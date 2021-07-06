@@ -209,11 +209,12 @@ Definition R_pm (s : pm_state) (s' : spec_state) : Prop :=
     Permutation (Queued s ++ Renamed s ++ Scheduled s) (SpecQueued s')
     /\ Permutation (Running s) (SpecRunning s').
 
-Lemma pm_refines_spec' : forall tr pm_s pm_s' spec_s spec_s',
-    R_pm pm_s spec_s
-    -> R_pm pm_s' spec_s'
-    -> pm_trace pm_s tr pm_s'
-    -> spec_trace spec_s tr spec_s'.
+Lemma pm_refines_spec' : forall tr pm_s pm_s',
+    pm_trace pm_s tr pm_s'
+    -> forall spec_s spec_s',
+        R_pm pm_s spec_s
+        -> R_pm pm_s' spec_s'
+        -> spec_trace spec_s tr spec_s'.
 Proof.
 Admitted.
 
@@ -225,5 +226,5 @@ Proof.
     intros.
     destruct pm_finish.
     exists {| SpecQueued := Queued0 ++ Renamed0 ++ Scheduled0; SpecRunning := Running0 |}.
-    eapply pm_refines_spec'; unfold R_pm; eauto; simpl; auto.
+    eapply pm_refines_spec'; unfold R_pm; eauto.
 Qed.
