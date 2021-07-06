@@ -74,27 +74,25 @@ Definition compatible (t1 t2 : transaction) : Prop :=
 
 (* Specification traces. *)
 Inductive spec_trace : spec_state -> list action -> spec_state -> Prop :=
-| SpecNoop : forall s,
-    spec_trace s [] s
-| SpecAdd : forall s s' s'' tr new_t ts1 ts2,
+| SpecNoop : forall s s',
+    Permutation (SpecQueued s) (SpecQueued s')
+    -> Permutation (SpecRunning s) (SpecRunning s')
+    -> spec_trace s [] s'
+| SpecAdd : forall s s' s'' tr new_t,
     spec_trace s' tr s''
-    -> SpecQueued s = ts1 ++ ts2
-    -> SpecQueued s' = ts1 ++ [new_t] ++ ts2
-    -> SpecRunning s = SpecRunning s'
+    -> Permutation (new_t :: SpecQueued s) (SpecQueued s')
+    -> Permutation (SpecRunning s) (SpecRunning s')
     -> spec_trace s (Add new_t :: tr) s''
-| SpecStart : forall s s' s'' tr started_t ts1 ts2 ts1' ts2',
+| SpecStart : forall s s' s'' tr started_t,
     spec_trace s' tr s''
-    -> SpecQueued s = ts1 ++ [started_t] ++ ts2
-    -> SpecQueued s' = ts1 ++ ts2
-    -> SpecRunning s = ts1' ++ ts2'
-    -> SpecRunning s' = ts1' ++ [started_t] ++ ts2'
+    -> Permutation (SpecQueued s) (started_t :: SpecQueued s')
+    -> Permutation (started_t :: SpecRunning s) (SpecRunning s')
     -> List.Forall (compatible started_t) (SpecRunning s')
     -> spec_trace s (Start started_t :: tr) s''
-| SpecFinish : forall s s' s'' tr finished_t ts1 ts2,
+| SpecFinish : forall s s' s'' tr finished_t,
     spec_trace s' tr s''
-    -> SpecQueued s = SpecQueued s'
-    -> SpecRunning s = ts1 ++ [finished_t] ++ ts2
-    -> SpecRunning s' = ts1 ++ ts2
+    -> Permutation (SpecQueued s) (SpecQueued s')
+    -> Permutation (SpecRunning s) (finished_t :: SpecRunning s')
     -> spec_trace s (Finish finished_t :: tr) s''.
 
 (* State for implementation. *)
