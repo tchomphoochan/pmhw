@@ -1,6 +1,7 @@
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Lists.List.
+Require Import Coq.Sorting.Permutation.
 
 Import Coq.Lists.List.ListNotations.
 
@@ -205,8 +206,8 @@ Inductive pm_trace : pm_state -> list action -> pm_state -> Prop :=
     -> pm_trace s (Finish finished_t :: tr) s''.
 
 Definition R_pm (s : pm_state) (s' : spec_state) : Prop :=
-    Queued s ++ Renamed s ++ Scheduled s = SpecQueued s'
-    /\ Running s = SpecRunning s'.
+    Permutation (Queued s ++ Renamed s ++ Scheduled s) (SpecQueued s')
+    /\ Permutation (Running s) (SpecRunning s').
 
 Lemma pm_refines_spec' : forall tr pm_s pm_s' spec_s spec_s',
     R_pm pm_s spec_s
