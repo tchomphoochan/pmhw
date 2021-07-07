@@ -38,7 +38,7 @@ Fixpoint set_union (a b : obj_set) : obj_set :=
 Fixpoint set_inter (a b : obj_set) : obj_set :=
     let fix set_inter' b :=
     match a with
-    | [] => b
+    | [] => []
     | a_elt :: a' => match b with
                    | [] => []
                    | b_elt :: b' => if a_elt <? b_elt then set_inter a' b
