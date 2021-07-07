@@ -2,6 +2,7 @@ Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Lists.List.
 Require Import Coq.Sorting.Permutation.
+Require Import Coq.micromega.Lia.
 
 Import Coq.Lists.List.ListNotations.
 
@@ -47,6 +48,30 @@ Fixpoint set_inter (a b : obj_set) : obj_set :=
                    end
     end
     in set_inter' b.
+
+Lemma set_inter_sym : forall s1 s2,
+    set_inter s1 s2 = set_inter s2 s1.
+Proof.
+  induction s1; intros.
+  - destruct s2; reflexivity.
+  - induction s2; try reflexivity.
+    simpl in *.
+    destruct (a <? a0) eqn:Ha; unfold Nat.ltb in Ha; try apply Compare_dec.leb_complete in Ha.
+    + destruct (a0 <? a) eqn:Ha0; unfold Nat.ltb in Ha0; try apply Compare_dec.leb_complete in Ha0; try lia.
+      clear Ha0.
+      destruct (a0 =? a) eqn:Ha0; try apply EqNat.beq_nat_true in Ha0; try lia.
+      rewrite IHs1.
+      simpl.
+      f_equal.
+    + destruct (a =? a0) eqn:Ha0; try apply EqNat.beq_nat_true in Ha0.
+      * destruct (a0 <? a) eqn:Ha1; unfold Nat.ltb in Ha1; try apply Compare_dec.leb_complete in Ha1; try lia.
+        clear Ha1.
+        destruct (a0 =? a) eqn:Ha1; try apply EqNat.beq_nat_false in Ha1; try lia.
+        f_equal; try assumption.
+        apply IHs1.
+      * destruct (a0 <? a) eqn:Ha1; unfold Nat.ltb in Ha1; try apply Compare_dec.leb_iff_conv in Ha, Ha1; apply EqNat.beq_nat_false in Ha0; try lia.
+        assumption.
+Qed.
 
 (* Transaction type. *)
 Record transaction := {
