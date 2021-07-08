@@ -91,6 +91,13 @@ Definition compatible (t1 t2 : transaction) : Prop :=
     /\ set_inter (WriteSet t1) (ReadSet t2) = empty_set
     /\ set_inter (WriteSet t1) (WriteSet t2) = empty_set.
 
+Lemma compatible_sym : forall t1 t2,
+    compatible t1 t2
+    -> compatible t2 t1.
+Proof.
+    intros; unfold compatible in *; intuition; rewrite set_inter_sym in * |-; assumption.
+Qed.
+
 (* Specification traces. *)
 Inductive spec_trace : spec_state -> list action -> spec_state -> Prop :=
 | SpecNoop : forall s s',
