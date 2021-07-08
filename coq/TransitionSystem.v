@@ -3,6 +3,7 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.Lists.List.
 Require Import Coq.Sorting.Permutation.
 Require Import Coq.micromega.Lia.
+Require Import Coq.micromega.ZifyBool.
 
 Import Coq.Lists.List.ListNotations.
 
@@ -55,16 +56,12 @@ Ltac destruct_ifs :=
     | |- (if (?x <? ?y) then _ else _) = _ => destruct_with_eqn (x <? y)
     | |- _ = (if (?x =? ?y) then _ else _) => destruct_with_eqn (x =? y)
     | |- (if (?x =? ?y) then _ else _) = _ => destruct_with_eqn (x =? y)
-    | H : (_ <? _) = true |- _ => unfold Nat.ltb in H; rewrite Nat.leb_le in H
-    | H : (_ <? _) = false |- _ => unfold Nat.ltb in H; rewrite Nat.leb_gt in H
-    | H : (_ =? _) = true |- _ => rewrite Nat.eqb_eq in H
-    | H : (_ =? _) = false |- _ => rewrite Nat.eqb_neq in H
     end; try lia.
 
 Lemma set_inter_sym : forall s1 s2,
     set_inter s1 s2 = set_inter s2 s1.
 Proof.
-  induction s1; induction s2; simpl in *; destruct_ifs; try rewrite IHs1; f_equal; auto.
+  induction s1; induction s2; simpl in *; destruct_ifs; try rewrite IHs1; f_equal; intuition.
 Qed.
 
 (* Transaction type. *)
