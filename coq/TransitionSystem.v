@@ -110,7 +110,7 @@ Inductive spec_trace : spec_state -> list action -> spec_state -> Prop :=
     spec_trace s' tr s''
     -> Permutation (SpecQueued s) (started_t :: SpecQueued s')
     -> Permutation (started_t :: SpecRunning s) (SpecRunning s')
-    -> List.Forall (compatible started_t) (SpecRunning s')
+    -> List.Forall (compatible started_t) (SpecRunning s)
     -> spec_trace s (Start started_t :: tr) s''
 | SpecFinish : forall s s' s'' tr finished_t,
     spec_trace s' tr s''
