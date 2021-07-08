@@ -226,9 +226,21 @@ Inductive pm_trace : pm_state -> list action -> pm_state -> Prop :=
     -> finished_t :: Finished s = Finished s'
     -> pm_trace s (Finish finished_t :: tr) s''.
 
+Definition ValidPmState (s : pm_state) :  Prop :=
+  List.ForallOrdPairs compatible (Scheduled s)
+  /\ List.Forall (fun t => List.Forall (compatible t) (Scheduled s)) (Running s).
+
+Lemma pm_trace_preserves_ValidPmState : forall tr s s',
+  ValidPmState s
+  -> pm_trace s tr s'
+  -> ValidPmState s'.
+Proof.
+Admitted.
+
 Definition R_pm (s : pm_state) (s' : spec_state) : Prop :=
     Permutation (Queued s ++ Renamed s ++ Scheduled s) (SpecQueued s')
-    /\ Permutation (Running s) (SpecRunning s').
+    /\ Permutation (Running s) (SpecRunning s')
+    /\ ValidPmState s.
 
 Lemma pm_refines_spec' : forall tr pm_s pm_s',
     pm_trace pm_s tr pm_s'
@@ -245,7 +257,9 @@ Theorem pm_refines_spec : forall pm_finish trace,
     -> exists spec_finish, spec_trace (mkSpecState [] []) trace spec_finish.
 Proof.
     intros.
+    pose proof (pm_trace_preserves_ValidPmState trace (mkState [] [] [] [] []) pm_finish) as Hv.
     destruct pm_finish.
     exists {| SpecQueued := Queued0 ++ Renamed0 ++ Scheduled0; SpecRunning := Running0 |}.
-    eapply pm_refines_spec'; unfold R_pm; eauto.
+    eapply pm_refines_spec'; unfold R_pm; eauto; simpl in *;
+      repeat (apply Hv || split); auto; constructor.
 Qed.
