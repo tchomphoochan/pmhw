@@ -49,28 +49,22 @@ Fixpoint set_inter (a b : obj_set) : obj_set :=
     end
     in set_inter' b.
 
+Ltac destruct_ifs :=
+    repeat match goal with
+    | |- _ = (if (?x <? ?y) then _ else _) => destruct_with_eqn (x <? y)
+    | |- (if (?x <? ?y) then _ else _) = _ => destruct_with_eqn (x <? y)
+    | |- _ = (if (?x =? ?y) then _ else _) => destruct_with_eqn (x =? y)
+    | |- (if (?x =? ?y) then _ else _) = _ => destruct_with_eqn (x =? y)
+    | H : (_ <? _) = true |- _ => unfold Nat.ltb in H; rewrite Nat.leb_le in H
+    | H : (_ <? _) = false |- _ => unfold Nat.ltb in H; rewrite Nat.leb_gt in H
+    | H : (_ =? _) = true |- _ => rewrite Nat.eqb_eq in H
+    | H : (_ =? _) = false |- _ => rewrite Nat.eqb_neq in H
+    end; try lia.
+
 Lemma set_inter_sym : forall s1 s2,
     set_inter s1 s2 = set_inter s2 s1.
 Proof.
-  induction s1; intros.
-  - destruct s2; reflexivity.
-  - induction s2; try reflexivity.
-    simpl in *.
-    destruct (a <? a0) eqn:Ha; unfold Nat.ltb in Ha; try apply Compare_dec.leb_complete in Ha.
-    + destruct (a0 <? a) eqn:Ha0; unfold Nat.ltb in Ha0; try apply Compare_dec.leb_complete in Ha0; try lia.
-      clear Ha0.
-      destruct (a0 =? a) eqn:Ha0; try apply EqNat.beq_nat_true in Ha0; try lia.
-      rewrite IHs1.
-      simpl.
-      f_equal.
-    + destruct (a =? a0) eqn:Ha0; try apply EqNat.beq_nat_true in Ha0.
-      * destruct (a0 <? a) eqn:Ha1; unfold Nat.ltb in Ha1; try apply Compare_dec.leb_complete in Ha1; try lia.
-        clear Ha1.
-        destruct (a0 =? a) eqn:Ha1; try apply EqNat.beq_nat_false in Ha1; try lia.
-        f_equal; try assumption.
-        apply IHs1.
-      * destruct (a0 <? a) eqn:Ha1; unfold Nat.ltb in Ha1; try apply Compare_dec.leb_iff_conv in Ha, Ha1; apply EqNat.beq_nat_false in Ha0; try lia.
-        assumption.
+  induction s1; induction s2; simpl in *; destruct_ifs; try rewrite IHs1; f_equal; auto.
 Qed.
 
 (* Transaction type. *)
