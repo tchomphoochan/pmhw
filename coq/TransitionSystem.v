@@ -144,8 +144,6 @@ Record transaction_set := mkTrSet {
 Definition merge_tr_sets (a: transaction_set) (b : transaction_set) : transaction_set :=
     mkTrSet ((SetTransactions a) ++ (SetTransactions b)) (set_union (SetReadSet a) (SetReadSet b)) (set_union (SetWriteSet a) (SetWriteSet b)).
 
-Definition tr_to_set (tr : transaction) : transaction_set := mkTrSet  [tr] (ReadSet tr) (WriteSet tr).
-
 Definition set_compatible (a : transaction_set) (b : transaction_set) :=
     andb  (set_eq (set_inter (SetReadSet a) (SetWriteSet b)) empty_set)
     (andb (set_eq (set_inter (SetWriteSet a) (SetWriteSet b)) empty_set)
@@ -167,10 +165,10 @@ Fixpoint do_tournament_round (tr_sets : list transaction_set) :
     | [] => ([], [])
     end.
 
-(* Do at most `rounds_left` rounds of the tournament. Each round halves the no. of sets,
+(* Do tournament-style elimination on `tr_sets`. Each round halves the no. of sets,
    while some transactions are filtered out. Returns the transactions from the first set
    and the remaining transactions ++ filtered out transactions.*)
-Fixpoint do_tournament (tr_sets : list transaction_set) (rounds_left : nat) :
+Fixpoint do_tournament' (tr_sets : list transaction_set) (rounds_left : nat) :
                        list transaction * list transaction :=
     match rounds_left with
     | 0 => match tr_sets with
@@ -178,24 +176,35 @@ Fixpoint do_tournament (tr_sets : list transaction_set) (rounds_left : nat) :
            | head :: rest => (SetTransactions head, (concat (map SetTransactions rest)))
            end
     | S n => let (sched_round, rem_round) := do_tournament_round tr_sets in
-             let (sched, rem) := do_tournament sched_round n in
+             let (sched, rem) := do_tournament' sched_round n in
              (sched, rem ++ rem_round)
     end.
+Definition do_tournament (tr_sets : list transaction_set) :
+                         list transaction * list transaction :=
+  do_tournament' tr_sets (Nat.log2 (length tr_sets) + 1).
 
-(* Wrapper around do_tournament that calculates number of needed rounds. *)
-Definition tournament_schedule (trs : list transaction) : list transaction * list transaction :=
-    do_tournament (map tr_to_set trs) (Nat.log2 (length trs) + 1).
+(* Merge transactions into a transaction set. *)
+Fixpoint trs_to_set (trs : list transaction) : transaction_set :=
+  match trs with
+  | [] => mkTrSet [] [] []
+  | head :: rest => let rest_set := trs_to_set rest in
+                    mkTrSet (head :: (SetTransactions rest_set))
+                            (set_union (ReadSet head) (SetReadSet rest_set))
+                            (set_union (WriteSet head) (SetWriteSet rest_set))
+  end.
+Definition tr_to_set (tr : transaction) : transaction_set := trs_to_set [tr].
 
-(* Scheduling step. *)
+(* Schedule transactions from the first n renamed, via tournament elimination. *)
 Definition schedule_transactions (n : nat) (s : pm_state) : pm_state :=
-    match tournament_schedule (firstn n (Renamed s)) with
-    | (nil, _) => s
-    | (sched, rem) => mkState (Queued s)
-                      (rem ++ skipn n (Renamed s))
-                      (Scheduled s ++ sched)
-                      (Running s)
-                      (Finished s)
-    end.
+  let running_set := trs_to_set (Running s) in
+  let renamed_trs_as_sets := map tr_to_set (firstn n (Renamed s)) in
+  let (sched, rem) := do_tournament (running_set :: renamed_trs_as_sets) in
+  let real_sched := skipn (length (Running s)) sched in
+  mkState (Queued s)
+          (rem ++ skipn n (Renamed s))
+          (Scheduled s ++ real_sched)
+          (Running s)
+          (Finished s).
 
 (* Implementation traces. *)
 Inductive pm_trace : pm_state -> list action -> pm_state -> Prop :=
