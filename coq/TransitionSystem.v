@@ -151,30 +151,40 @@ Definition set_compatible (a : transaction_set) (b : transaction_set) :=
     (andb (set_eq (set_inter (SetWriteSet a) (SetWriteSet b)) empty_set)
           (set_eq (set_inter (SetWriteSet a) (SetReadSet b)) empty_set)).
 
-(* Single round of the tournament. *)
-Fixpoint tournament_round (source : list transaction_set) (target : list transaction_set) : list transaction_set * list transaction :=
-    match source with
+(* Single round of the tournament. Returns (merged sets, filtered out transactions).
+   The sets in the input are merged pairwise if they are compatible, or the first one
+   is kept and the transactions from the second one are appended to the second list. *)
+Fixpoint do_tournament_round (tr_sets : list transaction_set) :
+                             list transaction_set * list transaction :=
+    match tr_sets with
     | t1 :: t2 :: rest => match set_compatible t1 t2 with
-                          | true => tournament_round rest (merge_tr_sets t1 t2 :: target)
-                          | false => let (sched, rem) := tournament_round rest (t1 :: target) in (sched, (SetTransactions t2) ++ rem)
+                          | true => let (sched, rem) := do_tournament_round rest
+                                    in (merge_tr_sets t1 t2 :: sched, rem)
+                          | false => let (sched, rem) := do_tournament_round rest
+                                     in (t1 :: sched, (SetTransactions t2) ++ rem)
                           end
-    | t1 :: nil => (t1 :: target, nil)
-    | nil => (target, nil)
+    | t1 :: [] => ([t1], [])
+    | [] => ([], [])
     end.
 
-(* Do at most `rounds_left` rounds of the tournament. *)
-Fixpoint do_tournament (trs : list transaction_set * list transaction) (rounds_left : nat) : list transaction * list transaction :=
+(* Do at most `rounds_left` rounds of the tournament. Each round halves the no. of sets,
+   while some transactions are filtered out. Returns the transactions from the first set
+   and the remaining transactions ++ filtered out transactions.*)
+Fixpoint do_tournament (tr_sets : list transaction_set) (rounds_left : nat) :
+                       list transaction * list transaction :=
     match rounds_left with
-    | 0 => match trs with
-           | (nil, rem) => (nil, rem)
-           | (head :: rest, rem) => (SetTransactions head, (concat (map SetTransactions rest)) ++ rem)
+    | 0 => match tr_sets with
+           | [] => ([], [])
+           | head :: rest => (SetTransactions head, (concat (map SetTransactions rest)))
            end
-    | S n => let (sched, rem) := do_tournament (tournament_round (fst trs) nil) n in (sched, rem ++ snd trs)
+    | S n => let (sched_round, rem_round) := do_tournament_round tr_sets in
+             let (sched, rem) := do_tournament sched_round n in
+             (sched, rem ++ rem_round)
     end.
 
 (* Wrapper around do_tournament that calculates number of needed rounds. *)
 Definition tournament_schedule (trs : list transaction) : list transaction * list transaction :=
-    do_tournament ((map tr_to_set trs), nil) (Nat.log2 (length trs) + 1).
+    do_tournament (map tr_to_set trs) (Nat.log2 (length trs) + 1).
 
 (* Scheduling step. *)
 Definition schedule_transactions (n : nat) (s : pm_state) : pm_state :=
