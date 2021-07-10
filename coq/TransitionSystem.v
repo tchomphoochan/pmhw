@@ -196,6 +196,7 @@ Definition tr_to_set (tr : transaction) : transaction_set := trs_to_set [tr].
 
 (* Schedule transactions from the first n renamed, via tournament elimination. *)
 Definition schedule_transactions (n : nat) (s : pm_state) : pm_state :=
+  if 0 <? (length (Scheduled s)) then s else
   let running_set := trs_to_set (Running s) in
   let renamed_trs_as_sets := map tr_to_set (firstn n (Renamed s)) in
   let (sched, rem) := do_tournament (running_set :: renamed_trs_as_sets) in
