@@ -321,6 +321,7 @@ Ltac permutations_once :=
   | |- Permutation (_ ++ ?x) (_ ++ ?x) => apply Permutation_app_tail
   (* Rewrite goal into a form that the above tactics can handle. *)
   | |- Permutation (_ ++ _ :: _) _ => rewrite Permutation_app_swap
+  | |- Permutation _ (_ ++ ?x :: ?y) => rewrite Permutation_app_swap with (l' := x :: y)
   | |- Permutation (?x ++ _ ++ _) (_ ++ _ ++ ?x) => rewrite Permutation_app_rot
   | |- Permutation (_ ++ (_ :: _) ++ _) _ => rewrite Permutation_app_swap_app
   | |- Permutation (_ ++ _ ++ _ :: _) _ => rewrite Permutation_app_rot
@@ -362,10 +363,11 @@ Proof.
                                   SpecRunning := Running1 |});
       simpl; subst; try permutations.
     apply IHpm_trace; auto.
-  - apply IHpm_trace; try assumption.
+  - subst.
+    apply IHpm_trace; try assumption.
     unfold R_pm in *; unfold rename_transaction in *. 
-    destruct s; destruct s'; destruct spec_s; simpl in *.
-    destruct Queued0; simpl in *; inversion H0; subst; intuition.
+    destruct s; destruct spec_s; simpl in *.
+    destruct Queued0; simpl in *; intuition.
     permutations.
   - subst.
     apply IHpm_trace; try assumption.
@@ -381,7 +383,7 @@ Proof.
       invert_Foralls.
       intuition; constructor; try assumption; eapply Forall_impl; try eassumption;
         intros; simpl in *; invert_Foralls; auto.
-    + apply (Permutation_Forall H6).
+    + eapply Permutation_Forall; try eassumption.
       eapply Forall_impl; try eassumption.
       intros; simpl in *; invert_Foralls; auto.
   - unfold R_pm in *; unfold ValidPmState in *.
