@@ -184,6 +184,29 @@ Definition do_tournament (tr_sets : list transaction_set) :
                          list transaction * list transaction :=
   do_tournament' tr_sets (Nat.log2 (length tr_sets) + 1).
 
+Lemma concat_map_wrap : forall A (l : list A),
+  concat (map (fun x => [x]) l) = l.
+Proof.
+  induction l; simpl; auto using f_equal.
+Qed.
+
+Lemma do_tournament_first : forall n tr_set rest,
+  let ts := SetTransactions tr_set in
+  length ts = n
+  -> firstn n (fst (do_tournament (tr_set :: rest))) = ts.
+Proof.
+Admitted.
+
+Lemma do_tournament_rest : forall n tr_set rest,
+  let ts := SetTransactions tr_set in
+  let result := do_tournament (tr_set :: rest) in
+  let sched := fst result in
+  let rem := snd result in
+  length ts = n
+  -> Permutation (skipn n sched ++ rem) (concat (map SetTransactions rest)).
+Proof.
+Admitted.
+
 (* Merge transactions into a transaction set. *)
 Fixpoint trs_to_set (trs : list transaction) : transaction_set :=
   match trs with
@@ -195,15 +218,21 @@ Fixpoint trs_to_set (trs : list transaction) : transaction_set :=
   end.
 Definition tr_to_set (tr : transaction) : transaction_set := trs_to_set [tr].
 
+Lemma trs_to_set_trs : forall trs, SetTransactions (trs_to_set trs) = trs.
+Proof.
+  induction trs; simpl; try f_equal; auto.
+Qed.
+Local Hint Resolve trs_to_set_trs : core.
+
 (* Schedule transactions from the first n renamed, via tournament elimination. *)
 Definition schedule_transactions (n : nat) (s : pm_state) : pm_state :=
   if 0 <? (length (Scheduled s)) then s else
   let running_set := trs_to_set (Running s) in
   let renamed_trs_as_sets := map tr_to_set (firstn n (Renamed s)) in
-  let (sched, rem) := do_tournament (running_set :: renamed_trs_as_sets) in
-  let real_sched := skipn (length (Running s)) sched in
+  let tournament_result := do_tournament (running_set :: renamed_trs_as_sets) in
+  let real_sched := skipn (length (Running s)) (fst tournament_result) in
   mkState (Queued s)
-          (rem ++ skipn n (Renamed s))
+          ((snd tournament_result) ++ skipn n (Renamed s))
           (Scheduled s ++ real_sched)
           (Running s)
           (Finished s).
@@ -300,12 +329,6 @@ Definition R_pm (s : pm_state) (s' : spec_state) : Prop :=
     /\ Permutation (Running s) (SpecRunning s')
     /\ ValidPmState s.
 
-Lemma schedule_preserves_R : forall pm_s spec_s n,
-    R_pm pm_s spec_s
-    -> R_pm (schedule_transactions n pm_s) spec_s.
-Proof.
-Admitted.
-
 Ltac permutations_once :=
   match goal with
   (* Solve trivial permutations. *)
@@ -318,10 +341,13 @@ Ltac permutations_once :=
   | H : Permutation _ ?x |- Permutation _ ?x => apply Permutation_sym
   (* Simplify goal. *)
   | |- Permutation (?x :: _) (?x :: _) => apply perm_skip
+  | |- Permutation (?x ++ _) (?x ++ _) => apply Permutation_app_head
   | |- Permutation (_ ++ ?x) (_ ++ ?x) => apply Permutation_app_tail
   (* Rewrite goal into a form that the above tactics can handle. *)
   | |- Permutation (_ ++ _ :: _) _ => rewrite Permutation_app_swap
   | |- Permutation _ (_ ++ ?x :: ?y) => rewrite Permutation_app_swap with (l' := x :: y)
+  | |- Permutation (_ ++ ?x) (?x ++ _) => rewrite Permutation_app_swap
+  | |- Permutation (_ ++ ?x) (_ ++ ?x ++ _) => rewrite Permutation_app_rot with (l2 := x)
   | |- Permutation (?x ++ _ ++ _) (_ ++ _ ++ ?x) => rewrite Permutation_app_rot
   | |- Permutation (_ ++ (_ :: _) ++ _) _ => rewrite Permutation_app_swap_app
   | |- Permutation (_ ++ _ ++ _ :: _) _ => rewrite Permutation_app_rot
@@ -343,6 +369,32 @@ Ltac invert_Foralls :=
   | H : ForallOrdPairs _ (_ :: _) |- _ => inversion_clear H
   | H : ForallOrdPairs _ (_ ++ _) |- _ => rewrite FOP_app in H by auto; decompose [and] H; clear H
   end.
+
+Lemma schedule_preserves_R : forall pm_s spec_s n,
+    R_pm pm_s spec_s
+    -> R_pm (schedule_transactions n pm_s) spec_s.
+Proof.
+  intros.
+  unfold R_pm in *.
+  intuition.
+  - unfold schedule_transactions.
+    destruct (0 <? length (Scheduled pm_s)); trivial.
+    simpl.
+    permutations.
+    rewrite <- firstn_skipn with (n := n) at 1.
+    permutations.
+    rewrite do_tournament_rest by auto using f_equal.
+    rewrite map_map.
+    simpl.
+    rewrite concat_map_wrap.
+    reflexivity.
+  - eapply perm_trans; try eassumption.
+    unfold schedule_transactions; simpl in *.
+    destruct (0 <? length (Scheduled pm_s)); trivial.
+  - eapply pm_trace_preserves_ValidPmState in H2; try eassumption.
+    eapply PmSchedule; try reflexivity.
+    apply PmNoop.
+Qed.
 
 Lemma pm_refines_spec' : forall tr pm_s pm_s',
     pm_trace pm_s tr pm_s'
