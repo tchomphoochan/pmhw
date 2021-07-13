@@ -142,6 +142,12 @@ Record transaction_set := mkTrSet {
     SetWriteSet : obj_set;
 }.
 
+Definition tr_set_valid (tr_set : transaction_set) :=
+  let trs := (SetTransactions tr_set) in
+  ForallOrdPairs compatible trs
+  /\ SetReadSet tr_set = fold_right set_union empty_set (map ReadSet trs)
+  /\ SetWriteSet tr_set = fold_right set_union empty_set (map WriteSet trs).
+
 Definition merge_tr_sets (a: transaction_set) (b : transaction_set) : transaction_set :=
     mkTrSet ((SetTransactions a) ++ (SetTransactions b)) (set_union (SetReadSet a) (SetReadSet b)) (set_union (SetWriteSet a) (SetWriteSet b)).
 
@@ -207,22 +213,25 @@ Lemma do_tournament_rest : forall n tr_set rest,
 Proof.
 Admitted.
 
+Lemma do_tournament_compatible : forall tr_sets sched,
+  Forall tr_set_valid tr_sets
+  -> sched = fst (do_tournament tr_sets)
+  -> ForallOrdPairs compatible sched.
+Proof.
+Admitted.
+
 (* Merge transactions into a transaction set. *)
-Fixpoint trs_to_set (trs : list transaction) : transaction_set :=
-  match trs with
-  | [] => mkTrSet [] [] []
-  | head :: rest => let rest_set := trs_to_set rest in
-                    mkTrSet (head :: (SetTransactions rest_set))
-                            (set_union (ReadSet head) (SetReadSet rest_set))
-                            (set_union (WriteSet head) (SetWriteSet rest_set))
-  end.
+Definition trs_to_set (trs : list transaction) : transaction_set :=
+  mkTrSet trs (fold_right set_union empty_set (map ReadSet trs))
+          (fold_right set_union empty_set (map WriteSet trs)).
 Definition tr_to_set (tr : transaction) : transaction_set := trs_to_set [tr].
 
-Lemma trs_to_set_trs : forall trs, SetTransactions (trs_to_set trs) = trs.
+Lemma tr_to_set_list_valid : forall ts,
+  Forall tr_set_valid (map tr_to_set ts).
 Proof.
-  induction trs; simpl; try f_equal; auto.
+  induction ts; simpl; trivial; unfold tr_set_valid; repeat (constructor; simpl; trivial).
 Qed.
-Local Hint Resolve trs_to_set_trs : core.
+Local Hint Resolve tr_to_set_list_valid : core.
 
 (* Schedule transactions from the first n renamed, via tournament elimination. *)
 Definition schedule_transactions (n : nat) (s : pm_state) : pm_state :=
@@ -281,7 +290,24 @@ Definition ValidPmState (s : pm_state) :  Prop :=
   /\ List.ForallOrdPairs compatible (Running s)
   /\ List.Forall (fun t => List.Forall (compatible t) (Scheduled s)) (Running s).
 
+Ltac invert_Foralls' :=
+  repeat lazymatch goal with
+  | H : Forall _ (_ :: _) |- _ => inversion_clear H
+  | H : ForallOrdPairs _ (_ :: _) |- _ => inversion_clear H
+  | H : Forall _ _ /\ _ |- _ => inversion_clear H
+  | H : ForallOrdPairs _ _ /\ _ |- _ => inversion_clear H
+  | H : Forall _ (_ ++ _) |- _ => rewrite Forall_app in H
+  end.
+
 (* Helper lemma to help manipulate ValidPmState. *)
+Lemma Forall_Forall_comm : forall A (R : A -> A -> Prop) l1 l2,
+  (forall x y, R x y -> R y x)
+  -> Forall (fun x => Forall (R x) l1) l2 -> Forall (fun x => Forall (R x) l2) l1.
+Proof.
+  induction l1; trivial; intros; constructor; try apply IHl1; try eapply Forall_impl;
+    try eassumption; simpl; intros; invert_Foralls'; auto.
+Qed.
+
 Lemma FOP_app : forall A (R : A -> A -> Prop) l1 l2,
   (forall x y, R x y -> R y x)
   -> List.ForallOrdPairs R (l1 ++ l2)
@@ -317,12 +343,36 @@ Proof.
         assumption.
 Qed.
 
+Ltac invert_Foralls :=
+  repeat (invert_Foralls' || lazymatch goal with
+  | H : ForallOrdPairs _ (_ ++ _) |- _ => rewrite FOP_app in H by auto
+  end).
+
 Lemma pm_trace_preserves_ValidPmState : forall tr s s',
   ValidPmState s
   -> pm_trace s tr s'
   -> ValidPmState s'.
 Proof.
-Admitted.
+  unfold ValidPmState; induction 2; intros; trivial; apply IHpm_trace.
+  - destruct s; simpl in *; subst; assumption.
+  - subst; unfold rename_transaction; destruct (Queued s); destruct s; simpl; trivial.
+  - subst; unfold schedule_transactions.
+    destruct_with_eqn (0 <? length (Scheduled s)); try assumption; simpl.
+    destruct (Scheduled s); simpl in *; try lia.
+    pose proof do_tournament_compatible as Hcompat.
+    setoid_rewrite <- firstn_skipn at 5 in Hcompat.
+    eapply FOP_app in Hcompat; try reflexivity || apply compatible_sym; invert_Foralls.
+    + repeat split; try eassumption.
+      apply Forall_Forall_comm; auto.
+      eapply Forall_impl; try eassumption.
+      rewrite do_tournament_first; trivial.
+    + constructor; unfold tr_set_valid; auto.
+  - destruct s; destruct s'; simpl in *; subst.
+    invert_Foralls; intuition; constructor; try eapply Forall_impl; try eassumption;
+      simpl; intros; invert_Foralls; auto.
+  - destruct s; destruct s'; simpl in *; subst.
+    invert_Foralls; intuition; rewrite FOP_app || rewrite Forall_app; auto.
+Qed.
 
 Definition R_pm (s : pm_state) (s' : spec_state) : Prop :=
     Permutation (Queued s ++ Renamed s ++ Scheduled s) (SpecQueued s')
@@ -361,14 +411,6 @@ Ltac permutations_once :=
   end.
 
 Ltac permutations := repeat permutations_once.
-
-Ltac invert_Foralls :=
-  repeat lazymatch goal with
-  | H : Forall _ (_ :: _) |- _ => inversion_clear H
-  | H : Forall _ (_ ++ _) |- _ => rewrite Forall_app in H; inversion_clear H
-  | H : ForallOrdPairs _ (_ :: _) |- _ => inversion_clear H
-  | H : ForallOrdPairs _ (_ ++ _) |- _ => rewrite FOP_app in H by auto; decompose [and] H; clear H
-  end.
 
 Lemma schedule_preserves_R : forall pm_s spec_s n,
     R_pm pm_s spec_s
