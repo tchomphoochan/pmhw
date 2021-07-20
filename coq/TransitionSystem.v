@@ -267,85 +267,45 @@ Lemma log2_up_le_double : forall n,
   n <> 0
   -> Nat.log2_up (2 * S (n / 2)) <= Nat.log2_up (S n).
 Proof.
-  setoid_rewrite <- Nat.div2_div.
-  induction n as [n IHn] using lt_wf_ind.
   intros.
-  rewrite Nat.div2_odd with (a := n).
-  destruct_with_eqn (Nat.odd n); simpl Nat.b2n.
-  - repeat rewrite Nat.add_1_r.
-    replace (S (S (2 * Nat.div2 n))) with (2 * S (Nat.div2 n)) by lia.
-    repeat rewrite Nat.log2_up_double by lia.
-    rewrite <- Nat.succ_le_mono.
-    destruct_with_eqn (Nat.div2 n); try solve [simpl; lia].
-    rewrite <- Heqn0.
-    eapply Nat.le_trans; try apply IHn; try lia.
-    + rewrite <- Nat.add_1_r.
-      rewrite <- Nat.add_1_r.
-      replace 1 with (Nat.b2n (Nat.odd n)) at 2 by (rewrite Heqb; reflexivity).
-      rewrite <- Nat.div2_odd.
-      destruct_with_eqn (Nat.odd (Nat.div2 n)).
-      * replace (2 * S (Nat.div2 (Nat.div2 n))) with (2 * (Nat.div2 (Nat.div2 n)) + 1 + 1) by lia.
-        repeat rewrite <- Nat.div2_div.
-        replace 1 with (Nat.b2n (Nat.odd (Nat.div2 n))) at 3 by (rewrite Heqb0; reflexivity).
-        rewrite <- Nat.div2_odd.
-        lia.
-      * replace (2 * S (Nat.div2 (Nat.div2 n))) with (2 * Nat.div2 (Nat.div2 n) + 0 + 2) by lia.
-        replace 0 with (Nat.b2n (Nat.odd (Nat.div2 n))) at 3 by (rewrite Heqb0; reflexivity).
-        rewrite <- Nat.div2_odd.
-        apply Nat.log2_up_le_mono.
-        lia.
-    + apply Nat.lt_div2.
-      destruct n; unfold Nat.odd in *; simpl in *; lia.
-  - repeat rewrite Nat.add_0_r.
-    pose proof (Nat.log2_up_succ_or (2 * Nat.div2 n)) as Hs.
+  rewrite <- Nat.div2_div.
+  destruct_with_eqn (Nat.odd n).
+  - replace (2 * S (Nat.div2 n)) with (S (2 * Nat.div2 n + Nat.b2n true)) by lia.
+    rewrite <- Heqb.
+    rewrite <- Nat.div2_odd.
+    constructor.
+  - replace (2 * S (Nat.div2 n)) with (S (S (2 * Nat.div2 n + Nat.b2n false))) by lia.
+    rewrite <- Heqb.
+    rewrite <- Nat.div2_odd.
+    pose proof (Nat.log2_up_succ_or n) as Hs.
     inversion_clear Hs as [Hs' | Hs'].
     + rewrite Hs'.
-      rewrite Nat.log2_up_double by lia.
-      rewrite <- Nat.succ_le_mono.
-      destruct n; try solve [unfold Nat.log2_up; simpl; constructor].
-      destruct n; try solve [unfold Nat.log2_up; simpl; constructor].
-      replace (2 * Nat.div2 (S (S n))) with (S (S (2 * Nat.div2 n))) by (simpl; lia).
-      eapply Nat.le_trans; try apply IHn; try lia.
-      * apply Nat.log2_up_le_mono.
-        assert (Nat.odd n = false) as Heqb' by (unfold Nat.odd in *; simpl in *; lia).
-        replace (2 * Nat.div2 n) with (2 * Nat.div2 n + Nat.b2n (Nat.odd n)) by (rewrite Heqb'; simpl; lia).
-        rewrite <- Nat.div2_odd.
-        replace (2 * S (Nat.div2 (S n))) with (S (S (2 * Nat.div2 (S n)))) by lia.
-        rewrite <- Nat.succ_le_mono.
-        destruct_with_eqn (Nat.odd (S n)); try solve [rewrite Nat.odd_succ in *; unfold Nat.odd in *; rewrite Heqb0 in Heqb'; simpl in *; discriminate].
-        replace (S (2 * Nat.div2 (S n))) with (2 * Nat.div2 (S n) + Nat.b2n (Nat.odd (S n))) by (simpl; lia).
-        rewrite <- Nat.div2_odd.
-        simpl.
-        rewrite <- Nat.succ_le_mono.
-        destruct n; try reflexivity.
-        apply Nat.lt_le_incl.
-        apply Nat.lt_div2.
-        lia.
-      * rewrite <- Nat.succ_lt_mono.
-        assert (Nat.odd n = false) as Heqb' by (unfold Nat.odd in *; simpl in *; lia).
-        replace (2 * Nat.div2 n) with (2 * Nat.div2 n + Nat.b2n (Nat.odd n)) by (rewrite Heqb'; simpl; lia).
-        rewrite <- Nat.div2_odd.
-        constructor.
-    + rewrite Hs'.
-      replace (2 * Nat.div2 n) with (2 * Nat.div2 n + Nat.b2n (Nat.odd n)) in * by (rewrite Heqb; simpl; lia).
-      repeat rewrite <- Nat.div2_odd in *.
-      replace (2 * S (Nat.div2 n)) with (S (S (2 * Nat.div2 n + Nat.b2n (Nat.odd n)))) by (rewrite Heqb; simpl; lia).
-      rewrite <- Nat.div2_odd.
-      pose proof (Nat.log2_up_succ_or (S n)) as Hs.
-      inversion_clear Hs as [Hs'' | Hs''].
-      * apply Nat.log2_up_eq_succ_is_pow2 in Hs''.
-        inversion_clear Hs'' as [a Hs].
-        destruct a; try solve [simpl in Hs; inversion Hs; lia].
-        simpl in Hs.
-        replace (2 ^ a + (2 ^ a + 0)) with (2 * (2 ^ a)) in Hs by lia.
-        assert (Nat.Even (S n)) as Heven by (unfold Nat.Even; eexists; eassumption).
-        apply Nat.even_spec in Heven.
-        rewrite Nat.even_succ in Heven.
-        rewrite Heven in Heqb.
-        discriminate.
-      * rewrite <- Hs'.
-        rewrite <- Hs''.
-        lia.
+      rewrite <- Nat.log2_up_double by lia.
+      apply Nat.log2_up_le_mono.
+      destruct n; lia || destruct n; cbn in *; lia.
+    + pose proof (Nat.log2_up_succ_or (S n)) as Hs.
+      inversion_clear Hs as [Hs'' | Hs'']; rewrite Hs''; try lia.
+      apply Nat.log2_up_eq_succ_is_pow2 in Hs''.
+      inversion_clear Hs'' as [a Hs].
+      destruct a; try solve [simpl in Hs; inversion Hs; lia].
+      rewrite <- Nat.even_succ in Heqb.
+      apply (f_equal negb) in Heqb.
+      rewrite Nat.negb_even in Heqb.
+      simpl in Heqb.
+      apply Nat.odd_spec in Heqb.
+      apply Nat.Even_Odd_False in Heqb; firstorder.
+Qed.
+
+Lemma dtr_log2_bound : forall tr_sets,
+  Nat.log2_up (S (length (fst (do_tournament_round tr_sets)))) <=
+  Nat.log2 (S (length tr_sets)).
+Proof.
+  intros.
+  rewrite do_tournament_round_sched_size.
+  apply Nat.succ_le_mono.
+  rewrite <- Nat.log2_up_double by lia.
+  rewrite Nat.add_1_r.
+  eapply Nat.le_trans; try apply log2_up_le_double; unfold Nat.log2_up; simpl; lia.
 Qed.
 
 Lemma do_tournament'_idem : forall n tr_sets,
@@ -356,45 +316,11 @@ Proof.
   induction n as [n IHn] using lt_wf_ind; intros.
   destruct tr_sets; try solve [repeat rewrite do_tournament'_nil; reflexivity].
   destruct tr_sets; try solve [repeat rewrite do_tournament'_one; reflexivity].
-  destruct n; try solve [unfold Nat.log2_up in *; simpl in *; lia].
-  simpl.
-  destruct (set_compatible t t0); simpl.
-  - rewrite IHn; try lia.
-    + erewrite <- IHn; try reflexivity.
-      * unfold Nat.log2_up in H.
-        simpl in *.
-        lia.
-      * simpl.
-        rewrite do_tournament_round_sched_size.
-        apply Nat.succ_le_mono.
-        rewrite <- Nat.log2_up_double by lia.
-        rewrite Nat.add_1_r.
-        eapply Nat.le_trans; try apply log2_up_le_double; unfold Nat.log2_up; simpl; lia.
-    + simpl in *.
-      rewrite do_tournament_round_sched_size.
-      apply Nat.succ_le_mono.
-      eapply Nat.le_trans; try eassumption.
-      rewrite <- Nat.add_1_r with (n := length tr_sets).
-      eapply Nat.le_trans; try apply log2_up_le_double; try lia.
-      rewrite Nat.log2_up_double; lia.
-  - rewrite IHn; try lia.
-    + erewrite <- IHn; try reflexivity.
-      * unfold Nat.log2_up in H.
-        simpl in *.
-        lia.
-      * simpl.
-        rewrite do_tournament_round_sched_size.
-        apply Nat.succ_le_mono.
-        rewrite <- Nat.log2_up_double by lia.
-        rewrite Nat.add_1_r.
-        eapply Nat.le_trans; try apply log2_up_le_double; unfold Nat.log2_up; simpl; lia.
-    + simpl in *.
-      rewrite do_tournament_round_sched_size.
-      apply Nat.succ_le_mono.
-      eapply Nat.le_trans; try eassumption.
-      rewrite <- Nat.add_1_r with (n := length tr_sets).
-      eapply Nat.le_trans; try apply log2_up_le_double; try lia.
-      rewrite Nat.log2_up_double; lia.
+  destruct n; cbn in *; try lia.
+  rewrite <- Nat.succ_le_mono in *.
+  destruct (set_compatible t t0); cbn;
+    rewrite IHn by (lia || eapply Nat.le_trans; eassumption || apply dtr_log2_bound);
+    erewrite <- IHn; reflexivity || lia || apply dtr_log2_bound.
 Qed.
 
 Lemma do_tournament_first : forall rest n tr_set,
@@ -403,12 +329,9 @@ Lemma do_tournament_first : forall rest n tr_set,
   -> firstn n (fst (do_tournament (tr_set :: rest))) = ts.
 Proof.
   simpl.
-  unfold do_tournament.
-  induction rest as [rest IHrest] using (induction_ltof1 _ (@length _)); unfold ltof in IHrest.
-  intros.
-  subst.
-  destruct rest; try apply firstn_all.
-  simpl.
+  induction rest as [rest IHrest] using (induction_ltof1 _ (@length _));
+    unfold ltof in IHrest; intros; subst.
+  destruct rest; simpl; try apply firstn_all.
   destruct (set_compatible tr_set t); simpl.
   - destruct rest; try solve [simpl; apply firstn_app_all].
     destruct rest.
@@ -416,44 +339,21 @@ Proof.
       destruct (set_compatible (merge_tr_sets tr_set t) t0); simpl;
         try rewrite <- app_assoc; apply firstn_app_all.
     + remember (t0 :: t1 :: rest) as rest'.
-        assert (Hl : length (fst (do_tournament_round rest')) < length (t :: rest')).
-        * simpl.
-          apply Nat.lt_lt_succ_r.
-          apply do_tournament_round_sched_size_2; subst; intuition; try discriminate.
-        * eapply IHrest with (tr_set := merge_tr_sets tr_set t) in Hl; try reflexivity.
-          simpl in Hl.
-          rewrite app_length in Hl.
-          apply firstn_app_first in Hl.
-          rewrite <- Hl at 2.
-          f_equal.
-          f_equal.
-          apply do_tournament'_idem.
-          simpl.
-          rewrite do_tournament_round_sched_size.
-          apply Nat.succ_le_mono.
-          rewrite <- Nat.log2_up_double by lia.
-          rewrite Nat.add_1_r.
-          eapply Nat.le_trans; try apply log2_up_le_double; unfold Nat.log2_up; simpl; lia.
+      erewrite firstn_app_first; try reflexivity.
+      rewrite <- app_length.
+      rewrite do_tournament'_idem; simpl; apply dtr_log2_bound || rewrite IHrest;
+        reflexivity || simpl.
+      apply Nat.lt_lt_succ_r.
+      apply do_tournament_round_sched_size_2; subst; intuition; discriminate.
   - destruct rest; try solve [simpl; apply firstn_all].
     destruct rest.
     + simpl.
       destruct (set_compatible tr_set t0); simpl; apply firstn_app_all || apply firstn_all.
     + remember (t0 :: t1 :: rest) as rest'.
-      assert (Hl : length (fst (do_tournament_round rest')) < length (t :: rest')).
-      * simpl.
-        apply Nat.lt_lt_succ_r.
-        apply do_tournament_round_sched_size_2; subst; intuition; try discriminate.
-      * eapply IHrest with (tr_set := tr_set) in Hl; try reflexivity.
-        rewrite <- Hl at 2.
-        f_equal.
-        f_equal.
-        apply do_tournament'_idem.
-        simpl.
-        rewrite do_tournament_round_sched_size.
-        apply Nat.succ_le_mono.
-        rewrite <- Nat.log2_up_double by lia.
-        rewrite Nat.add_1_r.
-        eapply Nat.le_trans; try apply log2_up_le_double; unfold Nat.log2_up; simpl; lia.
+      rewrite do_tournament'_idem; simpl; apply dtr_log2_bound || apply IHrest;
+        reflexivity || simpl.
+      apply Nat.lt_lt_succ_r.
+      apply do_tournament_round_sched_size_2; subst; intuition; discriminate.
 Qed.
 
 Lemma do_tournament_rest : forall n tr_set rest,
