@@ -206,6 +206,26 @@ Proof.
 Qed.
 Local Hint Resolve do_tournament_round_sched_size_2 : core.
 
+Lemma do_tournament_round_trs : forall tr_sets,
+  let result := do_tournament_round tr_sets in
+  Permutation (concat (map SetTransactions (fst result)) ++ snd result)
+              (concat (map SetTransactions tr_sets)).
+Proof.
+  simpl.
+  fix IHtr_sets 1.
+  destruct tr_sets; simpl; try constructor.
+  destruct tr_sets; ssimpl_list; try apply Permutation_refl.
+  destruct (set_compatible t t0); simpl.
+  - repeat rewrite <- app_assoc.
+    repeat apply Permutation_app_head.
+    apply IHtr_sets.
+  - rewrite <- app_assoc.
+    apply Permutation_app_head.
+    rewrite Permutation_app_swap_app.
+    apply Permutation_app_head.
+    apply IHtr_sets.
+Qed.
+
 (* Do tournament-style elimination on `tr_sets`. Each round halves the no. of sets,
    while some transactions are filtered out. Returns the transactions from the first set
    and the remaining transactions ++ filtered out transactions.*)
@@ -356,7 +376,7 @@ Proof.
       apply do_tournament_round_sched_size_2; subst; intuition; discriminate.
 Qed.
 
-Lemma do_tournament_rest : forall n tr_set rest,
+Lemma do_tournament_rest : forall rest n tr_set,
   let ts := SetTransactions tr_set in
   let result := do_tournament (tr_set :: rest) in
   let sched := fst result in
@@ -364,7 +384,41 @@ Lemma do_tournament_rest : forall n tr_set rest,
   length ts = n
   -> Permutation (skipn n sched ++ rem) (concat (map SetTransactions rest)).
 Proof.
-Admitted.
+  simpl.
+  induction rest as [rest IHrest] using (induction_ltof1 _ (@length _));
+    unfold ltof in IHrest; intros; subst.
+  destruct rest; try rewrite skipn_all; simpl; try constructor.
+  destruct (set_compatible tr_set t); simpl.
+  - rewrite do_tournament'_idem; simpl; try apply dtr_log2_bound.
+    erewrite <- firstn_skipn with (l := fst _).
+    rewrite do_tournament_first; try reflexivity.
+    simpl SetTransactions at 2.
+    Opaque merge_tr_sets.
+    rewrite <- app_assoc.
+    rewrite skipn_app.
+    rewrite skipn_all.
+    rewrite Nat.sub_diag.
+    simpl.
+    rewrite <- app_assoc.
+    apply Permutation_app_head.
+    rewrite app_assoc.
+    rewrite IHrest; try reflexivity; try apply do_tournament_round_trs.
+    simpl.
+    destruct rest; try solve [simpl; lia].
+    destruct rest; try solve [simpl; lia].
+    apply Nat.lt_lt_succ_r.
+    apply do_tournament_round_sched_size_2; intuition; discriminate.
+  - rewrite do_tournament'_idem; simpl; try apply dtr_log2_bound.
+    rewrite app_assoc.
+    rewrite Permutation_app_swap_app.
+    apply Permutation_app_head.
+    rewrite IHrest; try reflexivity; try apply do_tournament_round_trs.
+    simpl.
+    destruct rest; try solve [simpl; lia].
+    destruct rest; try solve [simpl; lia].
+    apply Nat.lt_lt_succ_r.
+    apply do_tournament_round_sched_size_2; intuition; discriminate.
+Qed.
 
 Lemma do_tournament_compatible : forall tr_sets sched,
   Forall tr_set_valid tr_sets
