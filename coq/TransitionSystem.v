@@ -283,6 +283,150 @@ Definition set_compatible (a : transaction_set) (b : transaction_set) :=
     (andb (set_eq (set_inter (SetWriteSet a) (SetWriteSet b)) empty_set)
           (set_eq (set_inter (SetWriteSet a) (SetReadSet b)) empty_set)).
 
+Ltac invert_Foralls' :=
+  repeat lazymatch goal with
+  | H : Forall _ (_ :: _) |- _ => inversion_clear H
+  | H : ForallOrdPairs _ (_ :: _) |- _ => inversion_clear H
+  | |- Forall _ (_ :: _) => constructor
+  | |- ForallOrdPairs _ (_ :: _) => constructor
+  | H : Forall _ _ /\ _ |- _ => inversion_clear H
+  | H : ForallOrdPairs _ _ /\ _ |- _ => inversion_clear H
+  | |- Forall _ _ /\ _ => split
+  | |- ForallOrdPairs _ _ /\ _ => split
+  | H : Forall _ (_ ++ _) |- _ => rewrite Forall_app in H
+  | |- Forall _ (_ ++ _) => rewrite Forall_app
+  end.
+
+(* Helper lemma to help manipulate ValidPmState. *)
+Lemma Forall_Forall_comm : forall A (R : A -> A -> Prop) l1 l2,
+  (forall x y, R x y -> R y x)
+  -> Forall (fun x => Forall (R x) l1) l2 -> Forall (fun x => Forall (R x) l2) l1.
+Proof.
+  induction l1; trivial; intros; constructor; try apply IHl1; try eapply Forall_impl;
+    try eassumption; simpl; intros; invert_Foralls'; auto.
+Qed.
+
+Lemma FOP_app : forall A (R : A -> A -> Prop) l1 l2,
+  (forall x y, R x y -> R y x)
+  -> List.ForallOrdPairs R (l1 ++ l2)
+  <-> List.ForallOrdPairs R l1
+      /\ List.ForallOrdPairs R l2
+      /\ List.Forall (fun x => List.Forall (R x) l1) l2.
+Proof.
+  induction l1; intros.
+  - intuition; try constructor.
+    apply Forall_impl with (P := fun x => True); trivial.
+    apply Forall_forall; trivial.
+  - rewrite <- app_comm_cons.
+    intuition; invert_Foralls'; try rewrite IHl1 in *; invert_Foralls';
+      try solve [rewrite Forall_forall in *; auto]; eapply Forall_impl; try eassumption;
+      simpl; intros; invert_Foralls'; auto.
+Qed.
+
+Lemma set_compatible_correct : forall trs2 trs1,
+  let ts1 := {|
+    SetTransactions := trs1;
+    SetReadSet := fold_right set_union empty_set (map ReadSet trs1);
+    SetWriteSet := fold_right set_union empty_set (map WriteSet trs1);
+  |} in
+  let ts2 := {|
+    SetTransactions := trs2;
+    SetReadSet := fold_right set_union empty_set (map ReadSet trs2);
+    SetWriteSet := fold_right set_union empty_set (map WriteSet trs2);
+  |} in
+  set_compatible ts1 ts2 = true
+  -> Forall (fun t => Forall (compatible t) trs1) trs2.
+Proof.
+  induction trs2; simpl; try solve [intros; constructor].
+  induction trs1; simpl; intros.
+  - apply Forall_Forall_comm; auto.
+  - apply Forall_Forall_comm; auto.
+    constructor; try constructor.
+    + unfold set_compatible in H.
+      simpl in H.
+      repeat rewrite andb_true_iff in H.
+      inversion_clear H as [Hcomp1 H'].
+      inversion_clear H' as [Hcomp2 Hcomp3].
+      apply internal_list_dec_bl in Hcomp1, Hcomp2, Hcomp3; try apply Nat.eqb_eq.
+      rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3.
+      rewrite set_inter_sym in Hcomp1, Hcomp2, Hcomp3.
+      rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3.
+      apply set_union_both_empty in Hcomp1, Hcomp2, Hcomp3.
+      inversion_clear Hcomp1 as [Hcomp1' _].
+      inversion_clear Hcomp2 as [Hcomp2' _].
+      inversion_clear Hcomp3 as [Hcomp3' _].
+      apply set_union_both_empty in Hcomp1', Hcomp2', Hcomp3'.
+      inversion_clear Hcomp1' as [Hcomp1 _].
+      inversion_clear Hcomp2' as [Hcomp2 _].
+      inversion_clear Hcomp3' as [Hcomp3 _].
+      rewrite set_inter_sym in Hcomp1, Hcomp2, Hcomp3.
+      unfold compatible.
+      intuition.
+    + eapply Forall_impl; try apply IHtrs2 with (trs1 := [a0]).
+      * simpl; intros ? Hcomp; inversion Hcomp; auto.
+      * unfold set_compatible in H |- *; simpl in *.
+        repeat rewrite andb_true_iff in H.
+        inversion_clear H as [Hcomp1 H'].
+        inversion_clear H' as [Hcomp2 Hcomp3].
+        apply internal_list_dec_bl in Hcomp1, Hcomp2, Hcomp3; try apply Nat.eqb_eq.
+        rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3.
+        apply set_union_both_empty in Hcomp1, Hcomp2, Hcomp3.
+        inversion_clear Hcomp1 as [_ Hcomp1'].
+        inversion_clear Hcomp2 as [_ Hcomp2'].
+        inversion_clear Hcomp3 as [_ Hcomp3'].
+        rewrite set_inter_sym in Hcomp1', Hcomp2', Hcomp3'.
+        rewrite set_inter_distr_union in Hcomp1', Hcomp2', Hcomp3'.
+        apply set_union_both_empty in Hcomp1', Hcomp2', Hcomp3'.
+        inversion_clear Hcomp1' as [Hcomp1 _].
+        inversion_clear Hcomp2' as [Hcomp2 _].
+        inversion_clear Hcomp3' as [Hcomp3 _].
+        rewrite set_inter_sym in Hcomp1, Hcomp2, Hcomp3.
+        repeat rewrite set_union_empty.
+        rewrite Hcomp1, Hcomp2, Hcomp3.
+        reflexivity.
+    + apply Forall_Forall_comm; auto.
+      apply IHtrs1.
+      unfold set_compatible in H |- *; simpl in *.
+      repeat rewrite andb_true_iff in H.
+      inversion_clear H as [Hcomp1 H'].
+      inversion_clear H' as [Hcomp2 Hcomp3].
+      apply internal_list_dec_bl in Hcomp1, Hcomp2, Hcomp3; try apply Nat.eqb_eq.
+      rewrite set_inter_sym in Hcomp1, Hcomp2, Hcomp3.
+      rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3.
+      apply set_union_both_empty in Hcomp1, Hcomp2, Hcomp3.
+      inversion_clear Hcomp1 as [_ Hcomp1'].
+      inversion_clear Hcomp2 as [_ Hcomp2'].
+      inversion_clear Hcomp3 as [_ Hcomp3'].
+      rewrite set_inter_sym in Hcomp1', Hcomp2', Hcomp3'.
+      rewrite Hcomp1', Hcomp2', Hcomp3'.
+      reflexivity.
+Qed.
+
+Lemma merge_compatible : forall ts1 ts2,
+  tr_set_valid ts1
+  -> tr_set_valid ts2
+  -> set_compatible ts1 ts2 = true
+  -> tr_set_valid (merge_tr_sets ts1 ts2).
+Proof.
+  intros.
+  unfold tr_set_valid in *.
+  simpl.
+  intuition.
+  - apply FOP_app; intuition.
+    eapply set_compatible_correct.
+    destruct ts1; destruct ts2; simpl in *; subst; assumption.
+  - rewrite H0.
+    rewrite H3.
+    rewrite map_app.
+    rewrite fold_right_app.
+    apply set_union_comm_fold_right.
+  - rewrite H5.
+    rewrite H6.
+    rewrite map_app.
+    rewrite fold_right_app.
+    apply set_union_comm_fold_right.
+Qed.
+
 (* Single round of the tournament. Returns (merged sets, filtered out transactions).
    The sets in the input are merged pairwise if they are compatible, or the first one
    is kept and the transactions from the second one are appended to the second list. *)
@@ -350,6 +494,20 @@ Proof.
     rewrite Permutation_app_swap_app.
     apply Permutation_app_head.
     apply IHtr_sets.
+Qed.
+
+Lemma do_tournament_round_compatible : forall tr_sets,
+  Forall tr_set_valid tr_sets
+  -> Forall tr_set_valid (fst (do_tournament_round tr_sets)).
+Proof.
+  fix IH 1.
+  intros.
+  destruct tr_sets; try solve [simpl; assumption].
+  destruct tr_sets; try solve [simpl; assumption].
+  Guarded.
+  simpl.
+  destruct_with_eqn (set_compatible t t0); simpl; inversion H; inversion H3; constructor;
+    assumption || apply merge_compatible || apply IH; assumption.
 Qed.
 
 (* Do tournament-style elimination on `tr_sets`. Each round halves the no. of sets,
@@ -551,7 +709,32 @@ Lemma do_tournament_compatible : forall tr_sets sched,
   -> sched = fst (do_tournament tr_sets)
   -> ForallOrdPairs compatible sched.
 Proof.
-Admitted.
+  induction tr_sets as [tr_sets IHtr_sets] using (induction_ltof1 _ (@length _));
+    unfold ltof in IHtr_sets; intros; subst.
+  destruct tr_sets; simpl; try constructor.
+  destruct tr_sets; simpl; try solve [unfold tr_set_valid in H; inversion H; intuition].
+  destruct_with_eqn (set_compatible t t0); simpl.
+  - rewrite do_tournament'_idem; simpl; try apply dtr_log2_bound.
+    eapply IHtr_sets; try reflexivity; simpl.
+    + apply Nat.lt_succ_r.
+      destruct tr_sets; try solve [simpl; lia].
+      destruct tr_sets; try solve [simpl; lia].
+      apply Nat.le_le_succ_r.
+      apply do_tournament_round_sched_size_2; intuition; discriminate.
+    + inversion H.
+      inversion H3.
+      constructor; apply merge_compatible || apply do_tournament_round_compatible; assumption.
+  - rewrite do_tournament'_idem; simpl; try apply dtr_log2_bound.
+    eapply IHtr_sets; try reflexivity; simpl.
+    + apply Nat.lt_succ_r.
+      destruct tr_sets; try solve [simpl; lia].
+      destruct tr_sets; try solve [simpl; lia].
+      apply Nat.le_le_succ_r.
+      apply do_tournament_round_sched_size_2; intuition; discriminate.
+    + inversion H.
+      inversion H3.
+      constructor; try apply do_tournament_round_compatible; assumption.
+Qed.
 
 (* Merge transactions into a transaction set. *)
 Definition trs_to_set (trs : list transaction) : transaction_set :=
@@ -622,46 +805,6 @@ Definition ValidPmState (s : pm_state) :  Prop :=
   List.ForallOrdPairs compatible (Scheduled s)
   /\ List.ForallOrdPairs compatible (Running s)
   /\ List.Forall (fun t => List.Forall (compatible t) (Scheduled s)) (Running s).
-
-Ltac invert_Foralls' :=
-  repeat lazymatch goal with
-  | H : Forall _ (_ :: _) |- _ => inversion_clear H
-  | H : ForallOrdPairs _ (_ :: _) |- _ => inversion_clear H
-  | |- Forall _ (_ :: _) => constructor
-  | |- ForallOrdPairs _ (_ :: _) => constructor
-  | H : Forall _ _ /\ _ |- _ => inversion_clear H
-  | H : ForallOrdPairs _ _ /\ _ |- _ => inversion_clear H
-  | |- Forall _ _ /\ _ => split
-  | |- ForallOrdPairs _ _ /\ _ => split
-  | H : Forall _ (_ ++ _) |- _ => rewrite Forall_app in H
-  | |- Forall _ (_ ++ _) => rewrite Forall_app
-  end.
-
-(* Helper lemma to help manipulate ValidPmState. *)
-Lemma Forall_Forall_comm : forall A (R : A -> A -> Prop) l1 l2,
-  (forall x y, R x y -> R y x)
-  -> Forall (fun x => Forall (R x) l1) l2 -> Forall (fun x => Forall (R x) l2) l1.
-Proof.
-  induction l1; trivial; intros; constructor; try apply IHl1; try eapply Forall_impl;
-    try eassumption; simpl; intros; invert_Foralls'; auto.
-Qed.
-
-Lemma FOP_app : forall A (R : A -> A -> Prop) l1 l2,
-  (forall x y, R x y -> R y x)
-  -> List.ForallOrdPairs R (l1 ++ l2)
-  <-> List.ForallOrdPairs R l1
-      /\ List.ForallOrdPairs R l2
-      /\ List.Forall (fun x => List.Forall (R x) l1) l2.
-Proof.
-  induction l1; intros.
-  - intuition; try constructor.
-    apply Forall_impl with (P := fun x => True); trivial.
-    apply Forall_forall; trivial.
-  - rewrite <- app_comm_cons.
-    intuition; invert_Foralls'; try rewrite IHl1 in *; invert_Foralls';
-      try solve [rewrite Forall_forall in *; auto]; eapply Forall_impl; try eassumption;
-      simpl; intros; invert_Foralls'; auto.
-Qed.
 
 Ltac invert_Foralls :=
   repeat (invert_Foralls' || lazymatch goal with
