@@ -38,6 +38,135 @@ Fixpoint set_union (a b : obj_set) : obj_set :=
     end
     in set_union' b.
 
+Ltac destruct_ifs :=
+    repeat match goal with
+    | |- _ = (if (?x <? ?y) then _ else _) => destruct_with_eqn (x <? y)
+    | |- (if (?x <? ?y) then _ else _) = _ => destruct_with_eqn (x <? y)
+    | |- _ = (if (?x =? ?y) then _ else _) => destruct_with_eqn (x =? y)
+    | |- (if (?x =? ?y) then _ else _) = _ => destruct_with_eqn (x =? y)
+    end; try lia.
+
+Lemma set_union_empty : forall s,
+  set_union s empty_set = s.
+Admitted.
+
+Lemma set_union_both_empty : forall s1 s2,
+  set_union s1 s2 = empty_set
+  -> s1 = empty_set /\ s2 = empty_set.
+Admitted.
+
+Lemma set_union_sym : forall s1 s2,
+  set_union s1 s2 = set_union s2 s1.
+Proof.
+  induction s1; induction s2; simpl in *; destruct_ifs; try rewrite IHs1; f_equal; intuition.
+Qed.
+
+Lemma set_union_assoc : forall s1 s2 s3,
+  set_union (set_union s1 s2) s3 = set_union s1 (set_union s2 s3).
+Proof.
+  induction s1; simpl; intro.
+  - destruct s2; simpl.
+    + destruct s3; reflexivity.
+    + destruct s3; try reflexivity.
+      destruct (n <? n0); try reflexivity.
+      destruct (n =? n0); reflexivity.
+  - induction s2; simpl.
+    + destruct s3; reflexivity.
+    + destruct_with_eqn (a <? a0); simpl.
+      * induction s3; simpl.
+        -- rewrite Heqb.
+           reflexivity.
+        -- destruct_with_eqn (a <? a1); simpl.
+           ++ destruct_with_eqn (a0 <? a1); simpl.
+              ** rewrite Heqb.
+                 rewrite IHs1.
+                 simpl.
+                 rewrite Heqb1.
+                 reflexivity.
+              ** destruct_with_eqn (a0 =? a1); simpl.
+                 --- rewrite Heqb.
+                     rewrite IHs1.
+                     simpl.
+                     rewrite Heqb1.
+                     rewrite Heqb2.
+                     reflexivity.
+                 --- rewrite Heqb0.
+                     rewrite IHs1.
+                     simpl.
+                     rewrite Heqb1.
+                     rewrite Heqb2.
+                     reflexivity.
+           ++ destruct_with_eqn (a =? a1); simpl.
+              ** destruct_with_eqn (a0 <? a1); try lia; simpl.
+                 destruct_with_eqn (a0 =? a1); try lia; simpl.
+                 rewrite Heqb0.
+                 rewrite Heqb1.
+                 rewrite IHs1.
+                 simpl.
+                 reflexivity.
+              ** destruct_with_eqn (a0 <? a1); try lia; simpl.
+                 destruct_with_eqn (a0 =? a1); try lia; simpl.
+                 rewrite Heqb0.
+                 rewrite Heqb1.
+                 rewrite IHs3.
+                 reflexivity.
+      * destruct_with_eqn (a =? a0); simpl.
+        -- induction s3; simpl.
+           ++ rewrite Heqb.
+              rewrite Heqb0.
+              reflexivity.
+           ++ destruct_with_eqn (a <? a1); simpl.
+              ** destruct_with_eqn (a0 <? a1); try lia; simpl.
+                 rewrite Heqb.
+                 rewrite Heqb0.
+                 rewrite IHs1.
+                 reflexivity.
+              ** destruct_with_eqn (a =? a1); simpl.
+                 --- destruct_with_eqn (a0 <? a1); try lia; simpl.
+                     destruct_with_eqn (a0 =? a1); try lia; simpl.
+                     rewrite Heqb.
+                     rewrite Heqb0.
+                     rewrite IHs1.
+                     reflexivity.
+                 --- destruct_with_eqn (a0 <? a1); try lia; simpl.
+                     destruct_with_eqn (a0 =? a1); try lia; simpl.
+                     rewrite Heqb1.
+                     rewrite Heqb2.
+                     rewrite IHs3.
+                     reflexivity.
+        -- induction s3; simpl.
+           ++ rewrite Heqb.
+              rewrite Heqb0.
+              reflexivity.
+           ++ destruct_with_eqn (a0 <? a1); simpl.
+              ** rewrite Heqb.
+                 rewrite Heqb0.
+                 rewrite IHs2.
+                 reflexivity.
+              ** destruct_with_eqn (a0 =? a1); simpl.
+                 --- rewrite Heqb.
+                     rewrite Heqb0.
+                     rewrite IHs2.
+                     reflexivity.
+                 --- destruct_with_eqn (a =? a1); try lia; simpl.
+                     destruct_with_eqn (a <? a1); try lia; simpl.
+                     rewrite IHs3.
+                     reflexivity.
+Qed.
+
+Lemma set_union_comm_fold_right : forall s1 s2,
+  set_union (fold_right set_union empty_set s2) s1 = fold_right set_union s1 s2.
+Proof.
+  induction s1; induction s2; intros; try reflexivity.
+  - simpl.
+    unfold empty_set.
+    destruct (set_union a (fold_right set_union [] s2)); simpl; reflexivity.
+  - unfold empty_set in *.
+    simpl fold_right.
+    rewrite <- IHs2.
+    apply set_union_assoc.
+Qed.
+
 Fixpoint set_inter (a b : obj_set) : obj_set :=
     let fix set_inter' b :=
     match a with
@@ -51,19 +180,16 @@ Fixpoint set_inter (a b : obj_set) : obj_set :=
     end
     in set_inter' b.
 
-Ltac destruct_ifs :=
-    repeat match goal with
-    | |- _ = (if (?x <? ?y) then _ else _) => destruct_with_eqn (x <? y)
-    | |- (if (?x <? ?y) then _ else _) = _ => destruct_with_eqn (x <? y)
-    | |- _ = (if (?x =? ?y) then _ else _) => destruct_with_eqn (x =? y)
-    | |- (if (?x =? ?y) then _ else _) = _ => destruct_with_eqn (x =? y)
-    end; try lia.
-
 Lemma set_inter_sym : forall s1 s2,
     set_inter s1 s2 = set_inter s2 s1.
 Proof.
   induction s1; induction s2; simpl in *; destruct_ifs; try rewrite IHs1; f_equal; intuition.
 Qed.
+
+Lemma set_inter_distr_union : forall s1 s2 s3,
+  set_inter s1 (set_union s2 s3)
+  = set_union (set_inter s1 s2) (set_inter s1 s3).
+Admitted.
 
 (* Transaction type. *)
 Record transaction := {
