@@ -40,6 +40,10 @@ Fixpoint set_union (a b : obj_set) : obj_set :=
 
 Ltac destruct_ifs :=
     repeat match goal with
+    | _ : _ = (if (?x <? ?y) then _ else _) |- _ => destruct_with_eqn (x <? y)
+    | _ : (if (?x <? ?y) then _ else _) = _ |- _ => destruct_with_eqn (x <? y)
+    | _ : _ = (if (?x =? ?y) then _ else _) |- _ => destruct_with_eqn (x =? y)
+    | _ : (if (?x =? ?y) then _ else _) = _ |- _ => destruct_with_eqn (x =? y)
     | |- _ = (if (?x <? ?y) then _ else _) => destruct_with_eqn (x <? y)
     | |- (if (?x <? ?y) then _ else _) = _ => destruct_with_eqn (x <? y)
     | |- _ = (if (?x =? ?y) then _ else _) => destruct_with_eqn (x =? y)
@@ -48,12 +52,16 @@ Ltac destruct_ifs :=
 
 Lemma set_union_empty : forall s,
   set_union s empty_set = s.
-Admitted.
+Proof.
+  intros; destruct s; simpl; reflexivity.
+Qed.
 
 Lemma set_union_both_empty : forall s1 s2,
   set_union s1 s2 = empty_set
   -> s1 = empty_set /\ s2 = empty_set.
-Admitted.
+Proof.
+  induction s1; simpl; intros; destruct s2; intuition; destruct_ifs; discriminate.
+Qed.
 
 Lemma set_union_sym : forall s1 s2,
   set_union s1 s2 = set_union s2 s1.
