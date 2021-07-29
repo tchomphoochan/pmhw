@@ -546,10 +546,290 @@ Proof.
   induction s1; induction s2; simpl in *; destruct_ifs; try rewrite IHs1; f_equal; intuition.
 Qed.
 
+Lemma set_inter_head_lt : forall s1 a1 a2 x sr s2,
+  set_inter (a1 :: s1) (a2 :: s2) = x :: sr
+  -> ValidSet (a1 :: s1)
+  -> ValidSet (a2 :: s2)
+  -> a1 <= x /\ a2 <= x.
+Proof.
+  induction s1 as [| b1 s1]; induction s2 as [| b2 s2]; intros.
+  - simpl in *.
+    destruct_with_eqn (a1 <? a2); destruct_with_eqn (a1 =? a2); try discriminate.
+    inversion H; subst.
+    lia.
+  - simpl in *.
+    destruct_with_eqn (a1 <? a2); try discriminate.
+    destruct_with_eqn (a1 =? a2); try solve [inversion H; subst; intuition].
+    destruct_with_eqn (a1 <? b2); try discriminate.
+    destruct_with_eqn (a1 =? b2); try solve [inversion H; subst; lia].
+    inversion_clear H1.
+    inversion_clear H2.
+    inversion_clear H3.
+    eapply IHs2; assumption || unfold ValidSet; constructor; assumption.
+  - simpl in *.
+    destruct_with_eqn (a1 <? a2).
+    + destruct_with_eqn (b1 <? a2).
+      * inversion_clear H0.
+        inversion_clear H2.
+        inversion_clear H3.
+        eapply IHs1; try (apply H1 || unfold ValidSet; constructor; assumption).
+        rewrite Heqb.
+        eassumption.
+      * destruct_with_eqn (b1 =? a2);
+          (rewrite set_inter_empty in H; inversion H; subst; lia) || discriminate.
+    + destruct_with_eqn (a1 =? a2); inversion H; subst; lia.
+  - simpl in *.
+    destruct_with_eqn (a1 <? a2); destruct_with_eqn (a1 =? a2); try lia.
+    + destruct_with_eqn (b1 <? a2); destruct_with_eqn (b1 =? a2); try lia.
+      * inversion_clear H0.
+        inversion_clear H2.
+        inversion_clear H3.
+        eapply IHs1; try (eassumption || unfold ValidSet; constructor; assumption).
+        rewrite Heqb.
+        eassumption.
+      * inversion H; subst; lia.
+      * destruct_with_eqn (b1 <? b2); destruct_with_eqn (b1 =? b2); try lia.
+        -- inversion_clear H0.
+           inversion_clear H2.
+           inversion_clear H3.
+           inversion_clear H1.
+           enough (a1 <= x /\ b2 <= x) by lia.
+           eapply IHs1; try (eassumption || unfold ValidSet; constructor; assumption).
+           destruct_with_eqn (a1 <? b2); lia || eassumption.
+        -- enough (b1 <= x /\ b2 <= x) by lia.
+           inversion_clear H0.
+           inversion_clear H1.
+           eapply IHs1; try eassumption.
+           rewrite Heqb3.
+           rewrite Heqb4.
+           eassumption.
+        -- enough (b1 <= x /\ b2 <= x) by lia.
+          inversion_clear H0.
+          inversion_clear H1.
+          eapply IHs1; try eassumption.
+          rewrite Heqb3.
+          rewrite Heqb4.
+          eassumption.
+    + inversion H; subst; lia.
+    + destruct_with_eqn (a1 <? b2); destruct_with_eqn (a1 =? b2); try lia.
+      * destruct_with_eqn (b1 <? b2); destruct_with_eqn (b1 =? b2); try lia.
+        -- inversion_clear H0.
+           inversion_clear H1.
+           inversion_clear H2.
+           inversion_clear H3.
+           eapply IHs1; try (constructor; eassumption).
+           rewrite Heqb.
+           rewrite Heqb0.
+           rewrite Heqb1.
+           eassumption.
+        -- inversion H; subst; lia.
+        -- enough (b1 <= x /\ a2 <= x) by lia.
+           inversion_clear H1.
+           inversion_clear H2.
+           inversion_clear H3.
+           inversion_clear H0.
+           eapply IHs1; try assumption || (constructor; eassumption).
+           destruct_with_eqn (b1 <? a2); try lia.
+           destruct_with_eqn (b1 =? a2); try lia.
+           eassumption.
+      * inversion H; subst; lia.
+      * inversion_clear H1.
+        inversion_clear H2.
+        inversion_clear H3.
+        inversion_clear H0.
+        apply IHs2; try constructor; assumption.
+Qed.
+
 Lemma set_inter_distr_union : forall s1 s2 s3,
-  set_inter s1 (set_union s2 s3)
-  = set_union (set_inter s1 s2) (set_inter s1 s3).
-Admitted.
+  ValidSet s1
+  -> ValidSet s2
+  -> ValidSet s3
+  -> set_inter s1 (set_union s2 s3) = set_union (set_inter s1 s2) (set_inter s1 s3).
+Proof.
+  induction s1 as [|a1 s1].
+  - intros; destruct (set_union s2 s3); destruct s2; destruct s3; reflexivity.
+  - induction s2 as [|a2 s2]; intros.
+    { repeat (rewrite set_union_sym; rewrite set_union_empty); reflexivity. }
+    induction s3 as [|a3 s3].
+    { repeat rewrite set_union_empty. reflexivity. }
+    destruct_with_eqn (a1 <? a2); destruct_with_eqn (a1 =? a2);
+      destruct_with_eqn (a1 <? a3); destruct_with_eqn (a1 =? a3);
+      destruct_with_eqn (a2 <? a3); destruct_with_eqn (a2 =? a3); try lia.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb.
+      rewrite Heqb1.
+      inversion_clear H.
+      rewrite <- IHs1 by assumption.
+      simpl.
+      rewrite Heqb3.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb4.
+      rewrite Heqb.
+      rewrite Heqb1.
+      inversion_clear H.
+      rewrite <- IHs1 by assumption.
+      simpl.
+      rewrite Heqb3.
+      rewrite Heqb4.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb.
+      rewrite Heqb1.
+      rewrite Heqb4.
+      rewrite Heqb1.
+      inversion_clear H.
+      rewrite <- IHs1 by assumption.
+      simpl.
+      rewrite Heqb3.
+      rewrite Heqb4.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb4.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      rewrite Heqb.
+      rewrite set_union_cons.
+      inversion H.
+      inversion H1.
+      rewrite IHs1 by assumption.
+      destruct s1 as [|b1 s1].
+      { simpl; destruct s3; reflexivity. }
+      destruct_with_eqn (set_inter (b1 :: s1) (a2 :: s2)).
+      { repeat (rewrite set_union_sym; rewrite set_union_empty); reflexivity. }
+      simpl.
+      apply set_inter_head_lt in Heqo; try assumption.
+      destruct_with_eqn (n <? a1); try lia.
+      destruct_with_eqn (n =? a1); try lia.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb4.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      rewrite Heqb.
+      repeat rewrite set_inter_cons.
+      rewrite set_union_cons.
+      inversion H1.
+      rewrite IHs3 by assumption.
+      simpl.
+      rewrite Heqb.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb.
+      rewrite Heqb0.
+      rewrite Heqb1.
+      inversion H.
+      inversion H0.
+      rewrite IHs1 by assumption.
+      destruct s1 as [|b1 s1].
+      { simpl; destruct s2; reflexivity. }
+      destruct_with_eqn (set_inter (b1 :: s1) (a3 :: s3)).
+      { repeat (rewrite set_union_sym; rewrite set_union_empty); reflexivity. }
+      simpl.
+      apply set_inter_head_lt in Heqo; try assumption.
+      destruct_with_eqn (a1 <? n); try lia.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb4.
+      rewrite Heqb.
+      rewrite Heqb0.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      simpl.
+      destruct_with_eqn (a1 <? a1); try lia.
+      destruct_with_eqn (a1 =? a1); try lia.
+      inversion H.
+      inversion H0.
+      inversion H1.
+      rewrite IHs1 by assumption.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb4.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      rewrite Heqb.
+      rewrite Heqb0.
+      rewrite set_union_cons.
+      repeat rewrite set_inter_cons.
+      inversion H1.
+      rewrite IHs3 by assumption.
+      simpl.
+      rewrite Heqb.
+      rewrite Heqb0.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb.
+      rewrite Heqb0.
+      rewrite Heqb1.
+      repeat rewrite set_inter_cons.
+      inversion H0.
+      rewrite IHs2 by assumption.
+      simpl.
+      rewrite Heqb1.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb.
+      rewrite Heqb0.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      repeat rewrite set_inter_cons.
+      inversion H0.
+      rewrite IHs2 by assumption.
+      simpl.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb.
+      rewrite Heqb0.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      repeat rewrite set_inter_cons.
+      inversion H0.
+      rewrite IHs2 by assumption.
+      simpl.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb4.
+      rewrite Heqb.
+      rewrite Heqb0.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      repeat rewrite set_inter_cons.
+      inversion H0.
+      inversion H1.
+      rewrite IHs2 by assumption.
+      reflexivity.
+    + simpl.
+      rewrite Heqb3.
+      rewrite Heqb4.
+      rewrite Heqb1.
+      rewrite Heqb2.
+      rewrite Heqb.
+      rewrite Heqb0.
+      repeat rewrite set_inter_cons.
+      rewrite set_union_cons.
+      inversion H1.
+      rewrite IHs3 by assumption.
+      simpl.
+      rewrite Heqb.
+      rewrite Heqb0.
+      reflexivity.
+Qed.
 
 (* Transaction type. *)
 Record transaction := {
@@ -732,9 +1012,11 @@ Proof.
       inversion_clear H as [Hcomp1 H'].
       inversion_clear H' as [Hcomp2 Hcomp3].
       apply internal_list_dec_bl in Hcomp1, Hcomp2, Hcomp3; try apply Nat.eqb_eq.
-      rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3.
+      rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3;
+        try apply set_union_valid; try apply set_union_fold_right_valid; try assumption.
       rewrite set_inter_sym in Hcomp1, Hcomp2, Hcomp3.
-      rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3.
+      rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3;
+        try apply set_union_valid; try apply set_union_fold_right_valid; try assumption.
       apply set_union_both_empty in Hcomp1, Hcomp2, Hcomp3.
       inversion_clear Hcomp1 as [Hcomp1' _].
       inversion_clear Hcomp2 as [Hcomp2' _].
@@ -753,13 +1035,15 @@ Proof.
         inversion_clear H as [Hcomp1 H'].
         inversion_clear H' as [Hcomp2 Hcomp3].
         apply internal_list_dec_bl in Hcomp1, Hcomp2, Hcomp3; try apply Nat.eqb_eq.
-        rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3.
+        rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3;
+          try apply set_union_valid; try apply set_union_fold_right_valid; try assumption.
         apply set_union_both_empty in Hcomp1, Hcomp2, Hcomp3.
         inversion_clear Hcomp1 as [_ Hcomp1'].
         inversion_clear Hcomp2 as [_ Hcomp2'].
         inversion_clear Hcomp3 as [_ Hcomp3'].
         rewrite set_inter_sym in Hcomp1', Hcomp2', Hcomp3'.
-        rewrite set_inter_distr_union in Hcomp1', Hcomp2', Hcomp3'.
+        rewrite set_inter_distr_union in Hcomp1', Hcomp2', Hcomp3';
+          try apply set_union_valid; try apply set_union_fold_right_valid; try assumption.
         apply set_union_both_empty in Hcomp1', Hcomp2', Hcomp3'.
         inversion_clear Hcomp1' as [Hcomp1 _].
         inversion_clear Hcomp2' as [Hcomp2 _].
@@ -777,7 +1061,8 @@ Proof.
       inversion_clear H' as [Hcomp2 Hcomp3].
       apply internal_list_dec_bl in Hcomp1, Hcomp2, Hcomp3; try apply Nat.eqb_eq.
       rewrite set_inter_sym in Hcomp1, Hcomp2, Hcomp3.
-      rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3.
+      rewrite set_inter_distr_union in Hcomp1, Hcomp2, Hcomp3;
+        try apply set_union_valid; try apply set_union_fold_right_valid; try assumption.
       apply set_union_both_empty in Hcomp1, Hcomp2, Hcomp3.
       inversion_clear Hcomp1 as [_ Hcomp1'].
       inversion_clear Hcomp2 as [_ Hcomp2'].
