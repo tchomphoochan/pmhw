@@ -38,6 +38,22 @@ Fixpoint set_union (a b : obj_set) : obj_set :=
     end
     in set_union' b.
 
+Lemma set_union_cons : forall a1 s1 s2,
+  ((fix set_union' (b : list nat) : list nat :=
+    match b with
+    | [] => a1 :: s1
+    | b_elt :: b' =>
+        if a1 <? b_elt
+        then a1 :: set_union s1 b
+        else
+        if a1 =? b_elt
+        then a1 :: set_union s1 b'
+        else b_elt :: set_union' b'
+    end) s2) = set_union (a1 :: s1) s2.
+Proof.
+  reflexivity.
+Qed.
+
 Ltac destruct_ifs :=
     repeat match goal with
     | _ : _ = (if (?x <? ?y) then _ else _) |- _ => destruct_with_eqn (x <? y)
@@ -187,6 +203,25 @@ Fixpoint set_inter (a b : obj_set) : obj_set :=
                    end
     end
     in set_inter' b.
+
+Lemma set_inter_cons : forall a1 s1 s2,
+  (fix set_inter' (b : list nat) : list nat :=
+    match b with
+    | [] => []
+    | b_elt :: b' =>
+        if a1 <? b_elt
+        then set_inter s1 b
+        else if a1 =? b_elt then a1 :: set_inter s1 b' else set_inter' b'
+    end) s2 = set_inter (a1 :: s1) s2.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma set_inter_empty : forall s,
+  set_inter s empty_set = empty_set.
+Proof.
+  intros; destruct s; simpl; reflexivity.
+Qed.
 
 Lemma set_inter_sym : forall s1 s2,
     set_inter s1 s2 = set_inter s2 s1.
