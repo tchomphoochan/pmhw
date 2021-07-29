@@ -45,6 +45,8 @@ int run();
 constexpr std::size_t objSetSize = 8;
 /// Number of transactions considered by scheduler (1 represents running transactions).
 constexpr std::size_t schedulingPoolSize = 8;
+/// Total size of queues in hardware
+constexpr std::size_t hwQueueSize = 16;
 
 /// Wrapper for transaction read and write sets.
 typedef std::array<ObjectAddress, objSetSize> InputObjects;
@@ -101,10 +103,13 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
     TransactionData trData = reinterpret_cast<TransactionData>(m_txn);
 
     {
-        std::scoped_lock trMapGuard(g_tr_map_lock);
+        std::unique_lock trMapGuard(g_tr_map_lock);
+        g_tr_map_cv.wait(trMapGuard,
+                         [] { return activeTransactions.size() < hwQueueSize; });
         activeTransactions[tid] =
             TransactionProps{m_txn, num_reads, num_writes, readObjects, writtenObjects};
     }
+    g_tr_map_cv.notify_all();
 
     PM_LOG("enqueuing", tid,
            ", " << num_reads << " reads: " << readObjects << ", " << num_writes
@@ -137,6 +142,7 @@ public:
             std::scoped_lock trMapGuard(g_tr_map_lock);
             activeTransactions.erase(tid);
         }
+        g_tr_map_cv.notify_all();
     }
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
 };
