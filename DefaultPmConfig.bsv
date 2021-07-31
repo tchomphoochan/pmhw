@@ -1,4 +1,4 @@
-typedef 3 LogSizeRenamerBuffer;
+typedef 3 LogNumberRenamerThreads;
 typedef 3 LogNumberShards;
 typedef 7 LogSizeShard;
 typedef 7 LogNumberHashes;
@@ -6,3 +6,4 @@ typedef 1 LogNumberComparators;
 typedef 1 LogNumberSchedulingRounds;
 typedef 3 LogNumberPuppets;
 typedef 6 NumberAddressOffsetBits;
+typedef 8 LogSizeRenamerBuffer;

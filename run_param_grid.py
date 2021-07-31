@@ -20,26 +20,30 @@ run_dir = build_dir / "bin"
 
 
 def run_sim(
-    buffer_size: int,
+    renamer_threads: int,
     shard_size: int,
     shard_count: int,
     hash_count: int,
     comparator_count: int,
     scheduling_count: int,
     puppet_count: int,
+    offset_size: int,
+    buffer_size: int,
     tr_time: int,
 ) -> None:
     """Build and run a single simulation with the given parameters."""
     # Write configuration file.
     with open(src_dir / "PmConfig.bsv", "w") as conf:
         print(
-            f"typedef {buffer_size} LogSizeRenamerBuffer;\n"
+            f"typedef {renamer_threads} LogNumberRenamerThreads;\n"
             f"typedef {shard_size} LogSizeShard;\n"
             f"typedef {shard_count} LogNumberShards;\n"
             f"typedef {hash_count} LogNumberHashes;\n"
             f"typedef {comparator_count} LogNumberComparators;\n"
             f"typedef {scheduling_count} LogNumberSchedulingRounds;\n"
             f"typedef {puppet_count} LogNumberPuppets;\n",
+            f"typedef {offset_size} NumberAddressOffsetBits;\n",
+            f"typedef {buffer_size} LogSizeRenamerBuffer;\n",
             file=conf,
         )
 
@@ -61,7 +65,7 @@ def run_sim(
     cur_log_dir = (
         log_dir
         / f"{shard_size + shard_count}bit"
-        / f"{2 ** buffer_size}rename"
+        / f"{2 ** renamer_threads}rename"
         / f"{2 ** (scheduling_count + comparator_count + 1)}schedule"
         / f"{2 ** comparator_count}comp"
         / f"{2 ** shard_count}shard"
@@ -101,9 +105,9 @@ def main() -> None:
     )
 
     # Run every possible parameter combination.
-    for bufsize, shardsize, shards, hashes, comps, scheds, puppets, tr_t in param_combs:
+    for params in param_combs:
         try:
-            run_sim(bufsize, shardsize, shards, hashes, comps, scheds, puppets, tr_t)
+            run_sim(*params)
         except Exception:
             # Print traceback on error in a given simulation and continue.
             traceback.print_exc()

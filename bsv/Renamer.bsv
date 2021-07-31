@@ -5,6 +5,7 @@
 import Arbitrate::*;
 import ClientServer::*;
 import Connectable::*;
+import FIFO::*;
 import GetPut::*;
 import Vector::*;
 
@@ -46,9 +47,8 @@ endinterface
 ////////////////////////////////////////////////////////////////////////////////
 /// Internal types.
 ////////////////////////////////////////////////////////////////////////////////
+typedef TExp#(LogNumberRenamerThreads) NumberRenamerThreads;
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
-
-typedef Bit#(LogSizeRenamerBuffer) RenamerBufferIndex;
 
 typedef struct {
     RenamedTransaction renamedTr;
@@ -93,7 +93,8 @@ endinstance
 ////////////////////////////////////////////////////////////////////////////////
 /// Numeric constants.
 ////////////////////////////////////////////////////////////////////////////////
-Integer maxTransactions = valueOf(SizeRenamerBuffer);
+Integer maxTransactions = valueOf(NumberRenamerThreads);
+Integer bufferSize = valueOf(SizeRenamerBuffer);
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -455,29 +456,31 @@ endmodule
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-typedef TAdd#(TMul#(2, SizeRenamerBuffer), 1) NumShardAccessors;
+typedef TAdd#(TMul#(2, NumberRenamerThreads), 1) NumShardAccessors;
 
 (* synthesize *)
 module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
+    // Input queue.
+    FIFO#(RenameRequest) inputBuffer <- mkSizedFIFO(bufferSize);
     // Rename request distributors.
-    Vector#(SizeRenamerBuffer, RenameRequestDistributor) renameDistributors <-
+    Vector#(NumberRenamerThreads, RenameRequestDistributor) renameDistributors <-
         replicateM(mkRenameRequestDistributor);
 
     // Delete request distributors.
-    Vector#(SizeRenamerBuffer, DeleteRequestDistributor) deleteDistributors <-
+    Vector#(NumberRenamerThreads, DeleteRequestDistributor) deleteDistributors <-
         replicateM(mkDeleteRequestDistributor);
     // Temporary storage to keep track of delete distributor state.
-    Vector#(SizeRenamerBuffer, Reg#(Maybe#(FailedRename))) prevDelDistrReq <-
+    Vector#(NumberRenamerThreads, Reg#(Maybe#(FailedRename))) prevDelDistrReq <-
         replicateM(mkReg(tagged Invalid));
 
     // Shards.
     Vector#(NumberShards, Shard) shards <- replicateM(mkShard);
 
     // Response aggregators.
-    Vector#(SizeRenamerBuffer, ResponseAggregator) aggregators <-
+    Vector#(NumberRenamerThreads, ResponseAggregator) aggregators <-
         replicateM(mkResponseAggregator());
 
     // Failed transaction handler: routes objects back to the shards for deletion.
@@ -504,7 +507,7 @@ module mkRenamer(Renamer);
     end
 
     // Connections from shards to aggregators.
-    Vector#(SizeRenamerBuffer, Arbiter#(NumberShards, ShardRenameResponse, void))
+    Vector#(NumberRenamerThreads, Arbiter#(NumberShards, ShardRenameResponse, void))
         transactionArbiters;
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         let arb2 <- mkRoundRobin;
@@ -520,7 +523,7 @@ module mkRenamer(Renamer);
 
     // Connections from aggregators to output.
     let arb3 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, RenameResponse, void) renameOutputArbiter <-
+    Arbiter#(NumberRenamerThreads, RenameResponse, void) renameOutputArbiter <-
         mkArbiter(arb3, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].response, renameOutputArbiter.users[i].request);
@@ -528,7 +531,7 @@ module mkRenamer(Renamer);
 
     // Connections from aggregators to failed transaction handler.
     let arb4 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, FailedRename, void) failedTransactionArbiter <-
+    Arbiter#(NumberRenamerThreads, FailedRename, void) failedTransactionArbiter <-
         mkArbiter(arb4, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].failure, failedTransactionArbiter.users[i].request);
@@ -543,7 +546,7 @@ module mkRenamer(Renamer);
 
     // Connections to delete response output.
     let arb5 <- mkRoundRobin;
-    Arbiter#(SizeRenamerBuffer, DeleteResponse, void) deleteOutputArbiter <-
+    Arbiter#(NumberRenamerThreads, DeleteResponse, void) deleteOutputArbiter <-
         mkArbiter(arb5, 1);
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -561,6 +564,16 @@ module mkRenamer(Renamer);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
+    (* fire_when_enabled *)
+    rule sendInputs if (
+        findIndex(getCanPut2, aggregators) matches tagged Valid .index
+        &&& all(getIsReady, shards)
+    );
+        let req <- toGet(inputBuffer).get();
+        renameDistributors[index].request.put(req.inputTr);
+        aggregators[index].request.put(req.inputTr);
+    endrule
+
     (* fire_when_enabled *)
     rule sendDeleteResponses;
         let delDistrReq = map(getCurrentReq, deleteDistributors);
@@ -582,12 +595,8 @@ module mkRenamer(Renamer);
     interface Server rename;
         // Add input transaction to first open slot (rename distributor).
         interface Put request;
-            method Action put(RenameRequest req) if (
-                findIndex(getCanPut2, aggregators) matches tagged Valid .index
-                &&& all(getIsReady, shards)
-            );
-                renameDistributors[index].request.put(req.inputTr);
-                aggregators[index].request.put(req.inputTr);
+            method Action put(RenameRequest req);
+                toPut(inputBuffer).put(req);
             endmethod
         endinterface
 
