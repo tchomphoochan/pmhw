@@ -1,8 +1,10 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
@@ -18,6 +20,7 @@
 #include "HostToPuppetmasterRequest.h"
 #include "PuppetToHostIndication.h"
 #include "PuppetmasterToHostIndication.h"
+#include "config.h"
 #include "extern_cc.h"
 #include "global.h"
 #include "row.h"
@@ -64,6 +67,13 @@ typedef struct {
 
 /// Maps query pointer to array of associated read and written objects.
 std::unordered_map<TransactionId, TransactionProps> activeTransactions;
+/// Runner threads (puppets).
+std::vector<std::thread> threads;
+/// For communicating with runner threads.
+std::array<std::deque<TransactionId>, THREAD_CNT> threadQueues{};
+std::array<std::mutex, THREAD_CNT> threadQueueMutexes{};
+std::array<std::condition_variable, THREAD_CNT> threadQueueCvs{};
+bool programDone = false;
 /// Forwards requests to hardware.
 HostToPuppetmasterRequestProxy* fpga;
 /// Sends feedback to puppets interface.
@@ -126,32 +136,21 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
     }
 }
 
-// ----------------------------------------------------------------------------
-// Helper class definitions.
-
-/// Handler for messages received from the FPGA.
-class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
-public:
-    void transactionRenamed(TransactionId tid) { PM_LOG("renamed", tid, ""); }
-    void transactionFreed(TransactionId tid) { PM_LOG("freed", tid, ""); }
-    void transactionFailed(TransactionId tid) {
-        PM_LOG("failed", tid, "");
-
-        // Remove failed transaction from global set.
+void puppetThread(PuppetId pid) {
+    while (!programDone) {
+        TransactionId tid;
         {
-            std::scoped_lock trMapGuard(g_tr_map_lock);
-            activeTransactions.erase(tid);
+            std::unique_lock threadQueueLock(threadQueueMutexes[pid]);
+            threadQueueCvs[pid].wait(threadQueueLock, [&pid] {
+                return !threadQueues[pid].empty() || programDone;
+            });
+            if (threadQueues[pid].empty()) {
+                continue;
+            }
+            tid = threadQueues[pid].front();
+            threadQueues[pid].pop_front();
         }
-        g_tr_map_cv.notify_all();
-    }
-    PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
-};
 
-/// Handler for messages between FPGA and puppets.
-class PuppetToHostIndication : public PuppetToHostIndicationWrapper {
-public:
-    void startTransaction(const PuppetId pid, const TransactionId tid,
-                          const TransactionData trData) {
         TransactionProps tp;
         {
             std::scoped_lock trMapGuard(g_tr_map_lock);
@@ -185,6 +184,40 @@ public:
             std::scoped_lock hwGuard(g_hw_request_lock);
             puppets->transactionFinished(pid);
         }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Helper class definitions.
+
+/// Handler for messages received from the FPGA.
+class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
+public:
+    void transactionRenamed(TransactionId tid) { PM_LOG("renamed", tid, ""); }
+    void transactionFreed(TransactionId tid) { PM_LOG("freed", tid, ""); }
+    void transactionFailed(TransactionId tid) {
+        PM_LOG("failed", tid, "");
+
+        // Remove failed transaction from global set.
+        {
+            std::scoped_lock trMapGuard(g_tr_map_lock);
+            activeTransactions.erase(tid);
+        }
+        g_tr_map_cv.notify_all();
+    }
+    PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
+};
+
+/// Handler for messages between FPGA and puppets.
+class PuppetToHostIndication : public PuppetToHostIndicationWrapper {
+public:
+    void startTransaction(const PuppetId pid, const TransactionId tid,
+                          const TransactionData trData) {
+        {
+            std::scoped_lock threadQueueLock(threadQueueMutexes[pid]);
+            threadQueues[pid].push_back(tid);
+        }
+        threadQueueCvs[pid].notify_all();
     }
     PuppetToHostIndication(int id) : PuppetToHostIndicationWrapper(id) {}
 };
@@ -223,6 +256,11 @@ int main(int argc, char** argv) {
         g_init_parallelism = g_thread_cnt;
     }
 
+    // Set up runner threads.
+    for (std::size_t i = 0; i < THREAD_CNT; i++) {
+        threads.push_back(std::thread{puppetThread, i});
+    }
+
     int64_t startTime = get_server_clock();
 
     // Call db runner.
@@ -251,6 +289,14 @@ int main(int argc, char** argv) {
     int64_t endTime = get_server_clock();
     CXX_MSG("Commit time: " << endTime - runEndTime);
     CXX_MSG("Total time: " << endTime - startTime);
+
+    // Terminate runner threads.
+    programDone = true;
+    for (std::size_t i = 0; i < THREAD_CNT; i++) {
+        threadQueueCvs[i].notify_all();
+        threads[i].join();
+    }
+    threads.clear();
 
     // Wait a few more seconds for messages to be sent.
     std::this_thread::sleep_for(chrono::seconds(1));
