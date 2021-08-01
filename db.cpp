@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -46,8 +47,6 @@ int run();
 
 /// Size of transaction read and write sets.
 constexpr std::size_t objSetSize = 8;
-/// Number of transactions considered by scheduler (1 represents running transactions).
-constexpr std::size_t schedulingPoolSize = 8;
 /// Total size of queues in hardware
 constexpr std::size_t hwQueueSize = 16;
 
@@ -67,6 +66,16 @@ typedef struct {
 
 /// Maps query pointer to array of associated read and written objects.
 std::unordered_map<TransactionId, TransactionProps> activeTransactions;
+std::mutex g_tr_map_lock;
+std::condition_variable g_tr_map_cv;
+/// Number of transactions that have been queued but not renamed or failed.
+std::atomic<std::size_t> numPendingTransactions;
+std::mutex numPendingTransactionsMutex;
+std::condition_variable numPendingTransactionsCv;
+/// Number of transactions that have been renamed but not freed.
+std::atomic<std::size_t> numActiveTransactions;
+std::mutex numActiveTransactionsMutex;
+std::condition_variable numActiveTransactionsCv;
 /// Runner threads (puppets).
 std::vector<std::thread> threads;
 /// For communicating with runner threads.
@@ -74,16 +83,10 @@ std::array<std::deque<TransactionId>, THREAD_CNT> threadQueues{};
 std::array<std::mutex, THREAD_CNT> threadQueueMutexes{};
 std::array<std::condition_variable, THREAD_CNT> threadQueueCvs{};
 bool programDone = false;
-/// Forwards requests to hardware.
+/// Portals to hardware.
 HostToPuppetmasterRequestProxy* fpga;
-/// Sends feedback to puppets interface.
 HostToPuppetRequestProxy* puppets;
-/// Mutex for activeTransactions.
-std::mutex g_tr_map_lock;
-/// Mutex shared by fpga and puppets.
 std::mutex g_hw_request_lock;
-/// Condition variable for transactionObjects;
-std::condition_variable g_tr_map_cv;
 
 // ----------------------------------------------------------------------------
 // Helper function definitions.
@@ -113,13 +116,19 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
     TransactionData trData = reinterpret_cast<TransactionData>(m_txn);
 
     {
+        std::unique_lock numPendingTransactionsLock(numPendingTransactionsMutex);
+        numPendingTransactionsCv.wait(numPendingTransactionsLock, [] {
+            return numPendingTransactions < hwQueueSize;
+        });
+        numPendingTransactions++;
+    }
+    numPendingTransactionsCv.notify_all();
+
+    {
         std::unique_lock trMapGuard(g_tr_map_lock);
-        g_tr_map_cv.wait(trMapGuard,
-                         [] { return activeTransactions.size() < hwQueueSize; });
         activeTransactions[tid] =
             TransactionProps{m_txn, num_reads, num_writes, readObjects, writtenObjects};
     }
-    g_tr_map_cv.notify_all();
 
     PM_LOG("enqueuing", tid,
            ", " << num_reads << " reads: " << readObjects << ", " << num_writes
@@ -193,9 +202,17 @@ void puppetThread(PuppetId pid) {
 /// Handler for messages received from the FPGA.
 class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
 public:
-    void transactionRenamed(TransactionId tid) { PM_LOG("renamed", tid, ""); }
-    void transactionFreed(TransactionId tid) { PM_LOG("freed", tid, ""); }
+    void transactionRenamed(TransactionId tid) {
+        numPendingTransactions--;
+        numPendingTransactionsCv.notify_all();
+        numActiveTransactions++;
+        numActiveTransactionsCv.notify_all();
+        PM_LOG("renamed", tid, "");
+    }
+
     void transactionFailed(TransactionId tid) {
+        numPendingTransactions--;
+        numPendingTransactionsCv.notify_all();
         PM_LOG("failed", tid, "");
 
         // Remove failed transaction from global set.
@@ -205,6 +222,13 @@ public:
         }
         g_tr_map_cv.notify_all();
     }
+
+    void transactionFreed(TransactionId tid) {
+        numActiveTransactions--;
+        numActiveTransactionsCv.notify_all();
+        PM_LOG("freed", tid, "");
+    }
+
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
 };
 
@@ -268,22 +292,22 @@ int main(int argc, char** argv) {
 
     int64_t runEndTime = get_server_clock();
 
-    // Wait until fewer transactions are left than what the scheduler expects.
+    // Wait until all transactions have been renamed or have failed.
     {
-        std::unique_lock trMapGuard(g_tr_map_lock);
-        g_tr_map_cv.wait(trMapGuard, [] {
-            return activeTransactions.size() == schedulingPoolSize - 2;
-        });
+        std::unique_lock numPendingTransactionsLock(numPendingTransactionsMutex);
+        numPendingTransactionsCv.wait(numPendingTransactionsLock,
+                                      [] { return numPendingTransactions == 0; });
     }
     // Run remaining transactions.
     {
         std::scoped_lock hwGuard(g_hw_request_lock);
         fpga->clearState();
     }
-    // Wait for all of them to finish.
+    // Wait for all transactions to be freed.
     {
-        std::unique_lock trMapGuard(g_tr_map_lock);
-        g_tr_map_cv.wait(trMapGuard, [] { return activeTransactions.empty(); });
+        std::unique_lock numActiveTransactionsLock(numActiveTransactionsMutex);
+        numActiveTransactionsCv.wait(numActiveTransactionsLock,
+                                     [] { return numActiveTransactions == 0; });
     }
 
     int64_t endTime = get_server_clock();
@@ -297,7 +321,4 @@ int main(int argc, char** argv) {
         threads[i].join();
     }
     threads.clear();
-
-    // Wait a few more seconds for messages to be sent.
-    std::this_thread::sleep_for(chrono::seconds(1));
 }
