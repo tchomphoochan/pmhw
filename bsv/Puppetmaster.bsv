@@ -7,7 +7,7 @@
 import Arbitrate::*;
 import ClientServer::*;
 import Connectable::*;
-import FIFOF::*;
+import FIFO::*;
 import GetPut::*;
 import Vector::*;
 
@@ -79,9 +79,9 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     let scheduler <- mkScheduler();
 
     // Fifos to serialize status messages.
-    FIFOF#(TransactionId) renamedMsgFifo <- mkGFIFOF(True, False);
-    FIFOF#(TransactionId) freedMsgFifo <- mkGSizedFIFOF(True, False, 4);
-    FIFOF#(TransactionId) failedMsgFifo <- mkGFIFOF(True, False);
+    FIFO#(TransactionId) renamedMsgFifo <- mkFIFO();
+    FIFO#(TransactionId) freedMsgFifo <- mkFIFO();
+    FIFO#(TransactionId) failedMsgFifo <- mkFIFO();
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
