@@ -3,6 +3,7 @@
 //  Description   : Maps object addresses to a smaller address space.
 ////////////////////////////////////////////////////////////////////////////////
 import Arbitrate::*;
+import BRAMFIFO::*;
 import ClientServer::*;
 import Connectable::*;
 import FIFO::*;
@@ -464,7 +465,7 @@ module mkRenamer(Renamer);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     // Input queue.
-    FIFO#(RenameRequest) inputBuffer <- mkSizedFIFO(bufferSize);
+    FIFO#(RenameRequest) inputBuffer <- mkSizedBRAMFIFO(bufferSize);
     // Rename request distributors.
     Vector#(NumberRenamerThreads, RenameRequestDistributor) renameDistributors <-
         replicateM(mkRenameRequestDistributor);
