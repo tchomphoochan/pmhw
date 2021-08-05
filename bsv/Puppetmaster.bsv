@@ -210,7 +210,8 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         $fdisplay(stderr, "[%8d] Puppetmaster: starting T#%h on puppet %0d", cycle,
                   started.renamedTr.tid, puppetIndex);
 `ifdef DEBUG
-        $fdisplay(stderr, "[%8d] Puppetmaster: new flags are %b", newPendingTrFlags);
+        $fdisplay(stderr, "[%8d] Puppetmaster: new flags are %b", cycle,
+                  newPendingTrFlags);
 `endif
     endrule
 
