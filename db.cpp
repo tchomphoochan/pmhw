@@ -136,8 +136,13 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
     }
 
     PM_LOG("enqueuing", tid,
+#ifdef DEBUG
            ", " << num_reads << " reads: " << readObjects << ", " << num_writes
-                << " writes: " << writtenObjects);
+                << " writes: " << writtenObjects
+#else
+           ""
+#endif
+    );
 
     {
         std::scoped_lock hwGuard(g_hw_request_lock);
@@ -178,8 +183,12 @@ void puppetThread(PuppetId pid) {
         row_t** writes = reinterpret_cast<row_t**>(tp.writtenObjects.data());
 
         PM_LOG("started", msg.tid,
-               " at " << msg.cycle << ", reads: " << tp.readObjects
-                      << ", writes: " << tp.writtenObjects);
+               " at " << msg.cycle
+#ifdef DEBUG
+                      << ", " << num_reads << " reads: " << readObjects << ", "
+                      << num_writes << " writes: " << writtenObjects
+#endif
+        );
 
         if (WORKLOAD == TEST) {
             if (g_test_case == READ_WRITE) {
