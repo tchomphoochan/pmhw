@@ -20,23 +20,28 @@ import Shard::*;
 ////////////////////////////////////////////////////////////////////////////////
 typedef struct {
     InputTransaction inputTr;
+    Timestamp startTime;
 } RenameRequest deriving (Bits, Eq, FShow);
 
 typedef struct {
     RenamedTransaction renamedTr;
+    Timestamp startTime;
 } DeleteRequest deriving (Bits, Eq, FShow);
 
 typedef struct {
     RenamedTransaction renamedTr;
     SchedulerTransaction schedulerTr;
+    Timestamp startTime;
 } RenameResponse deriving (Bits, Eq, FShow);
 
 typedef struct {
     TransactionId tid;
+    Timestamp startTime;
 } DeleteResponse deriving (Bits, Eq, FShow);
 
 typedef struct {
     TransactionId tid;
+    Timestamp startTime;
 } FailResponse deriving (Bits, Eq, FShow);
 
 interface Renamer;
@@ -51,17 +56,14 @@ endinterface
 typedef TExp#(LogNumberRenamerThreads) NumberRenamerThreads;
 typedef TExp#(LogSizeRenamerBuffer) SizeRenamerBuffer;
 
-typedef struct {
-    RenamedTransaction renamedTr;
-} FailedRename deriving(Bits, Eq, FShow);
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Typeclasses.
 ////////////////////////////////////////////////////////////////////////////////
 instance DefaultValue#(RenameResponse);
     defaultValue = RenameResponse {
         renamedTr: defaultValue(),
-        schedulerTr: defaultValue()
+        schedulerTr: defaultValue(),
+        startTime: ?
     };
 endinstance
 
@@ -82,11 +84,6 @@ instance ArbRequestTC#(RenameResponse);
 endinstance
 
 instance ArbRequestTC#(DeleteResponse);
-    function Bool isReadRequest(a x) = False;
-    function Bool isWriteRequest(a x) = True;
-endinstance
-
-instance ArbRequestTC#(FailedRename);
     function Bool isReadRequest(a x) = False;
     function Bool isWriteRequest(a x) = True;
 endinstance
@@ -115,8 +112,8 @@ interface RequestDistributor#(type req_type);
     interface Vector#(NumberShards, Get#(ShardRequest)) distribute;
 endinterface
 
-typedef RequestDistributor#(InputTransaction) RenameRequestDistributor;
-typedef RequestDistributor#(FailedRename) DeleteRequestDistributor;
+typedef RequestDistributor#(RenameRequest) RenameRequestDistributor;
+typedef RequestDistributor#(DeleteRequest) DeleteRequestDistributor;
 
 typedef struct {
     ObjectType objType;
@@ -129,6 +126,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     Reg#(Maybe#(InputTransaction)) maybeInputTr <- mkReg(tagged Invalid);
+    Reg#(Timestamp) startTime <- mkReg(?);
     Reg#(ObjectType) objType <- mkReg(?);
     Reg#(TransactionObjectCounter) objIndex <- mkReg(0);
 `ifdef DEBUG_R
@@ -213,17 +211,21 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
 
     method Bool canPut() = !isValid(maybeInputTr);
 
-    method Maybe#(InputTransaction) currentRequest() = maybeInputTr;
+    method Maybe#(RenameRequest) currentRequest() =
+        maybeInputTr matches tagged Valid .inputTr ?
+            tagged Valid RenameRequest {inputTr: inputTr, startTime: startTime} :
+            tagged Invalid;
 
     interface Put request;
-        method Action put(InputTransaction inputTr) if (!isValid(maybeInputTr));
-            if (inputTr.readObjectCount > 0) begin
-                maybeInputTr <= tagged Valid inputTr;
+        method Action put(RenameRequest req) if (!isValid(maybeInputTr));
+            if (req.inputTr.readObjectCount > 0) begin
+                maybeInputTr <= tagged Valid req.inputTr;
                 objType <= ReadObject;
-            end else if (inputTr.writtenObjectCount > 0) begin
-                maybeInputTr <= tagged Valid inputTr;
+            end else if (req.inputTr.writtenObjectCount > 0) begin
+                maybeInputTr <= tagged Valid req.inputTr;
                 objType <= WrittenObject;
             end
+            startTime <= req.startTime;
         endmethod
     endinterface
 
@@ -236,6 +238,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
     Reg#(RenamedTransaction) req[3] <- mkCReg(3, defaultValue());
+    Reg#(Timestamp) startTime[2] <- mkCReg(2, ?);
 `ifdef DEBUG_R
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
@@ -301,12 +304,15 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
 
     method Bool canPut = done[1];
 
-    method Maybe#(FailedRename) currentRequest() =
-        done[2] ? tagged Invalid : tagged Valid FailedRename { renamedTr: req[2] };
+    method Maybe#(DeleteRequest) currentRequest() =
+        done[2] ?
+            tagged Invalid :
+            tagged Valid DeleteRequest { renamedTr: req[2], startTime: startTime[1] };
 
     interface Put request;
-        method Action put(FailedRename failedRename) if (done[1]);
-            req[1] <= failedRename.renamedTr;
+        method Action put(DeleteRequest dreq) if (done[1]);
+            req[1] <= dreq.renamedTr;
+            startTime[0] <= dreq.startTime;
         endmethod
     endinterface
 
@@ -322,10 +328,10 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 interface ResponseAggregator;
     method Bool canPut();
-    interface Put#(InputTransaction) request;
+    interface Put#(RenameRequest) request;
     interface Put#(ShardRenameResponse) aggregate;
     interface Get#(RenameResponse) response;
-    interface Get#(FailedRename) failure;
+    interface Get#(DeleteRequest) failure;
 endinterface
 
 module mkResponseAggregator(ResponseAggregator);
@@ -339,6 +345,7 @@ module mkResponseAggregator(ResponseAggregator);
     Reg#(TransactionObjectCounter) totalWrittenObjectCount <- mkReg(?);
     Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
+    Reg#(Timestamp) startTime <- mkReg(?);
 `ifdef DEBUG_R
     Reg#(Timestamp) cycle <- mkReg(0);
 `endif
@@ -370,10 +377,10 @@ module mkResponseAggregator(ResponseAggregator);
     method Bool canPut() = !isValid(maybeRenamedTr[1]);
 
     interface Put request;
-        method Action put(InputTransaction inputTr) if (!isValid(maybeRenamedTr[1]));
+        method Action put(RenameRequest req) if (!isValid(maybeRenamedTr[1]));
             maybeRenamedTr[1] <= tagged Valid RenamedTransaction {
-                tid: inputTr.tid,
-                trData: inputTr.trData,
+                tid: req.inputTr.tid,
+                trData: req.inputTr.trData,
                 readObjects: ?,
                 writtenObjects: ?,
                 readObjectCount: 0,
@@ -381,10 +388,11 @@ module mkResponseAggregator(ResponseAggregator);
             };
             readSet <= 0;
             writeSet <= 0;
-            totalReadObjectCount <= inputTr.readObjectCount;
-            totalWrittenObjectCount <= inputTr.writtenObjectCount;
+            totalReadObjectCount <= req.inputTr.readObjectCount;
+            totalWrittenObjectCount <= req.inputTr.writtenObjectCount;
             readObjectCount <= 0;
             writtenObjectCount <= 0;
+            startTime <= req.startTime;
         endmethod
     endinterface
 
@@ -431,13 +439,14 @@ module mkResponseAggregator(ResponseAggregator);
             maybeRenamedTr[0] <= tagged Invalid;
             return RenameResponse {
                 renamedTr: renamedTr,
-                schedulerTr: SchedulerTransaction { readSet: readSet, writeSet: writeSet }
+                schedulerTr: SchedulerTransaction { readSet: readSet, writeSet: writeSet },
+                startTime: startTime
             };
         endmethod
     endinterface
 
     interface Get failure;
-        method ActionValue#(FailedRename) get() if (
+        method ActionValue#(DeleteRequest) get() if (
             maybeRenamedTr[0] matches tagged Valid .renamedTr &&& isDone
             && !isSuccess(renamedTr)
         );
@@ -445,7 +454,7 @@ module mkResponseAggregator(ResponseAggregator);
 `ifdef DEBUG_R
             $display("[%8d] Renamer: failed to rename T#%h", cycle, renamedTr.tid);
 `endif
-            return FailedRename { renamedTr : renamedTr };
+            return DeleteRequest { renamedTr : renamedTr, startTime: startTime };
         endmethod
     endinterface
 endmodule
@@ -474,7 +483,7 @@ module mkRenamer(Renamer);
     Vector#(NumberRenamerThreads, DeleteRequestDistributor) deleteDistributors <-
         replicateM(mkDeleteRequestDistributor);
     // Temporary storage to keep track of delete distributor state.
-    Vector#(NumberRenamerThreads, Reg#(Maybe#(FailedRename))) prevDelDistrReq <-
+    Vector#(NumberRenamerThreads, Reg#(Maybe#(DeleteRequest))) prevDelDistrReq <-
         replicateM(mkReg(tagged Invalid));
 
     // Shards.
@@ -532,7 +541,7 @@ module mkRenamer(Renamer);
 
     // Connections from aggregators to failed transaction handler.
     let arb4 <- mkRoundRobin;
-    Arbiter#(NumberRenamerThreads, FailedRename, void) failedTransactionArbiter <-
+    Arbiter#(NumberRenamerThreads, DeleteRequest, void) failedTransactionArbiter <-
         mkArbiter(arb4, 1);
     for (Integer i = 0; i < maxTransactions; i = i + 1) begin
         mkConnection(aggregators[i].failure, failedTransactionArbiter.users[i].request);
@@ -571,8 +580,8 @@ module mkRenamer(Renamer);
         &&& all(getIsReady, shards)
     );
         let req <- toGet(inputBuffer).get();
-        renameDistributors[index].request.put(req.inputTr);
-        aggregators[index].request.put(req.inputTr);
+        renameDistributors[index].request.put(req);
+        aggregators[index].request.put(req);
     endrule
 
     (* fire_when_enabled *)
@@ -583,7 +592,8 @@ module mkRenamer(Renamer);
                 &&& !isValid(delDistrReq[i])
                 || fromMaybe(?, delDistrReq[i]).renamedTr.tid != req.renamedTr.tid) begin
                 deleteOutputArbiter.users[i].request.put(DeleteResponse {
-                    tid: req.renamedTr.tid
+                    tid: req.renamedTr.tid,
+                    startTime: req.startTime
                 });
             end
             prevDelDistrReq[i] <= delDistrReq[i];
@@ -612,9 +622,7 @@ module mkRenamer(Renamer);
                 findIndex(getCanPut, deleteDistributors) matches tagged Valid .index
                 &&& all(getIsReady, shards)
             );
-                deleteDistributors[index].request.put(FailedRename {
-                    renamedTr: req.renamedTr
-                });
+                deleteDistributors[index].request.put(req);
             endmethod
         endinterface
 
@@ -624,9 +632,9 @@ module mkRenamer(Renamer);
 
     interface Get fail;
         method ActionValue#(FailResponse) get();
-            let failedRename <- failedTransactionArbiter.master.request.get();
-            failedTransactionHandler.request.put(failedRename);
-            return FailResponse { tid: failedRename.renamedTr.tid };
+            let req <- failedTransactionArbiter.master.request.get();
+            failedTransactionHandler.request.put(req);
+            return FailResponse { tid: req.renamedTr.tid, startTime: req.startTime };
         endmethod
     endinterface
 endmodule
@@ -645,14 +653,17 @@ endfunction
 function RenameRequest makeRenameReq(
     TransactionId i, ObjectAddress r[], ObjectAddress w[]
 );
-    return RenameRequest { inputTr: InputTransaction {
-        tid: i,
-        trData: extend(pack(MessagePost)),
-        readObjects: map(addOffset, arrayToVector(r)),
-        writtenObjects: map(addOffset, arrayToVector(w)),
-        readObjectCount: fromInteger(objSetSize),
-        writtenObjectCount: fromInteger(objSetSize)
-    }};
+    return RenameRequest {
+        inputTr: InputTransaction {
+            tid: i,
+            trData: extend(pack(MessagePost)),
+            readObjects: map(addOffset, arrayToVector(r)),
+            writtenObjects: map(addOffset, arrayToVector(w)),
+            readObjectCount: fromInteger(objSetSize),
+            writtenObjectCount: fromInteger(objSetSize)
+        },
+        startTime: truncate(i)
+    };
 endfunction
 
 module mkRenamerTestbench();

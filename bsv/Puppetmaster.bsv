@@ -132,21 +132,33 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         let result <- renamer.rename.response.get();
         pendingTrs[pendingTrCount[1]] <= result;
         pendingTrCount[1] <= pendingTrCount[1] + 1;
-        renamedMsgFifo.enq(Message { tid: result.renamedTr.tid, cycle: cycle});
+        renamedMsgFifo.enq(Message {
+            tid: result.renamedTr.tid,
+            startTime: result.startTime,
+            endTime: cycle
+        });
         $fdisplay(stderr, "[%8d] Puppetmaster: renamed T#%h", cycle, result.renamedTr.tid);
     endrule
 
     // Notify caller about failed transactions.
     rule getFailed;
         let result <- renamer.fail.get();
-        failedMsgFifo.enq(Message { tid: result.tid, cycle: cycle});
+        failedMsgFifo.enq(Message {
+            tid: result.tid,
+            startTime: result.startTime,
+            endTime: cycle
+        });
         $fdisplay(stderr, "[%8d] Puppetmaster: failed T#%h", cycle, result.tid);
     endrule
 
     // Notify caller about freed transactions.
     rule getFreed;
         let result <- renamer.delete.response.get();
-        freedMsgFifo.enq(Message { tid: result.tid, cycle: cycle});
+        freedMsgFifo.enq(Message {
+            tid: result.tid,
+            startTime: result.startTime,
+            endTime: cycle
+        });
         $fdisplay(stderr, "[%8d] Puppetmaster: freed T#%h", cycle, result.tid);
     endrule
 
@@ -222,7 +234,10 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     interface Put request;
         method Action put(InputTransaction inputTr);
             partialMode <= False;
-            renamer.rename.request.put(RenameRequest { inputTr: inputTr });
+            renamer.rename.request.put(RenameRequest {
+                inputTr: inputTr,
+                startTime: cycle
+            });
             $fdisplay(stderr, "[%8d] Puppetmaster: enqueued T#%h", cycle, inputTr.tid);
         endmethod
     endinterface
@@ -236,7 +251,8 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     method Action transactionFinished(PuppetId pid);
         runningTrFlags[pid] <= False;
         renamer.delete.request.put(DeleteRequest {
-            renamedTr: runningTrs[pid].renamedTr
+            renamedTr: runningTrs[pid].renamedTr,
+            startTime: cycle
         });
         $fdisplay(stderr, "[%8d] Puppetmaster: finished T#%h on puppet %0d", cycle,
                   runningTrs[pid].renamedTr.tid, pid);

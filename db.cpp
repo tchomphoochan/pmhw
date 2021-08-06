@@ -213,13 +213,15 @@ public:
         numPendingTransactionsCv.notify_all();
         numActiveTransactions++;
         numActiveTransactionsCv.notify_all();
-        PM_LOG("renamed", m.tid, " at " << m.cycle);
+        PM_LOG("renamed", m.tid,
+               " at " << m.endTime << " in " << m.endTime - m.startTime << " cycles");
     }
 
     void transactionFailed(Message m) {
         numPendingTransactions--;
         numPendingTransactionsCv.notify_all();
-        PM_LOG("failed", m.tid, " at " << m.cycle);
+        PM_LOG("failed", m.tid,
+               " at " << m.endTime << " in " << m.endTime - m.startTime << " cycles");
 
         // Remove failed transaction from global set.
         {
@@ -232,7 +234,8 @@ public:
     void transactionFreed(Message m) {
         numActiveTransactions--;
         numActiveTransactionsCv.notify_all();
-        PM_LOG("freed", m.tid, " at " << m.cycle);
+        PM_LOG("freed", m.tid,
+               " at " << m.endTime << " in " << m.endTime - m.startTime << " cycles");
     }
 
     PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}

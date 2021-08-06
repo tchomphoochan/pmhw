@@ -31,7 +31,8 @@ typedef enum {
 
 typedef struct {
     TransactionId tid;
-    Timestamp cycle;
+    Timestamp startTime;
+    Timestamp endTime;
 } Message deriving(Bits, Eq, FShow);
 
 interface PuppetmasterToHostIndication;
