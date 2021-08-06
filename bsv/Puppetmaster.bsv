@@ -30,9 +30,9 @@ typedef InputTransaction PuppetmasterRequest;
 
 interface Puppetmaster;
     interface Put#(PuppetmasterRequest) request;
-    interface Get#(TransactionId) renamed;
-    interface Get#(TransactionId) freed;
-    interface Get#(TransactionId) failed;
+    interface Get#(Message) renamed;
+    interface Get#(Message) freed;
+    interface Get#(Message) failed;
     method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
     method Action transactionFinished(PuppetId pid);
     method Action clearState();
@@ -79,9 +79,9 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     let scheduler <- mkScheduler();
 
     // Fifos to serialize status messages.
-    FIFO#(TransactionId) renamedMsgFifo <- mkFIFO();
-    FIFO#(TransactionId) freedMsgFifo <- mkFIFO();
-    FIFO#(TransactionId) failedMsgFifo <- mkFIFO();
+    FIFO#(Message) renamedMsgFifo <- mkFIFO();
+    FIFO#(Message) freedMsgFifo <- mkFIFO();
+    FIFO#(Message) failedMsgFifo <- mkFIFO();
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -132,21 +132,21 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         let result <- renamer.rename.response.get();
         pendingTrs[pendingTrCount[1]] <= result;
         pendingTrCount[1] <= pendingTrCount[1] + 1;
-        renamedMsgFifo.enq(result.renamedTr.tid);
+        renamedMsgFifo.enq(Message { tid: result.renamedTr.tid, cycle: cycle});
         $fdisplay(stderr, "[%8d] Puppetmaster: renamed T#%h", cycle, result.renamedTr.tid);
     endrule
 
     // Notify caller about failed transactions.
     rule getFailed;
         let result <- renamer.fail.get();
-        failedMsgFifo.enq(result.tid);
+        failedMsgFifo.enq(Message { tid: result.tid, cycle: cycle});
         $fdisplay(stderr, "[%8d] Puppetmaster: failed T#%h", cycle, result.tid);
     endrule
 
     // Notify caller about freed transactions.
     rule getFreed;
         let result <- renamer.delete.response.get();
-        freedMsgFifo.enq(result.tid);
+        freedMsgFifo.enq(Message { tid: result.tid, cycle: cycle});
         $fdisplay(stderr, "[%8d] Puppetmaster: freed T#%h", cycle, result.tid);
     endrule
 
@@ -194,7 +194,7 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         runningTrs[puppetIndex] <= started;
         runningTrFlags[puppetIndex] <= True;
         puppetIndication.startTransaction(
-            puppetIndex, started.renamedTr.tid, started.renamedTr.trData
+            puppetIndex, started.renamedTr.tid, started.renamedTr.trData, cycle
         );
         // If transaction is not the last in the buffer, move the last to this position.
         let newPendingTrCount = pendingTrCount[0] - 1;

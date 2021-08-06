@@ -96,7 +96,7 @@ module mkPuppets(Puppets);
 
     interface PuppetToHostIndication indication;
         method Action startTransaction(
-                PuppetId pid, TransactionId tid, TransactionData trData
+                PuppetId pid, TransactionId tid, TransactionData trData, Timestamp cycle
             );
             TransactionType trType = unpack(truncate(trData));
             timeLeft[pid][1] <= getDuration(trType) * extend(multiplier);

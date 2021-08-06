@@ -62,24 +62,24 @@ private:
     }
 
 public:
-    void transactionRenamed(TransactionId tid) {
-        log_message(tid, "renamed");
+    void transactionRenamed(Message m) {
+        log_message(m.tid, "renamed");
         if (++numRenamed == numTansactions) {
             numRenamed = 0;
             sem_post(&sem_all_renamed);
         }
     }
 
-    void transactionFreed(TransactionId tid) {
-        log_message(tid, "freed");
+    void transactionFreed(Message m) {
+        log_message(m.tid, "freed");
         if (++numFreed == numTansactions) {
             numFreed = 0;
             sem_post(&sem_all_freed);
         }
     }
 
-    void transactionFailed(TransactionId tid) {
-        log_message(tid, "failed");
+    void transactionFailed(Message m) {
+        log_message(m.tid, "failed");
         // Failed transactions skip both the renaming and the freeing step.
         if (++numRenamed == numTansactions) {
             numRenamed = 0;

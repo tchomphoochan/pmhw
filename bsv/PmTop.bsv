@@ -114,16 +114,16 @@ endmodule
 // PmTop tests (these reuse the Puppetmaster end-to-end test data).
 ////////////////////////////////////////////////////////////////////////////////
 module mkTestIndication(PuppetmasterToHostIndication);
-    method Action transactionRenamed(TransactionId tid);
-        $display("renamed T#%h", tid);
+    method Action transactionRenamed(Message m);
+        $display("renamed T#%h", m.tid);
     endmethod
 
-    method Action transactionFreed(TransactionId tid);
-        $display("freed T#%h", tid);
+    method Action transactionFreed(Message m);
+        $display("freed T#%h", m.tid);
     endmethod
 
-    method Action transactionFailed(TransactionId tid);
-        $display("failed T#%h", tid);
+    method Action transactionFailed(Message m);
+        $display("failed T#%h", m.tid);
     endmethod
 endmodule
 

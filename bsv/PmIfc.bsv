@@ -29,10 +29,15 @@ typedef enum {
     MessagePost
 } TransactionType deriving (Bits, Eq, FShow);
 
+typedef struct {
+    TransactionId tid;
+    Timestamp cycle;
+} Message deriving(Bits, Eq, FShow);
+
 interface PuppetmasterToHostIndication;
-    method Action transactionRenamed(TransactionId tid);
-    method Action transactionFreed(TransactionId tid);
-    method Action transactionFailed(TransactionId tid);
+    method Action transactionRenamed(Message m);
+    method Action transactionFreed(Message m);
+    method Action transactionFailed(Message m);
 endinterface
 
 interface HostToPuppetmasterRequest;
@@ -66,7 +71,8 @@ interface PuppetToHostIndication;
     method Action startTransaction(
         PuppetId pid,
         TransactionId tid,
-        TransactionData trData
+        TransactionData trData,
+        Timestamp cycle
     );
 endinterface
 
