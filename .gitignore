@@ -3,8 +3,8 @@
 /verilator/
 /bluesim/
 
-# Cache directories.
-[._]*cache*/
+# Caches.
+[._]*cache*
 
 # JSON compilation database (contains absolute paths).
 compile_commands.json
