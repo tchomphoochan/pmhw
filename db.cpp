@@ -185,8 +185,8 @@ void puppetThread(PuppetId pid) {
         PM_LOG("started", msg.tid,
                " at " << msg.cycle
 #ifdef DEBUG
-                      << ", " << num_reads << " reads: " << readObjects << ", "
-                      << num_writes << " writes: " << writtenObjects
+                      << ", " << tp.num_reads << " reads: " << tp.readObjects << ", "
+                      << tp.num_writes << " writes: " << tp.writtenObjects
 #endif
         );
 
