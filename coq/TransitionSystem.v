@@ -56,23 +56,19 @@ Proof.
   reflexivity.
 Qed.
 
-Ltac destruct_ifs :=
-    repeat match goal with
-    | _ : _ = (if (?x <? ?y) then _ else _) |- _ => destruct_with_eqn (x <? y)
-    | _ : (if (?x <? ?y) then _ else _) = _ |- _ => destruct_with_eqn (x <? y)
-    | _ : _ = (if (?x =? ?y) then _ else _) |- _ => destruct_with_eqn (x =? y)
-    | _ : (if (?x =? ?y) then _ else _) = _ |- _ => destruct_with_eqn (x =? y)
-    | |- _ = (if (?x <? ?y) then _ else _) => destruct_with_eqn (x <? y)
-    | |- (if (?x <? ?y) then _ else _) = _ => destruct_with_eqn (x <? y)
-    | |- _ = (if (?x =? ?y) then _ else _) => destruct_with_eqn (x =? y)
-    | |- (if (?x =? ?y) then _ else _) = _ => destruct_with_eqn (x =? y)
-    end; try lia.
-
 Lemma set_union_empty : forall s,
   set_union s empty_set = s.
 Proof.
   intros; destruct s; simpl; reflexivity.
 Qed.
+
+Ltac destruct_ifs :=
+    repeat lazymatch goal with
+    | _ : context[if (?x <? ?y) then _ else _] |- _ => destruct_with_eqn (x <? y)
+    | _ : context[if (?x =? ?y) then _ else _] |- _ => destruct_with_eqn (x =? y)
+    | |- context[if (?x <? ?y) then _ else _] => destruct_with_eqn (x <? y)
+    | |- context[if (?x =? ?y) then _ else _] => destruct_with_eqn (x =? y)
+    end; try lia.
 
 Lemma set_union_both_empty : forall s1 s2,
   set_union s1 s2 = empty_set
@@ -90,107 +86,16 @@ Qed.
 Lemma set_union_assoc : forall s1 s2 s3,
   set_union (set_union s1 s2) s3 = set_union s1 (set_union s2 s3).
 Proof.
-  induction s1; simpl; intro.
-  - destruct s2; simpl.
-    + destruct s3; reflexivity.
-    + destruct s3; try reflexivity.
-      destruct (n <? n0); try reflexivity.
-      destruct (n =? n0); reflexivity.
-  - induction s2; simpl.
-    + destruct s3; reflexivity.
-    + destruct_with_eqn (a <? a0); simpl.
-      * induction s3; simpl.
-        -- rewrite Heqb.
-           reflexivity.
-        -- destruct_with_eqn (a <? a1); simpl.
-           ++ destruct_with_eqn (a0 <? a1); simpl.
-              ** rewrite Heqb.
-                 rewrite IHs1.
-                 simpl.
-                 rewrite Heqb1.
-                 reflexivity.
-              ** destruct_with_eqn (a0 =? a1); simpl.
-                 --- rewrite Heqb.
-                     rewrite IHs1.
-                     simpl.
-                     rewrite Heqb1.
-                     rewrite Heqb2.
-                     reflexivity.
-                 --- rewrite Heqb0.
-                     rewrite IHs1.
-                     simpl.
-                     rewrite Heqb1.
-                     rewrite Heqb2.
-                     reflexivity.
-           ++ destruct_with_eqn (a =? a1); simpl.
-              ** destruct_with_eqn (a0 <? a1); try lia; simpl.
-                 destruct_with_eqn (a0 =? a1); try lia; simpl.
-                 rewrite Heqb0.
-                 rewrite Heqb1.
-                 rewrite IHs1.
-                 simpl.
-                 reflexivity.
-              ** destruct_with_eqn (a0 <? a1); try lia; simpl.
-                 destruct_with_eqn (a0 =? a1); try lia; simpl.
-                 rewrite Heqb0.
-                 rewrite Heqb1.
-                 rewrite IHs3.
-                 reflexivity.
-      * destruct_with_eqn (a =? a0); simpl.
-        -- induction s3; simpl.
-           ++ rewrite Heqb.
-              rewrite Heqb0.
-              reflexivity.
-           ++ destruct_with_eqn (a <? a1); simpl.
-              ** destruct_with_eqn (a0 <? a1); try lia; simpl.
-                 rewrite Heqb.
-                 rewrite Heqb0.
-                 rewrite IHs1.
-                 reflexivity.
-              ** destruct_with_eqn (a =? a1); simpl.
-                 --- destruct_with_eqn (a0 <? a1); try lia; simpl.
-                     destruct_with_eqn (a0 =? a1); try lia; simpl.
-                     rewrite Heqb.
-                     rewrite Heqb0.
-                     rewrite IHs1.
-                     reflexivity.
-                 --- destruct_with_eqn (a0 <? a1); try lia; simpl.
-                     destruct_with_eqn (a0 =? a1); try lia; simpl.
-                     rewrite Heqb1.
-                     rewrite Heqb2.
-                     rewrite IHs3.
-                     reflexivity.
-        -- induction s3; simpl.
-           ++ rewrite Heqb.
-              rewrite Heqb0.
-              reflexivity.
-           ++ destruct_with_eqn (a0 <? a1); simpl.
-              ** rewrite Heqb.
-                 rewrite Heqb0.
-                 rewrite IHs2.
-                 reflexivity.
-              ** destruct_with_eqn (a0 =? a1); simpl.
-                 --- rewrite Heqb.
-                     rewrite Heqb0.
-                     rewrite IHs2.
-                     reflexivity.
-                 --- destruct_with_eqn (a =? a1); try lia; simpl.
-                     destruct_with_eqn (a <? a1); try lia; simpl.
-                     rewrite IHs3.
-                     reflexivity.
+  induction s1; simpl; induction s2; induction s3; simpl; destruct_ifs;
+    reflexivity || simpl in *; destruct_ifs; rewrite IHs1 || rewrite IHs2 || rewrite IHs3;
+    simpl; destruct_ifs; reflexivity.
 Qed.
 
 Lemma set_union_comm_fold_right : forall s1 s2,
   set_union (fold_right set_union empty_set s2) s1 = fold_right set_union s1 s2.
 Proof.
-  induction s1; induction s2; intros; try reflexivity.
-  - simpl.
-    unfold empty_set.
-    destruct (set_union a (fold_right set_union [] s2)); simpl; reflexivity.
-  - unfold empty_set in *.
-    simpl fold_right.
-    rewrite <- IHs2.
-    apply set_union_assoc.
+  induction s1; induction s2; reflexivity || simpl;
+    rewrite set_union_empty || rewrite <- IHs2; reflexivity || apply set_union_assoc.
 Qed.
 
 Lemma set_union_head_lt : forall s1 s2 a1 a2 x sr,
@@ -199,9 +104,22 @@ Lemma set_union_head_lt : forall s1 s2 a1 a2 x sr,
   -> ValidSet (a2 :: s2)
   -> a1 = x /\ a2 > x \/ a1 = x /\ a2 = x \/ a1 > x /\ a2 = x.
 Proof.
-  simpl; intros.
-  destruct_with_eqn (a1 <? a2); destruct_with_eqn (a1 =? a2); inversion H; subst; try lia.
+  simpl; intros; destruct_ifs; inversion H; subst; lia.
 Qed.
+
+Ltac invert_cons :=
+  repeat lazymatch goal with
+  | H: _ :: _ = _ :: _ |- _ => inversion H; subst; clear H
+  end.
+
+Ltac invert_Foralls' :=
+  repeat lazymatch goal with
+  | H : Forall _ (_ :: _) |- _ => inversion_clear H
+  | H : ForallOrdPairs _ (_ :: _) |- _ => inversion_clear H
+  | H : Forall _ _ /\ _ |- _ => inversion_clear H
+  | H : ForallOrdPairs _ _ /\ _ |- _ => inversion_clear H
+  | H : Forall _ (_ ++ _) |- _ => rewrite Forall_app in H
+  end.
 
 Lemma set_union_tail_lt : forall x sr s1 s2,
   set_union s1 s2 = x :: sr
@@ -209,248 +127,80 @@ Lemma set_union_tail_lt : forall x sr s1 s2,
   -> ValidSet s2
   -> Forall (lt x) sr.
 Proof.
-  induction sr; simpl; intros; constructor.
-  - destruct s1 as [|a1 s1]; simpl in *.
-    + destruct s2 as [|a2 s2]; try discriminate.
-      inversion H; subst.
-      inversion H1; subst.
-      inversion H4; subst.
-      assumption.
-    + destruct s2 as [|a2 s2].
-      * destruct s1 as [|b1 s1]; try discriminate.
-        inversion H; subst.
-        inversion H0; subst.
-        inversion H4; subst.
-        assumption.
-      * destruct_with_eqn (a1 <? a2); destruct_with_eqn (a1 =? a2); try lia.
-        -- inversion H; subst.
-           destruct s1 as [|b1 s1]; simpl in *.
-           ++ inversion H4; subst.
-              lia.
-           ++ destruct_with_eqn (b1 <? a2); destruct_with_eqn (b1 =? a2); try lia.
-              ** inversion H4; subst.
-                 inversion_clear H0.
-                 inversion_clear H2.
-                 assumption.
-              ** inversion H4; subst.
-                 inversion_clear H0.
-                 inversion_clear H2.
-                 assumption.
-              ** inversion H4; subst.
-                 inversion_clear H0.
-                 inversion_clear H2.
-                 lia.
-        -- inversion H; subst.
-           destruct s1 as [|b1 s1].
-           ++ simpl in *.
-              destruct s2 as [|b2 s2]; try discriminate.
-              inversion H4; subst.
-              inversion_clear H1.
-              inversion_clear H2.
-              lia.
-           ++ simpl in *.
-              destruct s2 as [|b2 s2].
-              ** inversion H4; subst.
-                 inversion_clear H0.
-                 inversion_clear H2.
-                 assumption.
-              ** destruct_with_eqn (b1 <? b2); destruct_with_eqn (b1 =? b2); try lia.
-                 --- inversion H4; subst.
-                     inversion_clear H0.
-                     inversion_clear H2.
-                     assumption.
-                 --- inversion H4; subst.
-                     inversion_clear H0.
-                     inversion_clear H2.
-                     assumption.
-                 --- inversion H4; subst.
-                     inversion_clear H1; subst.
-                     inversion_clear H2; subst.
-                     lia.
-        -- inversion H; subst.
-           destruct s2 as [|b2 s2].
-           ++ inversion H4; subst.
-              lia.
-           ++ destruct_with_eqn (a1 <? b2); destruct_with_eqn (a1 =? b2); try lia.
-              ** inversion H4; subst.
-                 lia.
-              ** inversion H4; subst.
-                 lia.
-              ** inversion H4; subst.
-                 inversion_clear H1.
-                 inversion_clear H2.
-                 assumption.
+  unfold ValidSet; induction sr; simpl; intros; constructor.
+  - destruct s1 as [|a1 [|b1 s1]]; destruct s2 as [|a2 [|b2 s2]]; simpl in *;
+      try discriminate; destruct_ifs; invert_cons; invert_Foralls'; assumption || lia.
   - destruct s1 as [|a1 s1]; simpl in *.
     + destruct s2 as [|a2 s2]; try discriminate.
       destruct s2 as [|b2 s2]; try discriminate.
-      inversion H; subst.
-      inversion_clear H1.
-      inversion_clear H2.
-      inversion_clear H3.
-      assumption.
+      invert_cons; invert_Foralls'; assumption.
     + destruct s2 as [|a2 s2].
       * destruct s1 as [|b1 s1]; try discriminate.
-        inversion H; subst.
-        inversion_clear H0.
-        inversion_clear H2.
-        inversion_clear H3.
-        assumption.
-      * destruct_with_eqn (a1 <? a2); destruct_with_eqn (a1 =? a2); try lia.
+        invert_cons; invert_Foralls'; assumption.
+      * destruct_ifs.
         -- destruct s1 as [|b1 s1]; simpl in *.
-           ++ inversion H; subst.
-              inversion_clear H1.
+           ++ invert_cons; invert_Foralls'.
               eapply Forall_impl; try eassumption; lia.
-           ++ destruct_with_eqn (b1 <? a2); destruct_with_eqn (b1 =? a2); try lia.
-              ** inversion H; subst.
-                 inversion_clear H0.
-                 inversion_clear H1.
-                 inversion_clear H2.
-                 inversion_clear H3.
+           ++ destruct_ifs.
+              ** invert_cons; invert_Foralls'.
                  apply (IHsr (x :: s1) (a2 :: s2)); try constructor; try assumption.
                  simpl.
-                 rewrite Heqb.
+                 destruct_ifs.
                  reflexivity.
-              ** inversion H; subst.
-                 inversion_clear H0.
-                 inversion_clear H1.
-                 inversion_clear H2.
-                 inversion_clear H3.
+              ** invert_cons; invert_Foralls'.
                  apply (IHsr (x :: s1) (x :: s2)); try constructor; try assumption.
-                 --- simpl.
-                     destruct_with_eqn (x <? x); destruct_with_eqn (x =? x); try lia.
-                     reflexivity.
+                 --- simpl; destruct_ifs; reflexivity.
                  --- eapply Forall_impl; try eassumption; lia.
-              ** inversion H; subst.
-                 inversion_clear H0.
-                 inversion_clear H1.
-                 inversion_clear H2.
-                 inversion_clear H3.
+              ** invert_cons; invert_Foralls'.
                  apply (IHsr (b1 :: s1) (x :: s2)); try constructor; try assumption.
-                 --- simpl.
-                     destruct_with_eqn (b1 <? x); destruct_with_eqn (b1 =? x); try lia.
-                     reflexivity.
+                 --- simpl; destruct_ifs; reflexivity.
                  --- eapply Forall_impl; try eassumption; lia.
-        -- inversion H; rewrite Nat.eqb_eq in *; subst.
+        -- invert_cons; rewrite Nat.eqb_eq in *; subst.
            destruct s1 as [|b1 s1].
            ++ simpl in *.
               destruct s2 as [|b2 s2]; try discriminate.
-              inversion H; subst.
-              inversion_clear H1.
-              inversion_clear H2.
-              assumption.
+              invert_cons; invert_Foralls'; assumption.
            ++ destruct s2 as [|b2 s2].
               ** rewrite set_union_empty in *.
-                 inversion H4; subst.
-                 inversion_clear H0.
-                 inversion_clear H2.
-                 assumption.
+                 invert_cons; invert_Foralls'; assumption.
               ** simpl in *.
-                 destruct_with_eqn (b1 <? b2); destruct_with_eqn (b1 =? b2); try lia.
-                 --- inversion H4; subst.
-                     inversion_clear H0.
-                     inversion_clear H1.
-                     inversion_clear H2.
-                     inversion_clear H3.
-                     inversion_clear H5.
-                     inversion_clear H0.
-                     apply (IHsr (x :: s1) (b2 :: s2)); try constructor; try assumption.
-                     simpl.
-                     destruct_with_eqn (x <? b2); try lia.
-                     reflexivity.
-                 --- inversion H4; rewrite Nat.eqb_eq in *; subst.
-                     inversion_clear H0.
-                     inversion_clear H1.
-                     inversion_clear H2.
-                     inversion_clear H3.
-                     inversion_clear H5.
-                     inversion_clear H0.
-                     apply (IHsr (x :: s1) (x :: s2)); try constructor; try assumption.
-                     simpl.
-                     destruct_with_eqn (x <? x); destruct_with_eqn (x =? x); try lia.
-                     reflexivity.
-                 --- inversion H4; subst.
-                     inversion_clear H0.
-                     inversion_clear H1.
-                     inversion_clear H2.
-                     inversion_clear H3.
-                     inversion_clear H5.
-                     inversion_clear H0.
-                     apply (IHsr (b1 :: s1) (x :: s2)); try constructor; try assumption.
-                     simpl.
-                     destruct_with_eqn (b1 <? x); destruct_with_eqn (b1 =? x); try lia.
-                     reflexivity.
-        -- inversion H; subst.
+                 destruct_ifs.
+                 --- invert_cons; invert_Foralls'.
+                     apply (IHsr (a2 :: s1) (b2 :: s2)); try constructor; try assumption.
+                     simpl; destruct_ifs; reflexivity.
+                 --- invert_cons; invert_Foralls'.
+                     apply (IHsr (a2 :: s1) (a2 :: s2)); try constructor; try assumption.
+                     simpl; destruct_ifs; reflexivity.
+                 --- invert_cons; invert_Foralls'.
+                     apply (IHsr (b1 :: s1) (a2 :: s2)); try constructor; try assumption.
+                     simpl; destruct_ifs; reflexivity.
+        -- invert_cons.
            destruct s2 as [|b2 s2].
-           ++ inversion H4; subst.
-              inversion H0.
+           ++ invert_cons; invert_Foralls'.
               eapply Forall_impl; try eassumption; lia.
-           ++ destruct_with_eqn (a1 <? b2); destruct_with_eqn (a1 =? b2); try lia.
+           ++ destruct_ifs.
               ** destruct s1 as [|b1 s1]; simpl in *.
-                 --- inversion H4; subst.
-                     inversion H1.
-                     assumption.
-                 --- destruct_with_eqn (b1 <? b2); destruct_with_eqn (b1 =? b2); try lia.
-                     +++ inversion H4; subst.
-                         inversion_clear H0.
-                         inversion_clear H1.
-                         inversion_clear H2.
-                         inversion_clear H3.
-                         inversion_clear H5.
-                         inversion_clear H0.
+                 --- invert_cons; invert_Foralls'; constructor; assumption.
+                 --- destruct_ifs.
+                     +++ invert_cons; invert_Foralls'.
                          apply (IHsr (x :: b1 :: s1) (b2 :: s2)); repeat constructor; try assumption; try lia.
-                         *** simpl.
-                             destruct_with_eqn (x <? b2); try lia.
-                             rewrite Heqb3.
-                             reflexivity.
+                         *** simpl; destruct_ifs; reflexivity.
                          *** eapply Forall_impl; try eassumption; lia.
-                     +++ inversion H4; subst.
-                         inversion_clear H0.
-                         inversion_clear H1.
-                         inversion_clear H2.
-                         inversion_clear H3.
-                         inversion_clear H5.
-                         inversion_clear H0.
+                     +++ invert_cons; invert_Foralls'.
                          apply (IHsr (x :: b1 :: s1) (b2 :: s2)); repeat constructor; try assumption; try lia.
-                         *** simpl.
-                             destruct_with_eqn (x <? b2); try lia.
-                             rewrite Heqb3.
-                             rewrite Heqb4.
-                             reflexivity.
+                         *** simpl; destruct_ifs; reflexivity.
                          *** eapply Forall_impl; try eassumption; lia.
-                     +++ inversion H4; subst.
-                         inversion_clear H0.
-                         inversion_clear H1.
-                         inversion_clear H2.
-                         inversion_clear H3.
-                         inversion_clear H5.
-                         inversion_clear H0.
+                     +++ invert_cons; invert_Foralls'.
                          apply (IHsr (x :: b1 :: s1) (b2 :: s2)); repeat constructor; try assumption; try lia.
-                         *** simpl.
-                             destruct_with_eqn (x <? b2); try lia.
-                             rewrite Heqb3.
-                             rewrite Heqb4.
-                             reflexivity.
+                         *** simpl; destruct_ifs; reflexivity.
                          *** eapply Forall_impl; try eassumption; lia.
-              ** inversion H4; subst.
-                 inversion_clear H1.
-                 inversion_clear H0.
-                 inversion_clear H2.
-                 inversion_clear H3.
+              ** invert_cons; invert_Foralls'.
                  apply (IHsr (x :: s1) (x :: s2)); try constructor; try assumption.
-                 --- simpl.
-                     destruct_with_eqn (x <? x); destruct_with_eqn (x =? x); try lia.
-                     reflexivity.
+                 --- simpl; destruct_ifs; reflexivity.
                  --- eapply Forall_impl; try eassumption; lia.
-              ** inversion H4; subst.
-                 inversion_clear H1.
-                 inversion_clear H0.
-                 inversion_clear H2.
-                 inversion_clear H3.
+              ** invert_cons; invert_Foralls'.
                  apply (IHsr (a1 :: s1) (x :: s2)); try constructor; try assumption.
-                 simpl.
-                 rewrite Heqb.
-                 rewrite Heqb0.
-                 reflexivity.
+                 simpl; destruct_ifs; reflexivity.
 Qed.
 Lemma set_union_valid : forall s1 s2,
   ValidSet s1
@@ -935,20 +685,6 @@ Definition set_compatible (a : transaction_set) (b : transaction_set) :=
     (andb (set_eq (set_inter (SetWriteSet a) (SetWriteSet b)) empty_set)
           (set_eq (set_inter (SetWriteSet a) (SetReadSet b)) empty_set)).
 
-Ltac invert_Foralls' :=
-  repeat lazymatch goal with
-  | H : Forall _ (_ :: _) |- _ => inversion_clear H
-  | H : ForallOrdPairs _ (_ :: _) |- _ => inversion_clear H
-  | |- Forall _ (_ :: _) => constructor
-  | |- ForallOrdPairs _ (_ :: _) => constructor
-  | H : Forall _ _ /\ _ |- _ => inversion_clear H
-  | H : ForallOrdPairs _ _ /\ _ |- _ => inversion_clear H
-  | |- Forall _ _ /\ _ => split
-  | |- ForallOrdPairs _ _ /\ _ => split
-  | H : Forall _ (_ ++ _) |- _ => rewrite Forall_app in H
-  | |- Forall _ (_ ++ _) => rewrite Forall_app
-  end.
-
 (* Helper lemma to help manipulate ValidPmState. *)
 Lemma Forall_Forall_comm : forall A (R : A -> A -> Prop) l1 l2,
   (forall x y, R x y -> R y x)
@@ -957,6 +693,16 @@ Proof.
   induction l1; trivial; intros; constructor; try apply IHl1; try eapply Forall_impl;
     try eassumption; simpl; intros; invert_Foralls'; auto.
 Qed.
+
+
+Ltac solve_Foralls' :=
+  repeat lazymatch goal with
+  | |- Forall _ (_ :: _) => constructor
+  | |- ForallOrdPairs _ (_ :: _) => constructor
+  | |- Forall _ _ /\ _ => split
+  | |- ForallOrdPairs _ _ /\ _ => split
+  | |- Forall _ (_ ++ _) => rewrite Forall_app
+  end.
 
 Lemma FOP_app : forall A (R : A -> A -> Prop) l1 l2,
   (forall x y, R x y -> R y x)
@@ -970,9 +716,9 @@ Proof.
     apply Forall_impl with (P := fun x => True); trivial.
     apply Forall_forall; trivial.
   - rewrite <- app_comm_cons.
-    intuition; invert_Foralls'; try rewrite IHl1 in *; invert_Foralls';
-      try solve [rewrite Forall_forall in *; auto]; eapply Forall_impl; try eassumption;
-      simpl; intros; invert_Foralls'; auto.
+    intuition; invert_Foralls'; solve_Foralls'; try rewrite IHl1 in *; invert_Foralls';
+      solve_Foralls'; try solve [rewrite Forall_forall in *; auto]; eapply Forall_impl;
+      try eassumption; simpl; intros; invert_Foralls'; auto.
 Qed.
 
 Lemma set_compatible_correct : forall trs2 trs1,
@@ -1085,14 +831,12 @@ Proof.
   - apply FOP_app; intuition.
     eapply set_compatible_correct; try assumption.
     destruct ts1; destruct ts2; simpl in *; subst; assumption.
-  - invert_Foralls'; assumption.
-  - rewrite H8.
-    rewrite H9.
+  - solve_Foralls'; assumption.
+  - destruct ts1; destruct ts2; simpl in *; subst.
     rewrite map_app.
     rewrite fold_right_app.
     apply set_union_comm_fold_right.
-  - rewrite H11.
-    rewrite H12.
+  - destruct ts1; destruct ts2; simpl in *; subst.
     rewrite map_app.
     rewrite fold_right_app.
     apply set_union_comm_fold_right.
@@ -1175,7 +919,6 @@ Proof.
   intros.
   destruct tr_sets; try solve [simpl; assumption].
   destruct tr_sets; try solve [simpl; assumption].
-  Guarded.
   simpl.
   destruct_with_eqn (set_compatible t t0); simpl; inversion H; inversion H3; constructor;
     assumption || apply merge_compatible || apply IH; assumption.
@@ -1518,7 +1261,7 @@ Lemma pm_trace_preserves_ValidPmState : forall tr s s',
   -> ValidPmState s'.
 Proof.
   unfold ValidPmState; induction 2; intros; trivial; apply IHpm_trace.
-  - destruct s; destruct s'; simpl in *; subst; invert_Foralls; intuition.
+  - destruct s; destruct s'; simpl in *; subst; invert_Foralls; solve_Foralls'; intuition.
   - subst; unfold rename_transaction; destruct_with_eqn (Queued s); destruct s;
       simpl in *; subst; invert_Foralls; intuition.
   - subst; unfold schedule_transactions.
@@ -1526,7 +1269,7 @@ Proof.
     destruct (Scheduled s); simpl in *; try lia.
     pose proof do_tournament_compatible as Hcompat.
     setoid_rewrite <- firstn_skipn at 5 in Hcompat.
-    eapply FOP_app in Hcompat; try reflexivity; invert_Foralls; eauto.
+    eapply FOP_app in Hcompat; try reflexivity; invert_Foralls; solve_Foralls'; eauto.
     + eapply proj2; rewrite <- Forall_app.
       apply (Permutation_Forall (Permutation_sym (do_tournament_rest _ _ _ (eq_refl _)))).
       rewrite map_map; rewrite concat_map_wrap.
@@ -1541,8 +1284,8 @@ Proof.
       rewrite do_tournament_first; trivial.
     + constructor; apply trs_to_set_valid || apply tr_to_set_list_valid; try assumption.
       erewrite <- firstn_skipn in H; invert_Foralls; eassumption.
-  - destruct s; destruct s'; simpl in *; subst; invert_Foralls; try assumption.
-  - destruct s; destruct s'; simpl in *; subst; invert_Foralls; try assumption.
+  - destruct s; destruct s'; simpl in *; subst; solve_Foralls'; invert_Foralls; try assumption.
+  - destruct s; destruct s'; simpl in *; subst; invert_Foralls; solve_Foralls'; invert_Foralls; solve_Foralls'; try assumption.
 Qed.
 
 Definition R_pm (s : pm_state) (s' : spec_state) : Prop :=
@@ -1627,12 +1370,12 @@ Proof.
     eapply SpecAdd with (s' := {| SpecQueued := Queued1 ++ Renamed1 ++ Scheduled1;
                                   SpecRunning := Running1 |});
       simpl; subst; try permutations.
-    apply IHpm_trace; intuition; invert_Foralls; auto.
+    apply IHpm_trace; intuition; invert_Foralls; solve_Foralls'; auto.
   - subst.
     apply IHpm_trace; try assumption.
     unfold R_pm in *; unfold ValidPmState in *; unfold rename_transaction in *.
     destruct s; destruct spec_s; simpl in *.
-    destruct Queued0; simpl in *; intuition; try permutations; invert_Foralls; assumption.
+    destruct Queued0; simpl in *; intuition; try permutations; invert_Foralls; solve_Foralls'; assumption.
   - subst.
     apply IHpm_trace; try assumption.
     apply schedule_preserves_R.
@@ -1652,7 +1395,7 @@ Proof.
     eapply SpecFinish with (s' := {| SpecQueued := Queued1 ++ Renamed1 ++ Scheduled1;
                                       SpecRunning := Running1 |});
       simpl; subst; try permutations.
-    apply IHpm_trace; intuition; invert_Foralls; auto.
+    apply IHpm_trace; intuition; invert_Foralls; solve_Foralls'; auto.
 Qed.
 
 (* Main theorem: traces generates by the implementation can be generated by the spec. *)
