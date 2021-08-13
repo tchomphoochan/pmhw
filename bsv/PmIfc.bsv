@@ -9,7 +9,7 @@ typedef Bit#(64) TransactionId;
 typedef Bit#(64) TransactionData;
 typedef Bit#(64) ObjectAddress;
 typedef Bit#(32) Timestamp;
-typedef Bit#(16) ClockMultiplier;
+typedef Bit#(16) ClockPeriod;
 
 // Sizes determined by design.
 typedef 3 LogMaxNumberTransactionObjects;
@@ -23,8 +23,7 @@ typedef UInt#(LogNumberPuppets) PuppetId;
 typedef enum {
     DatabaseRead,
     DatabaseWrite,
-    DatabaseIncrement,
-    DatabaseSwap,
+    DatabaseTransfer,
     MessageFetch,
     MessagePost
 } TransactionType deriving (Bits, Eq, FShow);
@@ -64,7 +63,7 @@ interface HostToPuppetmasterRequest;
         ObjectAddress writtenObj7,
         ObjectAddress writtenObj8
     );
-    method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
+    method Action setPuppetClockPeriod(ClockPeriod period);
     method Action clearState();
 endinterface
 

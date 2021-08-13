@@ -269,7 +269,7 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 // End-to-end puppetmaster tests.
 ////////////////////////////////////////////////////////////////////////////////
-typedef 4 NumberE2ETestRounds;
+typedef 5 NumberE2ETestRounds;
 typedef TMul#(NumberE2ETestRounds, SizeSchedulingPool) NumberE2ETests;
 
 Integer numE2ETests = valueOf(NumberE2ETests);
@@ -278,11 +278,12 @@ function Vector#(NumberE2ETests, PuppetmasterRequest) makeE2ETests();
     Vector#(NumberE2ETests, PuppetmasterRequest) testInputs = newVector;
     for (Integer i = 0; i < numE2ETests; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
-        testInputs[i].trData = extend(pack(case (i % 4) matches
+        testInputs[i].trData = extend(pack(case (i % numE2ETests) matches
             0 : DatabaseRead;
-            1 : DatabaseWrite;
-            2 : DatabaseIncrement;
-            3 : DatabaseSwap;
+            1 : DatabaseRead;
+            2 : DatabaseWrite;
+            3 : DatabaseWrite;
+            4 : DatabaseTransfer;
         endcase));
         testInputs[i].readObjectCount = fromInteger(objSetSize);
         testInputs[i].writtenObjectCount = fromInteger(objSetSize);
@@ -295,6 +296,7 @@ function Vector#(NumberE2ETests, PuppetmasterRequest) makeE2ETests();
                     1 : (objSetSize * (i - i % 2) * 2 + j * 2 + 1);  // conflict with one
                     2 : (objSetSize * (i % 2)     * 2 + j * 2 + 1);  // conflict with half
                     3 : (objSetSize               * 2 + j * 2 + 1);  // conflict with all
+                    4 : (objSetSize * i           * 2 + j * 2 + 1);  // conflict with none
                 endcase
             ) << addrOffset;
         end

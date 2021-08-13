@@ -91,11 +91,11 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
 	    endmethod
 
 `ifdef EXTERNAL_PUPPETS
-        method Action setPuppetClockMultiplier(ClockMultiplier multiplier);
+        method Action setPuppetClockPeriod(ClockPeriod period);
             // Do nothing, puppets are external.
         endmethod
 `else
-        method setPuppetClockMultiplier = puppets.setClockMultiplier;
+        method setPuppetClockPeriod = puppets.setClockPeriod;
 `endif
 
         method clearState = pm.clearState;

@@ -18,7 +18,7 @@ typedef TExp#(LogNumberPuppets) NumberPuppets;
 interface Puppets;
     interface PuppetToHostIndication indication;
     interface Get#(PuppetId) finish;
-    method Action setClockMultiplier(ClockMultiplier multiplier);
+    method Action setClockPeriod(ClockPeriod period);
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,12 +31,11 @@ Integer numPuppets = valueOf(NumberPuppets);
 ////////////////////////////////////////////////////////////////////////////////
 function Timestamp getDuration(TransactionType trType);
     return case (trType) matches
-        DatabaseRead : 1;
-        DatabaseWrite : 1;
-        DatabaseIncrement : 2;
-        DatabaseSwap : 4;
-        MessageFetch : 3;
-        MessagePost : 2;
+        DatabaseRead : 75;
+        DatabaseWrite : 75;
+        DatabaseTransfer : 300;
+        MessageFetch : 550;
+        MessagePost : 700;
     endcase;
 endfunction
 
@@ -58,7 +57,7 @@ module mkPuppets(Puppets);
     ////////////////////////////////////////////////////////////////////////////////
     Vector#(NumberPuppets, Array#(Reg#(Timestamp))) timeLeft <-
         replicateM(mkCReg(2, 0));
-    Reg#(ClockMultiplier) multiplier <- mkReg(2000);
+    Reg#(ClockPeriod) period <- mkReg(20);
     Reg#(Timestamp) cycle <- mkReg(0);
 
     Vector#(NumberPuppets, Vector#(2, Reg#(Timestamp))) timeLeftV =
@@ -99,12 +98,12 @@ module mkPuppets(Puppets);
                 PuppetId pid, TransactionId tid, TransactionData trData, Timestamp cycle
             );
             TransactionType trType = unpack(truncate(trData));
-            timeLeft[pid][1] <= getDuration(trType) * extend(multiplier);
+            timeLeft[pid][1] <= getDuration(trType) / extend(period);
             $fdisplay(stderr, "[%8d] Puppet: starting T#%h", cycle, tid);
         endmethod
     endinterface
 
-    method Action setClockMultiplier(ClockMultiplier m);
-        multiplier <= m;
+    method Action setClockPeriod(ClockPeriod p);
+        period <= p;
     endmethod
 endmodule

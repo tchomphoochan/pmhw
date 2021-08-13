@@ -96,7 +96,7 @@ public:
 };
 
 void load_default_test(std::vector<InputTransaction>& testInputs) {
-    int numE2ETestRounds = 4;
+    int numE2ETestRounds = 5;
     int numE2ETests = numE2ETestRounds * poolSize;
 
     for (int i = 0; i < numE2ETests; i = i + 1) {
@@ -105,10 +105,9 @@ void load_default_test(std::vector<InputTransaction>& testInputs) {
         auto offset = iDiv.rem;
         testInputs.emplace_back();
         testInputs[i].tid = i;
-        testInputs[i].trType = offset == 0   ? TransactionType::DatabaseRead
-                               : offset == 1 ? TransactionType::DatabaseWrite
-                               : offset == 2 ? TransactionType::DatabaseIncrement
-                                             : TransactionType::DatabaseSwap;
+        testInputs[i].trType = offset <= 1 ? TransactionType::DatabaseRead
+                               : offset <= 4 ? TransactionType::DatabaseWrite
+                               : TransactionType::DatabaseTransfer;
         testInputs[i].readObjectCount = objSetSize;
         testInputs[i].writtenObjectCount = objSetSize;
         for (std::size_t j = 0; j < objSetSize; j = j + 1) {
@@ -175,8 +174,7 @@ std::size_t load_test_from_file(std::vector<InputTransaction>& testInputs,
             if (i == static_cast<std::size_t>(typeIndex)) {
                 tr.trType = value == "get"         ? TransactionType::DatabaseRead
                             : value == "set"       ? TransactionType::DatabaseWrite
-                            : value == "increment" ? TransactionType::DatabaseIncrement
-                            : value == "swap"      ? TransactionType::DatabaseSwap
+                            : value == "transfer" ? TransactionType::DatabaseTransfer
                             : value == "fetch"     ? TransactionType::MessageFetch
                             : value == "post"
                                 ? TransactionType::MessagePost
@@ -199,7 +197,7 @@ std::size_t load_test_from_file(std::vector<InputTransaction>& testInputs,
 }
 
 int main(int argc, char** argv) {
-    std::vector<ClockMultiplier> multipliers;
+    std::vector<ClockPeriod> periods;
     std::vector<InputTransaction> testInputs;
     std::size_t testIndex = 0;
 
@@ -229,7 +227,7 @@ int main(int argc, char** argv) {
             testIndex = load_test_from_file(testInputs, testIndex, argv[i]);
             break;
         case FLAG_MULTIPLIER:
-            multipliers.push_back(std::stoul(arg));
+            periods.push_back(std::stoul(arg));
             break;
         }
     }
@@ -240,9 +238,9 @@ int main(int argc, char** argv) {
         load_default_test(testInputs);
     }
 
-    // Add a default multiplier if no multipliers given.
-    if (multipliers.size() == 0) {
-        multipliers.push_back(2000);
+    // Add a default clock period if none given.
+    if (periods.size() == 0) {
+        periods.push_back(20);
     }
 
     // Run tests.
@@ -256,12 +254,12 @@ int main(int argc, char** argv) {
         IfcNames_PuppetmasterToHostIndicationH2S, testInputs.size());
     print_log("Initialized the indication interface");
 
-    for (auto&& multiplier : multipliers) {
+    for (auto&& period : periods) {
         std::ostringstream msg;
-        msg << "Enqueuing " << testInputs.size() << " transactions with multiplier "
-            << multiplier;
+        msg << "Enqueuing " << testInputs.size() << " transactions with clock period "
+            << period;
         print_log(msg.str());
-        fpga->setPuppetClockMultiplier(multiplier);
+        fpga->setPuppetClockPeriod(period);
         for (auto&& tr : testInputs) {
             fpga->enqueueTransaction(
                 tr.tid, tr.trType, tr.readObjectCount, tr.readObjects[0],
