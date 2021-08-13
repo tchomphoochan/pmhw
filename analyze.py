@@ -120,10 +120,10 @@ def load_file(file: TextIOBase) -> tuple[float, dict[int, int], dict[int, int]]:
         except ValueError:
             continue
 
-        if verb == "receiving":
+        if verb == "enqueued":
             if transaction_id in receive_times:
                 raise ValueError(
-                    f"duplicate 'receiving' entry for transaction {transaction_id}"
+                    f"duplicate 'enqueued' entry for transaction {transaction_id}"
                 )
             receive_times[transaction_id] = timestamp
         elif verb == "starting":
@@ -139,7 +139,7 @@ def load_file(file: TextIOBase) -> tuple[float, dict[int, int], dict[int, int]]:
             n_cores_used += 1
             last_start = timestamp
             n_transactions += 1
-        elif verb == "finishing":
+        elif verb == "finished":
             core_usage[n_cores_used] += timestamp - max(last_start, last_finish)
             n_cores_used -= 1
             last_finish = timestamp
