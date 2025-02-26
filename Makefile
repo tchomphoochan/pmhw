@@ -33,6 +33,9 @@ endif
 ifneq ($(strip $(DEBUG)),)
 CONNECTALFLAGS += -D DEBUG
 endif
+CONNECTALFLAGS += --nonstrict
+
+CONNECTALFLAGS += --verilatorflags="--no-timing"
 
 
 include $(CONNECTALDIR)/Makefile.connectal

@@ -2,6 +2,8 @@
 /build*/
 /verilator/
 /bluesim/
+/awsf1/
+/vcu108/
 
 # Caches.
 [._]*cache*
@@ -19,3 +21,4 @@ compile_commands.json
 # Project configuration
 PmConfig.bsv
 param_grid_config.py
+
