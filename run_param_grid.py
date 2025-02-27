@@ -52,7 +52,7 @@ def run_sim(
         [
             "/usr/bin/env",
             "make",
-            'VERILATOR_PROJECT_ARGS="--autoflush"',
+            'VERILATOR_PROJECT_ARGS=--autoflush --no-timing',
             "-j",
             "-C",
             build_dir,
