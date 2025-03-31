@@ -1,6 +1,6 @@
 import PmConfig::*;
-import PmCore::*;
-import PmIfc::*;
+import InternalTypes::*;
+import HwTypes::*;
 import GetPut::*;
 import FIFO::*;
 import SpecialFIFOs::*;

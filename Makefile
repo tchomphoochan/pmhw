@@ -2,14 +2,15 @@ ifndef CONNECTALDIR
 $(error CONNECTALDIR variable is not defined, aborting build)
 endif
 
-ifeq ($(strip $(DB)),)
-S2H_INTERFACES = HostToPuppetmasterRequest:PmTop.request
-H2S_INTERFACES = PmTop:PuppetmasterToHostIndication
-else
-S2H_INTERFACES = HostToPuppetmasterRequest:PmTop.request HostToPuppetRequest:PmTop.puppetRequest
-H2S_INTERFACES = PmTop:PuppetmasterToHostIndication PmTop:PuppetToHostIndication
-endif
-BSVFILES += bsv/PmConfig.bsv bsv/PmIfc.bsv
+# Declare all Connectal interfaces
+S2H_INTERFACES = HostSetupRequest:HwTop.hostSetupRequest \
+  HostTxnRequest:HwTop.hostTxnRequest \
+	HostWorkDone:HwTop.hostWorkDone
+H2S_INTERFACES = HwTop:DebugIndication \
+  HwTop:WorkIndication
+
+# Connectal requires these Make variables
+BSVFILES += bsv/PmConfig.bsv bsv/HwTypes.bsv
 BSVPATH += $(CONNECTALDIR)/bsv
 ifeq ($(strip $(DB)),)
 CPPFILES += main.cpp

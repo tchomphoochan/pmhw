@@ -13,8 +13,8 @@ import Vector::*;
 
 import PmConfig::*;
 import Executor::*;
-import PmCore::*;
-import PmIfc::*;
+import InternalTypes::*;
+import HwTypes::*;
 import Renamer::*;
 import Scheduler::*;
 import Shard::*;

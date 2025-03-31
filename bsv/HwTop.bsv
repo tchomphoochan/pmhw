@@ -1,5 +1,5 @@
 ////////////////////////////////////////////////////////////////////////////////
-//  Filename      : PmTop.bsv
+//  Filename      : HwTop.bsv
 //  Description   : Top-level connections for Puppetmaster.
 ////////////////////////////////////////////////////////////////////////////////
 import ClientServer::*;
@@ -7,8 +7,8 @@ import Connectable::*;
 import GetPut::*;
 import Vector::*;
 
-import PmIfc::*;
-import PmCore::*;
+import HwTypes::*;
+import InternalTypes::*;
 import Puppetmaster::*;
 import TxnDriver::*;
 import Executor::*;
@@ -17,7 +17,7 @@ import Executor::*;
 Connectal automatically sets up software-to-host communication based on this interface.
 We simply need to implement those interfaces so the hardware knows what to do with these messages.
 */
-interface PmTop;
+interface HwTop;
     // Host can configure whether to use fake or real transaction driver and executor.
     interface HostSetupRequest hostSetupRequest;
     // Host can schedule a transaction (through the real transaction driver).
@@ -26,7 +26,7 @@ interface PmTop;
     interface HostWorkDone hostWorkDone;
 endinterface
 
-module mkPmTop#(
+module mkHwTop#(
     /*
     Connectal automatically sets up host-to-software communication based on this interface.
     Hardware can call these "indication" methods to send messages.
@@ -35,7 +35,7 @@ module mkPmTop#(
     DebugIndication debugInd,
     // Real executor can tell the host workers there's work to do.
     WorkIndication workInd
-)(PmTop);
+)(HwTop);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.

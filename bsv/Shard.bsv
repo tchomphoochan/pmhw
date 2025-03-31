@@ -8,8 +8,8 @@ import BRAM::*;
 import Vector::*;
 
 import PmConfig::*;
-import PmCore::*;
-import PmIfc::*;
+import InternalTypes::*;
+import HwTypes::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Module interface.

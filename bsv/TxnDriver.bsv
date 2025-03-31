@@ -1,5 +1,5 @@
-import PmIfc::*;
-import PmCore::*;
+import HwTypes::*;
+import InternalTypes::*;
 import GetPut::*;
 import FIFO::*;
 import SpecialFIFOs::*;

@@ -1,12 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
-//  Filename      : PmCore.bsv
+//  Filename      : InternalTypes.bsv
 //  Description   : Common types and constants used by multiple modules.
 ////////////////////////////////////////////////////////////////////////////////
 import DefaultValue::*;
 import Vector::*;
 
 import PmConfig::*;
-import PmIfc::*;
+import HwTypes::*;
 
 typedef TAdd#(LogNumberShards, LogSizeShard) LogNumberLiveObjects;
 typedef TExp#(LogNumberLiveObjects) NumberLiveObjects;
