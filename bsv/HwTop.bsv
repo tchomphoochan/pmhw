@@ -95,16 +95,9 @@ module mkHwTop#(
     // - Configure the fake transaction driver
     // - Configure the fake executor
     interface HostSetupRequest hostSetupRequest;
-        method Action setSimulatedPuppets(Maybe#(ClockPeriod) clockPeriod);
-            case (clockPeriod) matches
-                tagged Valid .p: begin
-                    fakeExecutor.setClockPeriod(p);
-                    executorMux.select(1);
-                end
-                tagged Invalid: begin
-                    executorMux.select(0);
-                end
-            endcase
+        method Action setSimulatedPuppets(Bool useSimulated, ClockPeriod clockPeriod);
+            fakeExecutor.setClockPeriod(clockPeriod);
+            executorMux.select(useSimulated ? 1 : 0);
         endmethod
     endinterface
 

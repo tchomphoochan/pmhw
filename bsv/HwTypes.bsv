@@ -48,8 +48,9 @@ Software can configure whether inputs should be fed from the host or generated o
 interface HostSetupRequest;
     /*
     Set whether to use simulated puppets. If so, simulated puppets have a certain simulated clock period.
+    Sadly Connectal doesn't support Maybe types.
     */
-    method Action setSimulatedPuppets(Maybe#(ClockPeriod) clockPeriod);
+    method Action setSimulatedPuppets(Bool useSimulated, ClockPeriod clockPeriod);
 endinterface
 
 /*
