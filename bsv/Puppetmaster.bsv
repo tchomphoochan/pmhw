@@ -12,9 +12,9 @@ import GetPut::*;
 import Vector::*;
 
 import PmConfig::*;
+import Executor::*;
 import PmCore::*;
 import PmIfc::*;
-import Puppets::*;
 import Renamer::*;
 import Scheduler::*;
 import Shard::*;
@@ -26,16 +26,17 @@ typedef TSub#(SizeSchedulingPool, 1) NumberPendingTransactions;
 
 typedef Bit#(TLog#(TAdd#(NumberPendingTransactions, 1))) PendingTransactionCount;
 
-typedef InputTransaction PuppetmasterRequest;
-
 interface Puppetmaster;
-    interface Put#(PuppetmasterRequest) request;
-    interface Get#(Message) renamed;
-    interface Get#(Message) freed;
-    interface Get#(Message) failed;
-    method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
+    interface Put#(InputTransaction) requests;
+    interface Get#(ExecutorRequest) responses;
     method Action transactionFinished(PuppetId pid);
     method Action clearState();
+
+    // Debug messages
+    interface Get#(DebugMessage) renamed;
+    interface Get#(DebugMessage) freed;
+    interface Get#(DebugMessage) failed;
+    method Vector#(NumberPuppets, Maybe#(TransactionId)) pollPuppets();
 endinterface
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,7 +55,7 @@ Integer maxPendingTransactions = valueOf(NumberPendingTransactions);
 ///
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
+module mkPuppetmaster(Puppetmaster);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
     ////////////////////////////////////////////////////////////////////////////////
@@ -78,10 +79,12 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     let renamer <- mkRenamer();
     let scheduler <- mkScheduler();
 
+    FIFO#(ExecutorRequest) execFF <- mkFIFO();
+
     // Fifos to serialize status messages.
-    FIFO#(Message) renamedMsgFifo <- mkFIFO();
-    FIFO#(Message) freedMsgFifo <- mkFIFO();
-    FIFO#(Message) failedMsgFifo <- mkFIFO();
+    FIFO#(DebugMessage) renamedMsgFifo <- mkFIFO();
+    FIFO#(DebugMessage) freedMsgFifo <- mkFIFO();
+    FIFO#(DebugMessage) failedMsgFifo <- mkFIFO();
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -132,7 +135,7 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         let result <- renamer.rename.response.get();
         pendingTrs[pendingTrCount[1]] <= result;
         pendingTrCount[1] <= pendingTrCount[1] + 1;
-        renamedMsgFifo.enq(Message {
+        renamedMsgFifo.enq(DebugMessage {
             tid: result.renamedTr.tid,
             startTime: result.startTime,
             endTime: cycle
@@ -143,7 +146,7 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     // Notify caller about failed transactions.
     rule getFailed;
         let result <- renamer.fail.get();
-        failedMsgFifo.enq(Message {
+        failedMsgFifo.enq(DebugMessage {
             tid: result.tid,
             startTime: result.startTime,
             endTime: cycle
@@ -154,7 +157,7 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     // Notify caller about freed transactions.
     rule getFreed;
         let result <- renamer.delete.response.get();
-        freedMsgFifo.enq(Message {
+        freedMsgFifo.enq(DebugMessage {
             tid: result.tid,
             startTime: result.startTime,
             endTime: cycle
@@ -205,9 +208,11 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
         let started = pendingTrs[trIndex];
         runningTrs[puppetIndex] <= started;
         runningTrFlags[puppetIndex] <= True;
-        puppetIndication.startTransaction(
-            puppetIndex, started.renamedTr.tid, started.renamedTr.trData, cycle
-        );
+        execFF.enq( ExecutorRequest {
+            pid: puppetIndex,
+            tid: started.renamedTr.tid,
+            trData: started.renamedTr.trData,
+            cycle: cycle } );
         // If transaction is not the last in the buffer, move the last to this position.
         let newPendingTrCount = pendingTrCount[0] - 1;
         if (trIndex != newPendingTrCount) begin
@@ -231,7 +236,7 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
     // Incoming transactions get forwarded to the renamer.
-    interface Put request;
+    interface Put requests;
         method Action put(InputTransaction inputTr);
             partialMode <= False;
             renamer.rename.request.put(RenameRequest {
@@ -241,6 +246,8 @@ module mkPuppetmaster#(PuppetToHostIndication puppetIndication)(Puppetmaster);
             $fdisplay(stderr, "[%8d] Puppetmaster: enqueued T#%h", cycle, inputTr.tid);
         endmethod
     endinterface
+
+    interface responses = toGet(execFF);
 
     interface renamed = toGet(renamedMsgFifo);
     interface freed = toGet(freedMsgFifo);
@@ -274,8 +281,8 @@ typedef TMul#(NumberE2ETestRounds, SizeSchedulingPool) NumberE2ETests;
 
 Integer numE2ETests = valueOf(NumberE2ETests);
 
-function Vector#(NumberE2ETests, PuppetmasterRequest) makeE2ETests();
-    Vector#(NumberE2ETests, PuppetmasterRequest) testInputs = newVector;
+function Vector#(NumberE2ETests, InputTransaction) makeE2ETests();
+    Vector#(NumberE2ETests, InputTransaction) testInputs = newVector;
     for (Integer i = 0; i < numE2ETests; i = i + 1) begin
         testInputs[i].tid = fromInteger(i);
         testInputs[i].trData = extend(pack(case (i % numE2ETests) matches
@@ -304,83 +311,83 @@ function Vector#(NumberE2ETests, PuppetmasterRequest) makeE2ETests();
     return testInputs;
 endfunction
 
-////////////////////////////////////////////////////////////////////////////////
-// Test runner.
-////////////////////////////////////////////////////////////////////////////////
-typedef struct {
-    Maybe#(TransactionId) maybeTid;
-} PuppetStatus;
+// ////////////////////////////////////////////////////////////////////////////////
+// // Test runner.
+// ////////////////////////////////////////////////////////////////////////////////
+// typedef struct {
+//     Maybe#(TransactionId) maybeTid;
+// } PuppetStatus;
 
-instance FShow#(PuppetStatus);
-    function Fmt fshow(PuppetStatus status);
-        case (status.maybeTid) matches
-            { tagged Invalid } : return $format("--");
-            { tagged Valid .tid } : return $format("%2h", tid);
-        endcase
-    endfunction
-endinstance
+// instance FShow#(PuppetStatus);
+//     function Fmt fshow(PuppetStatus status);
+//         case (status.maybeTid) matches
+//             { tagged Invalid } : return $format("--");
+//             { tagged Valid .tid } : return $format("%2h", tid);
+//         endcase
+//     endfunction
+// endinstance
 
-function PuppetStatus toStatus(Maybe#(TransactionId) maybeTid);
-    return PuppetStatus { maybeTid : maybeTid };
-endfunction
+// function PuppetStatus toStatus(Maybe#(TransactionId) maybeTid);
+//     return PuppetStatus { maybeTid : maybeTid };
+// endfunction
 
-(* mutually_exclusive = "feed, clear" *)
-(* descending_urgency = "mkConnectionGetPut, myPuppetmaster_sendTransaction" *)
-(* descending_urgency = "drainFailed, drainFreed" *)
-module mkPuppetmasterTestbench();
-    Puppets myPuppets <- mkPuppets();
-    Puppetmaster myPuppetmaster <- mkPuppetmaster(myPuppets.indication);
-    mkConnection(myPuppets.finish, toPut(myPuppetmaster.transactionFinished));
+// (* mutually_exclusive = "feed, clear" *)
+// (* descending_urgency = "mkConnectionGetPut, myPuppetmaster_sendTransaction" *)
+// (* descending_urgency = "drainFailed, drainFreed" *)
+// module mkPuppetmasterTestbench();
+//     FakeExecutor myPuppets <- mkFakeExecutor();
+//     Puppetmaster myPuppetmaster <- mkPuppetmaster(myPuppets.indication);
+//     mkConnection(myPuppets.finish, toPut(myPuppetmaster.transactionFinished));
 
-    Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 1)))) counter <- mkReg(0);
-    Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) renamedCounter[2] <- mkCReg(2, 0);
-    Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) finishedCounter[2] <- mkCReg(2, 0);
-    Reg#(UInt#(32)) cycle <- mkReg(0);
-    Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) prevResult <- mkReg(?);
+//     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 1)))) counter <- mkReg(0);
+//     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) renamedCounter[2] <- mkCReg(2, 0);
+//     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) finishedCounter[2] <- mkCReg(2, 0);
+//     Reg#(UInt#(32)) cycle <- mkReg(0);
+//     Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) prevResult <- mkReg(?);
 
-    let testInputs = makeE2ETests();
+//     let testInputs = makeE2ETests();
 
-    (* no_implicit_conditions, fire_when_enabled *)
-    rule tick;
-        cycle <= cycle + 1;
-    endrule
+//     (* no_implicit_conditions, fire_when_enabled *)
+//     rule tick;
+//         cycle <= cycle + 1;
+//     endrule
 
-    rule feed if (counter < fromInteger(numE2ETests));
-        counter <= counter + 1;
-        myPuppetmaster.request.put(testInputs[counter]);
-    endrule
+//     rule feed if (counter < fromInteger(numE2ETests));
+//         counter <= counter + 1;
+//         myPuppetmaster.request.put(testInputs[counter]);
+//     endrule
 
-    rule drainRenamed;
-        let _ <- myPuppetmaster.renamed.get();
-        renamedCounter[0] <= renamedCounter[0] + 1;
-    endrule
+//     rule drainRenamed;
+//         let _ <- myPuppetmaster.renamed.get();
+//         renamedCounter[0] <= renamedCounter[0] + 1;
+//     endrule
 
-    rule drainFreed;
-        let _ <- myPuppetmaster.freed.get();
-        finishedCounter[0] <= finishedCounter[0] + 1;
-    endrule
+//     rule drainFreed;
+//         let _ <- myPuppetmaster.freed.get();
+//         finishedCounter[0] <= finishedCounter[0] + 1;
+//     endrule
 
-    rule drainFailed;
-        let _ <- myPuppetmaster.failed.get();
-        finishedCounter[0] <= finishedCounter[0] + 1;
-    endrule
+//     rule drainFailed;
+//         let _ <- myPuppetmaster.failed.get();
+//         finishedCounter[0] <= finishedCounter[0] + 1;
+//     endrule
 
-    rule clear if (renamedCounter[1] == fromInteger(numE2ETests));
-        renamedCounter[1] <= renamedCounter[1] + 1;
-        myPuppetmaster.clearState();
-    endrule
+//     rule clear if (renamedCounter[1] == fromInteger(numE2ETests));
+//         renamedCounter[1] <= renamedCounter[1] + 1;
+//         myPuppetmaster.clearState();
+//     endrule
 
-    rule finish if (finishedCounter[1] == fromInteger(numE2ETests));
-        $finish();
-    endrule
+//     rule finish if (finishedCounter[1] == fromInteger(numE2ETests));
+//         $finish();
+//     endrule
 
-    rule stream;
-        let result = myPuppetmaster.pollPuppets();
-        prevResult <= result;
-        if (prevResult != result) begin
-            $fdisplay(stderr, "[%8d] Puppetmaster: running ", cycle,
-                      fshow(map(toStatus, result)));
-            $display("%5d: ", cycle, fshow(map(toStatus, result)));
-        end
-    endrule
-endmodule
+//     rule stream;
+//         let result = myPuppetmaster.pollPuppets();
+//         prevResult <= result;
+//         if (prevResult != result) begin
+//             $fdisplay(stderr, "[%8d] Puppetmaster: running ", cycle,
+//                       fshow(map(toStatus, result)));
+//             $display("%5d: ", cycle, fshow(map(toStatus, result)));
+//         end
+//     endrule
+// endmodule

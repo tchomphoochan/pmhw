@@ -5,6 +5,9 @@
 /awsf1/
 /vcu108/
 
+# Build files
+*.bo
+
 # Caches.
 [._]*cache*
 

@@ -20,27 +20,42 @@ typedef Bit#(LogMaxTransactionObjectCount) TransactionObjectCounter;
 // Sizes determined by config.
 typedef UInt#(LogNumberPuppets) PuppetId;
 
-typedef enum {
-    DatabaseRead,
-    DatabaseWrite,
-    DatabaseTransfer,
-    MessageFetch,
-    MessagePost
-} TransactionType deriving (Bits, Eq, FShow);
-
+/*
+Hardware-to-software interface for Puppetmaster's progress.
+*/
+// typedef enum {
+//   Renamed,
+//   Freed,
+//   Rejected
+// } DebugType deriving (Bits, Eq, FShow);
 typedef struct {
+    // DebugType msgType;
     TransactionId tid;
     Timestamp startTime;
     Timestamp endTime;
-} Message deriving(Bits, Eq, FShow);
-
-interface PuppetmasterToHostIndication;
-    method Action transactionRenamed(Message m);
-    method Action transactionFreed(Message m);
-    method Action transactionFailed(Message m);
+} DebugMessage deriving(Bits, Eq, FShow);
+interface DebugIndication;
+    method Action transactionRenamed(DebugMessage m);
+    method Action transactionFreed(DebugMessage m);
+    method Action transactionFailed(DebugMessage m);
 endinterface
 
-interface HostToPuppetmasterRequest;
+/*
+Software-to-hardware interface for configuring the overall Puppetmaster testing setup.
+For example, software can configure whether to use real puppets on the host or use simulated puppets in FPGA.
+Software can configure whether inputs should be fed from the host or generated on the fly.
+*/
+interface HostSetupRequest;
+    /*
+    Set whether to use simulated puppets. If so, simulated puppets have a certain simulated clock period.
+    */
+    method Action setSimulatedPuppets(Maybe#(ClockPeriod) clockPeriod);
+endinterface
+
+/*
+Software-to-hardware interface for submitting transactions through the real transaction driver.
+*/
+interface HostTxnRequest;
     method Action enqueueTransaction(
         TransactionId tid,
         TransactionData trData,
@@ -63,19 +78,51 @@ interface HostToPuppetmasterRequest;
         ObjectAddress writtenObj7,
         ObjectAddress writtenObj8
     );
-    method Action setPuppetClockPeriod(ClockPeriod period);
     method Action clearState();
 endinterface
 
-interface PuppetToHostIndication;
-    method Action startTransaction(
-        PuppetId pid,
-        TransactionId tid,
-        TransactionData trData,
-        Timestamp cycle
-    );
+/*
+Puppetmaster's message to the executor.
+*/
+typedef struct {
+    PuppetId pid;
+    TransactionId tid;
+    TransactionData trData;
+    Timestamp cycle;
+} ExecutorRequest deriving (Bits, Eq, FShow);
+
+/*
+Hardware-to-software interface for the real executor to relay the work back to host CPU.
+*/
+typedef ExecutorRequest WorkMessage;
+interface WorkIndication;
+    method Action startWork(WorkMessage msg);
 endinterface
 
-interface HostToPuppetRequest;
-    method Action transactionFinished(PuppetId pid);
+/*
+Software-to-hardware interface for host worker to notify executor it's done.
+*/
+interface HostWorkDone;
+    method Action workDone(PuppetId pid);
 endinterface
+
+/*
+Transaction data parsed into tranasction type for fake executors
+*/
+typedef enum {
+    DatabaseRead,
+    DatabaseWrite,
+    DatabaseTransfer,
+    MessageFetch,
+    MessagePost
+} TransactionType deriving (Bits, Eq, FShow);
+
+function Timestamp getDuration(TransactionType trType);
+    return case (trType) matches
+        DatabaseRead : 75;
+        DatabaseWrite : 75;
+        DatabaseTransfer : 300;
+        MessageFetch : 550;
+        MessagePost : 700;
+    endcase;
+endfunction

@@ -1,43 +1,115 @@
 ////////////////////////////////////////////////////////////////////////////////
 //  Filename      : PmTop.bsv
-//  Description   : Connectal-friendly wrapper for Puppetmaster.
+//  Description   : Top-level connections for Puppetmaster.
 ////////////////////////////////////////////////////////////////////////////////
 import ClientServer::*;
 import Connectable::*;
 import GetPut::*;
 import Vector::*;
 
-import PmCore::*;
 import PmIfc::*;
+import PmCore::*;
 import Puppetmaster::*;
-import Puppets::*;
+import TxnDriver::*;
+import Executor::*;
 
+/*
+Connectal automatically sets up software-to-host communication based on this interface.
+We simply need to implement those interfaces so the hardware knows what to do with these messages.
+*/
 interface PmTop;
-    interface HostToPuppetmasterRequest request;
-`ifdef EXTERNAL_PUPPETS
-    interface HostToPuppetRequest puppetRequest;
-`endif
+    // Host can configure whether to use fake or real transaction driver and executor.
+    interface HostSetupRequest hostSetupRequest;
+    // Host can schedule a transaction (through the real transaction driver).
+    interface HostTxnRequest hostTxnRequest;
+    // Host-based worker can notify Puppetmaster if it has finished some transactions.
+    interface HostWorkDone hostWorkDone;
 endinterface
 
-`ifdef EXTERNAL_PUPPETS
 module mkPmTop#(
-    PuppetmasterToHostIndication indication,
-    PuppetToHostIndication puppetIndication
+    /*
+    Connectal automatically sets up host-to-software communication based on this interface.
+    Hardware can call these "indication" methods to send messages.
+    */
+    // TODO: ensure this is lowest priority
+    DebugIndication debugInd,
+    // Real executor can tell the host workers there's work to do.
+    WorkIndication workInd
 )(PmTop);
-    Puppetmaster pm <- mkPuppetmaster(puppetIndication);
-`else
-(* descending_urgency = "mkConnectionGetPut, pm_sendTransaction" *)
-module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
-    Puppets puppets <- mkPuppets();
-    Puppetmaster pm <- mkPuppetmaster(puppets.indication);
-    mkConnection(puppets.finish, toPut(pm.transactionFinished));
-`endif
 
-    mkConnection(pm.renamed, toPut(indication.transactionRenamed));
-    mkConnection(pm.freed, toPut(indication.transactionFreed));
-    mkConnection(pm.failed, toPut(indication.transactionFailed));
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Design elements.
+    ////////////////////////////////////////////////////////////////////////////////
 
-    interface HostToPuppetmasterRequest request;
+    // Input side
+    RealTxnDriver realTxnDriver <- mkRealTxnDriver;
+    // TODO: add FakeTxnDriver
+    TxnDriver allTxnDrivers[1] = {
+        realTxnDriver.txnDriver
+    };
+    TxnDriverMux#(1) txnDriverMux <- mkTxnDriverMux(arrayToVector(allTxnDrivers));
+
+    // Processing component
+    // Create the actual Puppetmaster instance.
+    Puppetmaster pm <- mkPuppetmaster;
+
+    // Output side
+    RealExecutor realExecutor <- mkRealExecutor;
+    FakeExecutor fakeExecutor <- mkFakeExecutor;
+    Executor allExecutors[2] = {
+        realExecutor.executor,
+        fakeExecutor.executor
+    };
+    ExecutorMux#(2) executorMux <- mkExecutorMux(arrayToVector(allExecutors));
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// Internal connections.
+    ////////////////////////////////////////////////////////////////////////////////
+
+    // Input side to processing component
+    mkConnection(txnDriverMux.txnDriver.transactions, pm.requests);
+
+    // Processing component to output side
+    mkConnection(pm.responses, executorMux.executor.requests);
+
+    // Output side back to processing component (free the completed transactions)
+    mkConnection(executorMux.executor.responses, toPut(pm.transactionFinished));
+
+    // Real executor controller pipes result back to host
+    // so host can do the work
+    mkConnection(realExecutor.toHost, toPut(workInd.startWork));
+
+    // Puppetmaster also provides debug messages in a queue.
+    // Pipe those debug messages out to host.
+    mkConnection(pm.renamed, toPut(debugInd.transactionRenamed));
+    mkConnection(pm.freed, toPut(debugInd.transactionFreed));
+    mkConnection(pm.failed, toPut(debugInd.transactionFailed));
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    /// External interfaces.
+    ////////////////////////////////////////////////////////////////////////////////
+
+    // Overall test setup
+    // - Configure the fake transaction driver
+    // - Configure the fake executor
+    interface HostSetupRequest hostSetupRequest;
+        method Action setSimulatedPuppets(Maybe#(ClockPeriod) clockPeriod);
+            case (clockPeriod) matches
+                tagged Valid .p: begin
+                    fakeExecutor.setClockPeriod(p);
+                    executorMux.select(1);
+                end
+                tagged Invalid: begin
+                    executorMux.select(0);
+                end
+            endcase
+        endmethod
+    endinterface
+
+    // Real transaction driver takes data from host
+    interface HostTxnRequest hostTxnRequest;
         method Action enqueueTransaction(
             TransactionId tid,
             TransactionData trData,
@@ -80,7 +152,7 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
                 writtenObj7,
                 writtenObj8
             };
-            pm.request.put(InputTransaction {
+            realTxnDriver.fromHost.put(InputTransaction {
                 tid: tid,
                 trData: trData,
                 readObjects: arrayToVector(readObjects),
@@ -89,93 +161,15 @@ module mkPmTop#(PuppetmasterToHostIndication indication)(PmTop);
                 writtenObjectCount: writtenObjectCount
             });
 	    endmethod
-
-`ifdef EXTERNAL_PUPPETS
-        method Action setPuppetClockPeriod(ClockPeriod period);
-            // Do nothing, puppets are external.
-        endmethod
-`else
-        method setPuppetClockPeriod = puppets.setClockPeriod;
-`endif
-
         method clearState = pm.clearState;
 	endinterface
 
-`ifdef EXTERNAL_PUPPETS
-    interface HostToPuppetRequest puppetRequest;
-        method Action transactionFinished(PuppetId pid);
-            pm.transactionFinished(pid);
+    // Real executor controller gets updates from host
+    // so it can tell Puppetmaster to free a transaction
+    interface HostWorkDone hostWorkDone;
+        method Action workDone(PuppetId pid);
+            realExecutor.fromHost.put(pid);
         endmethod
     endinterface
-`endif
-endmodule
 
-////////////////////////////////////////////////////////////////////////////////
-// PmTop tests (these reuse the Puppetmaster end-to-end test data).
-////////////////////////////////////////////////////////////////////////////////
-module mkTestIndication(PuppetmasterToHostIndication);
-    method Action transactionRenamed(Message m);
-        $display("renamed T#%h", m.tid);
-    endmethod
-
-    method Action transactionFreed(Message m);
-        $display("freed T#%h", m.tid);
-    endmethod
-
-    method Action transactionFailed(Message m);
-        $display("failed T#%h", m.tid);
-    endmethod
-endmodule
-
-`ifdef EXTERNAL_PUPPETS
-(* descending_urgency = "mkConnectionGetPut, myPmTop_pm_sendTransaction" *)
-`endif
-module mkPmTopTestbench();
-    let myIndication <- mkTestIndication();
-`ifdef EXTERNAL_PUPPETS
-    Puppets puppets <- mkPuppets();
-    PmTop myPmTop <- mkPmTop(myIndication, puppets.indication);
-    mkConnection(puppets.finish, toPut(myPmTop.puppetRequest.transactionFinished));
-`else
-    PmTop myPmTop <- mkPmTop(myIndication);
-`endif
-
-    Reg#(Bit#(32)) testIndex <- mkReg(0);
-    Reg#(Timestamp) cycle <- mkReg(0);
-
-    let testInputs = makeE2ETests();
-
-    (* fire_when_enabled, no_implicit_conditions *)
-    rule tick;
-        cycle <= cycle + 1;
-    endrule
-
-    rule feed if (testIndex < fromInteger(numE2ETests));
-        testIndex <= testIndex + 1;
-        let testInput = testInputs[testIndex];
-        let readObjs = testInput.readObjects;
-        let writtenObjs = testInput.writtenObjects;
-        myPmTop.request.enqueueTransaction(
-            testInput.tid,
-            testInput.trData,
-            testInput.readObjectCount,
-            readObjs[0],
-            readObjs[1],
-            readObjs[2],
-            readObjs[3],
-            readObjs[4],
-            readObjs[5],
-            readObjs[6],
-            readObjs[7],
-            testInput.writtenObjectCount,
-            writtenObjs[0],
-            writtenObjs[1],
-            writtenObjs[2],
-            writtenObjs[3],
-            writtenObjs[4],
-            writtenObjs[5],
-            writtenObjs[6],
-            writtenObjs[7]
-        );
-    endrule
 endmodule
