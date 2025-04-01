@@ -25,3 +25,5 @@ compile_commands.json
 PmConfig.bsv
 param_grid_config.py
 
+# Editor files
+.vscode
