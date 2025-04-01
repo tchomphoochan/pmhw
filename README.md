@@ -21,10 +21,10 @@ Copy `DefaultPmConfig.bsv` to `bsv/PmConfig.bsv` and change the values as desire
 Compiling and running tests in Bluesim
 --------------------------------------
 ```
-$ meson builddir && cd builddir
-$ meson compile
-$ ./mkPuppetmasterTestbench
+make test
+./mkSchedulerTestbench.exe
 ```
+(or other test benches generated)
 
 Compiling and running FPGA design in Verilator
 ----------------------------------------------

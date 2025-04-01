@@ -1,3 +1,29 @@
+.PHONY: clean
+clean:
+	rm -f bsv/*.cxx bsv/*.h bsv/*.o bsv/*.so bsv/*.bo bsv/*.ba bsv/*.sched bsv/a.out bsv/*.exe
+
+MY_BSC_FLAGS=+RTS -Ksize -RTS \
+  -aggressive-conditions -show-schedule \
+  -suppress-warnings G0020:G0023:G0024:S0073:S0080 \
+  -p +:%/Libraries/FPGA/Xilinx:bsv \
+  -vdir ./bsv \
+  -bdir ./bsv \
+  -simdir ./bsv \
+  -info-dir ./bsv \
+
+.PHONY: test
+test:
+	make FILE=Scheduler.bsv MODULE=mkSchedulerTestbench _test
+	make FILE=Renamer.bsv MODULE=mkRenamerTestbench _test
+	make FILE=Shard.bsv MODULE=mkShardTestbench _test
+	rm -f bsv/*.cxx bsv/*.h bsv/*.o bsv/*.bo bsv/*.ba bsv/*.sched bsv/a.out
+	chmod +x bsv/*.exe
+
+.PHONY: _test
+_test:
+	bsc $(MY_BSC_FLAGS) -sim -g $(MODULE) -u ./bsv/$(FILE)
+	bsc $(MY_BSC_FLAGS) -sim -e $(MODULE) -o ./bsv/$(MODULE).exe
+
 ifndef CONNECTALDIR
 $(error CONNECTALDIR variable is not defined, aborting build)
 endif
