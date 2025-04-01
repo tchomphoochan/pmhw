@@ -16,8 +16,11 @@
 #include <vector>
 
 #include "GeneratedTypes.h"
-#include "HostToPuppetmasterRequest.h"
-#include "PuppetmasterToHostIndication.h"
+#include "HostSetupRequest.h"
+#include "HostTxnRequest.h"
+#include "DebugIndication.h"
+#include "WorkIndication.h"
+#include "HostWorkDone.h"
 
 constexpr std::size_t objSetSize = 8;
 constexpr std::size_t poolSize = 8;
@@ -48,7 +51,7 @@ void print_log(std::string_view msg) {
 }
 
 // Handler for messages received from the FPGA
-class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
+class DebugIndication : public DebugIndicationWrapper {
 private:
     const int numTansactions;
     int numRenamed = 0;
@@ -62,7 +65,7 @@ private:
     }
 
 public:
-    void transactionRenamed(Message m) {
+    void transactionRenamed(DebugMessage m) {
         log_message(m.tid, "renamed");
         if (++numRenamed == numTansactions) {
             numRenamed = 0;
@@ -70,7 +73,7 @@ public:
         }
     }
 
-    void transactionFreed(Message m) {
+    void transactionFreed(DebugMessage m) {
         log_message(m.tid, "freed");
         if (++numFreed == numTansactions) {
             numFreed = 0;
@@ -78,7 +81,7 @@ public:
         }
     }
 
-    void transactionFailed(Message m) {
+    void transactionFailed(DebugMessage m) {
         log_message(m.tid, "failed");
         // Failed transactions skip both the renaming and the freeing step.
         if (++numRenamed == numTansactions) {
@@ -91,8 +94,8 @@ public:
         }
     }
 
-    PuppetmasterToHostIndication(int id, int totalTransactions)
-        : PuppetmasterToHostIndicationWrapper(id), numTansactions(totalTransactions) {}
+    DebugIndication(int id, int totalTransactions)
+        : DebugIndicationWrapper(id), numTansactions(totalTransactions) {}
 };
 
 void load_default_test(std::vector<InputTransaction>& testInputs) {
@@ -246,12 +249,14 @@ int main(int argc, char** argv) {
     // Run tests.
     print_log("Connectal setting up...");
 
-    HostToPuppetmasterRequestProxy* fpga =
-        new HostToPuppetmasterRequestProxy(IfcNames_HostToPuppetmasterRequestS2H);
+    HostSetupRequestProxy* setup =
+        new HostSetupRequestProxy(IfcNames_HostSetupRequestS2H);
+    HostTxnRequestProxy* txn =
+        new HostTxnRequestProxy(IfcNames_HostTxnRequestS2H);
     print_log("Initialized the request interface to the FPGA");
 
-    PuppetmasterToHostIndication puppetmasterToHost(
-        IfcNames_PuppetmasterToHostIndicationH2S, testInputs.size());
+    DebugIndication puppetmasterToHost(
+        IfcNames_DebugIndicationH2S, testInputs.size());
     print_log("Initialized the indication interface");
 
     for (auto&& period : periods) {
@@ -259,9 +264,9 @@ int main(int argc, char** argv) {
         msg << "Enqueuing " << testInputs.size() << " transactions with clock period "
             << period;
         print_log(msg.str());
-        fpga->setPuppetClockPeriod(period);
+        setup->setSimulatedPuppets(true, period);
         for (auto&& tr : testInputs) {
-            fpga->enqueueTransaction(
+            txn->enqueueTransaction(
                 tr.tid, tr.trType, tr.readObjectCount, tr.readObjects[0],
                 tr.readObjects[1], tr.readObjects[2], tr.readObjects[3],
                 tr.readObjects[4], tr.readObjects[5], tr.readObjects[6],
@@ -272,7 +277,7 @@ int main(int argc, char** argv) {
         }
         sem_wait(&sem_all_renamed);
         print_log("Waiting for termination...");
-        fpga->clearState();
+        txn->clearState();
         sem_wait(&sem_all_freed);
     }
 }
