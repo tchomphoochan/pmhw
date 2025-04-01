@@ -12,6 +12,8 @@
 bsv/*.cxx
 bsv/*.h
 bsv/*.o
+*.exe
+*.so
 
 # Caches.
 [._]*cache*
