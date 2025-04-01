@@ -311,83 +311,84 @@ function Vector#(NumberE2ETests, InputTransaction) makeE2ETests();
     return testInputs;
 endfunction
 
-// ////////////////////////////////////////////////////////////////////////////////
-// // Test runner.
-// ////////////////////////////////////////////////////////////////////////////////
-// typedef struct {
-//     Maybe#(TransactionId) maybeTid;
-// } PuppetStatus;
+////////////////////////////////////////////////////////////////////////////////
+// Test runner.
+////////////////////////////////////////////////////////////////////////////////
+typedef struct {
+    Maybe#(TransactionId) maybeTid;
+} PuppetStatus;
 
-// instance FShow#(PuppetStatus);
-//     function Fmt fshow(PuppetStatus status);
-//         case (status.maybeTid) matches
-//             { tagged Invalid } : return $format("--");
-//             { tagged Valid .tid } : return $format("%2h", tid);
-//         endcase
-//     endfunction
-// endinstance
+instance FShow#(PuppetStatus);
+    function Fmt fshow(PuppetStatus status);
+        case (status.maybeTid) matches
+            { tagged Invalid } : return $format("--");
+            { tagged Valid .tid } : return $format("%2h", tid);
+        endcase
+    endfunction
+endinstance
 
-// function PuppetStatus toStatus(Maybe#(TransactionId) maybeTid);
-//     return PuppetStatus { maybeTid : maybeTid };
-// endfunction
+function PuppetStatus toStatus(Maybe#(TransactionId) maybeTid);
+    return PuppetStatus { maybeTid : maybeTid };
+endfunction
 
-// (* mutually_exclusive = "feed, clear" *)
-// (* descending_urgency = "mkConnectionGetPut, myPuppetmaster_sendTransaction" *)
-// (* descending_urgency = "drainFailed, drainFreed" *)
-// module mkPuppetmasterTestbench();
-//     FakeExecutor myPuppets <- mkFakeExecutor();
-//     Puppetmaster myPuppetmaster <- mkPuppetmaster(myPuppets.indication);
-//     mkConnection(myPuppets.finish, toPut(myPuppetmaster.transactionFinished));
+(* mutually_exclusive = "feed, clear" *)
+(* descending_urgency = "mkConnectionGetPut, myPuppetmaster_sendTransaction" *)
+(* descending_urgency = "drainFailed, drainFreed" *)
+module mkPuppetmasterTestbench();
+    FakeExecutor myPuppets <- mkFakeExecutor;
+    Puppetmaster myPuppetmaster <- mkPuppetmaster;
+    mkConnection(myPuppetmaster.responses, myPuppets.executor.requests);
+    mkConnection(myPuppets.executor.responses, toPut(myPuppetmaster.transactionFinished));
 
-//     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 1)))) counter <- mkReg(0);
-//     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) renamedCounter[2] <- mkCReg(2, 0);
-//     Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) finishedCounter[2] <- mkCReg(2, 0);
-//     Reg#(UInt#(32)) cycle <- mkReg(0);
-//     Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) prevResult <- mkReg(?);
+    Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 1)))) counter <- mkReg(0);
+    Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) renamedCounter[2] <- mkCReg(2, 0);
+    Reg#(UInt#(TLog#(TAdd#(NumberE2ETests, 2)))) finishedCounter[2] <- mkCReg(2, 0);
+    Reg#(UInt#(32)) cycle <- mkReg(0);
+    Reg#(Vector#(NumberPuppets, Maybe#(TransactionId))) prevResult <- mkReg(?);
 
-//     let testInputs = makeE2ETests();
+    let testInputs = makeE2ETests();
 
-//     (* no_implicit_conditions, fire_when_enabled *)
-//     rule tick;
-//         cycle <= cycle + 1;
-//     endrule
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle + 1;
+    endrule
 
-//     rule feed if (counter < fromInteger(numE2ETests));
-//         counter <= counter + 1;
-//         myPuppetmaster.request.put(testInputs[counter]);
-//     endrule
+    rule feed if (counter < fromInteger(numE2ETests));
+        counter <= counter + 1;
+        myPuppetmaster.requests.put(testInputs[counter]);
+    endrule
 
-//     rule drainRenamed;
-//         let _ <- myPuppetmaster.renamed.get();
-//         renamedCounter[0] <= renamedCounter[0] + 1;
-//     endrule
+    rule drainRenamed;
+        let _ <- myPuppetmaster.renamed.get();
+        renamedCounter[0] <= renamedCounter[0] + 1;
+    endrule
 
-//     rule drainFreed;
-//         let _ <- myPuppetmaster.freed.get();
-//         finishedCounter[0] <= finishedCounter[0] + 1;
-//     endrule
+    rule drainFreed;
+        let _ <- myPuppetmaster.freed.get();
+        finishedCounter[0] <= finishedCounter[0] + 1;
+    endrule
 
-//     rule drainFailed;
-//         let _ <- myPuppetmaster.failed.get();
-//         finishedCounter[0] <= finishedCounter[0] + 1;
-//     endrule
+    rule drainFailed;
+        let _ <- myPuppetmaster.failed.get();
+        finishedCounter[0] <= finishedCounter[0] + 1;
+    endrule
 
-//     rule clear if (renamedCounter[1] == fromInteger(numE2ETests));
-//         renamedCounter[1] <= renamedCounter[1] + 1;
-//         myPuppetmaster.clearState();
-//     endrule
+    rule clear if (renamedCounter[1] == fromInteger(numE2ETests));
+        renamedCounter[1] <= renamedCounter[1] + 1;
+        myPuppetmaster.clearState();
+    endrule
 
-//     rule finish if (finishedCounter[1] == fromInteger(numE2ETests));
-//         $finish();
-//     endrule
+    rule finish if (finishedCounter[1] == fromInteger(numE2ETests));
+        $finish();
+    endrule
 
-//     rule stream;
-//         let result = myPuppetmaster.pollPuppets();
-//         prevResult <= result;
-//         if (prevResult != result) begin
-//             $fdisplay(stderr, "[%8d] Puppetmaster: running ", cycle,
-//                       fshow(map(toStatus, result)));
-//             $display("%5d: ", cycle, fshow(map(toStatus, result)));
-//         end
-//     endrule
-// endmodule
+    rule stream;
+        let result = myPuppetmaster.pollPuppets();
+        prevResult <= result;
+        if (prevResult != result) begin
+            $fdisplay(stderr, "[%8d] Puppetmaster: running ", cycle,
+                      fshow(map(toStatus, result)));
+            $display("%5d: ", cycle, fshow(map(toStatus, result)));
+        end
+    endrule
+endmodule

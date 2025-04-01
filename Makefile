@@ -16,6 +16,7 @@ test:
 	make FILE=Scheduler.bsv MODULE=mkSchedulerTestbench _test
 	make FILE=Renamer.bsv MODULE=mkRenamerTestbench _test
 	make FILE=Shard.bsv MODULE=mkShardTestbench _test
+	make FILE=Puppetmaster.bsv MODULE=mkPuppetmasterTestbench _test
 	rm -f bsv/*.cxx bsv/*.h bsv/*.o bsv/*.bo bsv/*.ba bsv/*.sched bsv/a.out
 	chmod +x bsv/*.exe
 
