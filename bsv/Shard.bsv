@@ -301,6 +301,30 @@ function ShardRequest makeDeleteReq(ObjectName name);
 endfunction
 
 module mkShardTestbench();
+    /*
+    Test bench expects the following configuration:
+    typedef 3 LogNumberShards;
+    typedef 7 LogSizeShard;
+    typedef 4 LogNumberHashes;
+    typedef 6 NumberAddressOffsetBits;
+
+    The shard will use
+        bits[5:0] as offset
+        bits[12:6] as key
+        bits[15:13] as shard index.
+    (bits[63:16] are tags.)
+
+    We construct the test case by providing {tag, index, key}.
+    makeRenameReq will shift-left to create offset.
+
+    For the test cases below, we generally expect the output name to
+    match the bottom 3+7=10 bits, plus some collision offset. For example,
+    tstInputs[2] has 'h406 as input. The expectd output is 'h006.
+    This is because the shard renamer simply uses the key bits to index into hash table.
+    The offset bits are ignored. The shard index bits are untranslated
+    because it is expected that Renamer will only feed correct inputs (i.e. same shard indices).
+    */
+
     Shard myShard <- mkShard();
 
     Vector#(NumberShardTests, ShardRequest) testInputs;
@@ -330,15 +354,23 @@ module mkShardTestbench();
     testInputs[23] = makeDeleteReq('h006);
     testInputs[24] = makeRenameReq(64'hA0000006, ReadObject);
 
-    Reg#(UInt#(32)) counter <- mkReg(0);
-
-    rule feed if (counter < fromInteger(valueOf(NumberShardTests)));
-        counter <= counter + 1;
-        myShard.request.put(testInputs[counter]);
+    UInt#(32) maxInput = fromInteger(valueOf(NumberShardTests));
+    Reg#(UInt#(32)) inputCounter <- mkReg(0);
+    rule feed if (inputCounter < maxInput);
+        inputCounter <= inputCounter + 1;
+        myShard.request.put(testInputs[inputCounter]);
     endrule
 
+    function Bool isRenameReq(ShardRequest req);
+        return req matches tagged Rename .a ? True : False;
+    endfunction
+    UInt#(32) maxOutput = extend(countIf(isRenameReq, testInputs));
+    Reg#(UInt#(32)) outputCounter <- mkReg(0);
     rule stream;
         let res <- myShard.response.get();
         $display(fshow(res));
+        if (outputCounter == maxOutput-1) $finish;
+        outputCounter <= outputCounter+1;
     endrule
 endmodule
+
