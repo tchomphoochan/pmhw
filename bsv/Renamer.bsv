@@ -129,9 +129,7 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     Reg#(Timestamp) startTime <- mkReg(?);
     Reg#(ObjectType) objType <- mkReg(?);
     Reg#(TransactionObjectCounter) objIndex <- mkReg(0);
-`ifdef DEBUG_R
     Reg#(Timestamp) cycle <- mkReg(0);
-`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -145,12 +143,10 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-`ifdef DEBUG_R
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
     endrule
-`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -179,11 +175,9 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                                 objType <= WrittenObject;
                             end
                         end
-`ifdef DEBUG_R
-                    $display(
-                        "[%8d] Renamer: renaming read object %0d from T#%h on shard %0d",
-                        cycle, objIndex, inputTr.tid, getIndex(inputTr));
-`endif
+                        $fdisplay(stderr, 
+                            "[%8d] Renamer: renaming read object %0d from T#%h on shard %0d",
+                            cycle, objIndex, inputTr.tid, getIndex(inputTr));
                     end else begin
                         if (objIndex < inputTr.writtenObjectCount - 1) begin
                             // Go to next written object.
@@ -193,11 +187,9 @@ module mkRenameRequestDistributor(RenameRequestDistributor);
                             objIndex <= 0;
                             maybeInputTr <= tagged Invalid;
                         end
-`ifdef DEBUG_R
-                    $display(
-                        "[%8d] Renamer: renaming written object %0d from T#%h on shard %0d",
-                        cycle, objIndex, inputTr.tid, getIndex(inputTr));
-`endif
+                        $fdisplay(stderr, 
+                            "[%8d] Renamer: renaming written object %0d from T#%h on shard %0d",
+                            cycle, objIndex, inputTr.tid, getIndex(inputTr));
                     end
                     return tagged Rename ShardRenameRequest {
                         address: objType == ReadObject ? inputTr.readObjects[objIndex]
@@ -239,9 +231,7 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     Reg#(RenamedTransaction) req[3] <- mkCReg(3, defaultValue());
     Reg#(Timestamp) startTime[2] <- mkCReg(2, ?);
-`ifdef DEBUG_R
     Reg#(Timestamp) cycle <- mkReg(0);
-`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
@@ -261,12 +251,10 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-`ifdef DEBUG_R
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
     endrule
-`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -283,17 +271,13 @@ module mkDeleteRequestDistributor(DeleteRequestDistributor);
                     case (currentObj.objType) matches
                         ReadObject : begin
                             req[0].readObjectCount <= req[0].readObjectCount - 1;
-`ifdef DEBUG_R
-                    $display("[%8d] Renamer: deleting read object %0d from T#%h", cycle,
-                             req[0].readObjectCount - 1, req[0].tid);
-`endif
+                            $fdisplay(stderr, "[%8d] Renamer: deleting read object %0d from T#%h", cycle,
+                                    req[0].readObjectCount - 1, req[0].tid);
                         end
                         WrittenObject : begin
                             req[0].writtenObjectCount <= req[0].writtenObjectCount - 1;
-`ifdef DEBUG_R
-                    $display("[%8d] Renamer: deleting written object %0d from T#%h",
-                             cycle, req[0].writtenObjectCount - 1, req[0].tid);
-`endif
+                            $fdisplay(stderr, "[%8d] Renamer: deleting written object %0d from T#%h",
+                                    cycle, req[0].writtenObjectCount - 1, req[0].tid);
                         end
                     endcase
                     return tagged Delete ShardDeleteRequest { name: currentObj.objName };
@@ -346,9 +330,7 @@ module mkResponseAggregator(ResponseAggregator);
     Reg#(TransactionObjectCounter) readObjectCount <- mkReg(0);
     Reg#(TransactionObjectCounter) writtenObjectCount <- mkReg(0);
     Reg#(Timestamp) startTime <- mkReg(?);
-`ifdef DEBUG_R
     Reg#(Timestamp) cycle <- mkReg(0);
-`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions and function-like variables.
@@ -364,12 +346,10 @@ module mkResponseAggregator(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-`ifdef DEBUG_R
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
     endrule
-`endif
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
@@ -413,17 +393,13 @@ module mkResponseAggregator(ResponseAggregator);
                         newTr.readObjects[newTr.readObjectCount] = name;
                         newTr.readObjectCount = newTr.readObjectCount + 1;
                         readSet <= readSet | (1 << name);
-`ifdef DEBUG_R
-            $display("[%8d] Renamer: renamed read object %0d", cycle, readObjectCount);
-`endif
+                        $fdisplay(stderr, "[%8d] Renamer: renamed read object %0d", cycle, readObjectCount);
                     end
                     WrittenObject: begin
                         newTr.writtenObjects[newTr.writtenObjectCount] = name;
                         newTr.writtenObjectCount = newTr.writtenObjectCount + 1;
                         writeSet <= writeSet | (1 << name);
-`ifdef DEBUG_R
-            $display("[%8d] Renamer: renamed written object %0d", cycle, writtenObjectCount);
-`endif
+                        $fdisplay(stderr, "[%8d] Renamer: renamed written object %0d", cycle, writtenObjectCount);
                     end
                 endcase
             end
@@ -451,9 +427,7 @@ module mkResponseAggregator(ResponseAggregator);
             && !isSuccess(renamedTr)
         );
             maybeRenamedTr[0] <= tagged Invalid;
-`ifdef DEBUG_R
-            $display("[%8d] Renamer: failed to rename T#%h", cycle, renamedTr.tid);
-`endif
+            $fdisplay(stderr, "[%8d] Renamer: failed to rename T#%h", cycle, renamedTr.tid);
             return DeleteRequest { renamedTr : renamedTr, startTime: startTime };
         endmethod
     endinterface
@@ -695,6 +669,6 @@ module mkRenamerTestbench();
 
     rule stream;
         let result <- myRenamer.rename.response.get();
-        $display(fshow(result));
+        $fdisplay(stderr, fshow(result));
     endrule
 endmodule

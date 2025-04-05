@@ -106,9 +106,9 @@ module mkScheduler(Scheduler);
     Reg#(SchedulingPoolIndex) round <- mkReg(0);
     // Number of transactions that have already been merged in this round.
     Reg#(SchedulingPoolIndex) offset <- mkReg(0);
-`ifdef DEBUG_S
+    // Cycle counter
     Reg#(Timestamp) cycle <- mkReg(0);
-`endif
+    Reg#(Timestamp) reqStartCycle <- mkReg(0);
 
     ////////////////////////////////////////////////////////////////////////////////
     /// Functions.
@@ -124,12 +124,10 @@ module mkScheduler(Scheduler);
     ////////////////////////////////////////////////////////////////////////////////
     /// Rules.
     ////////////////////////////////////////////////////////////////////////////////
-`ifdef DEBUG_S
     (* no_implicit_conditions, fire_when_enabled *)
     rule tick;
         cycle <= cycle + 1;
     endrule
-`endif
 
     rule doTournament if (maybeTrSets matches tagged Valid .trSets
                           &&& round < fromInteger(maxRounds));
@@ -157,9 +155,7 @@ module mkScheduler(Scheduler);
         if (newOffset == 0) begin
             round <= round + 1;
         end
-`ifdef DEBUG_S
-        $display("[%8d] Scheduler: round %0d, offset %0d", cycle, round, offset);
-`endif
+        $fdisplay(stderr, "[%8d] Scheduler: round %0d, offset %0d", cycle, round, offset);
     endrule
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -170,6 +166,7 @@ module mkScheduler(Scheduler);
             maybeTrSets <= tagged Valid zipWith(transactionToSet, req, genVector);
             round <= 0;
             offset <= 0;
+            reqStartCycle <= cycle;
         endmethod
     endinterface
 
@@ -177,6 +174,8 @@ module mkScheduler(Scheduler);
         method ActionValue#(SchedulingResponse) get() if (
                 maybeTrSets matches tagged Valid .trSets
                 &&& round == fromInteger(maxRounds));
+            let duration  = cycle-reqStartCycle;
+            $display("mod=scheduler,task=schedule,latency=%0d", duration);
             maybeTrSets <= tagged Invalid;
             return trSets[0].indices;
         endmethod
@@ -256,8 +255,12 @@ module mkSchedulerTestbench();
         myScheduler.request.put(testInputs[counter]);
     endrule
 
+    Reg#(UInt#(32)) got <- mkReg(0);
+
     rule stream;
         let result <- myScheduler.response.get();
-        $display(fshow(result));
+        got <= got+1;
+        $fdisplay(stderr, fshow(result));
+        if (got == fromInteger(valueOf(NumberSchedulerTests) - 1)) $finish;
     endrule
 endmodule
