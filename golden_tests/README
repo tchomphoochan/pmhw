@@ -1,0 +1,2 @@
+These files are the expected output of the corresponding testbenches.
+`bsv/PmConfig` must have the correct values as explained in `DefaultPmConfig.bsv`.
