@@ -318,6 +318,7 @@ interface ResponseAggregator;
     interface Get#(DeleteRequest) failure;
 endinterface
 
+(* synthesize *)
 module mkResponseAggregator(ResponseAggregator);
     ////////////////////////////////////////////////////////////////////////////////
     /// Design elements.
