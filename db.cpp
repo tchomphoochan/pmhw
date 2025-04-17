@@ -17,10 +17,12 @@
 #include <unordered_set>
 
 #include "GeneratedTypes.h"
-#include "HostToPuppetRequest.h"
-#include "HostToPuppetmasterRequest.h"
-#include "PuppetToHostIndication.h"
-#include "PuppetmasterToHostIndication.h"
+#include "HostSetupRequest.h"
+#include "HostTxnRequest.h"
+#include "DebugIndication.h"
+#include "WorkIndication.h"
+#include "HostWorkDone.h"
+
 #include "config.h"
 #include "extern_cc.h"
 #include "global.h"
@@ -89,8 +91,9 @@ std::array<std::mutex, THREAD_CNT> threadQueueMutexes{};
 std::array<std::condition_variable, THREAD_CNT> threadQueueCvs{};
 bool programDone = false;
 /// Portals to hardware.
-HostToPuppetmasterRequestProxy* fpga;
-HostToPuppetRequestProxy* puppets;
+HostSetupRequestProxy* hostSetup;
+HostTxnRequestProxy* hostTxn;
+HostWorkDoneProxy* hostWorkDone;
 std::mutex g_hw_request_lock;
 
 // ----------------------------------------------------------------------------
@@ -146,7 +149,7 @@ void register_txn(txn_man* m_txn, base_query* m_query, row_t* reads[], row_t* wr
 
     {
         std::scoped_lock hwGuard(g_hw_request_lock);
-        fpga->enqueueTransaction(
+        hostTxn->enqueueTransaction(
             tid, trData, num_reads, readObjects[0], readObjects[1], readObjects[2],
             readObjects[3], readObjects[4], readObjects[5], readObjects[6],
             readObjects[7], num_writes, writtenObjects[0], writtenObjects[1],
@@ -206,7 +209,7 @@ void puppetThread(PuppetId pid) {
 
         {
             std::scoped_lock hwGuard(g_hw_request_lock);
-            puppets->transactionFinished(pid);
+            hostWorkDone->workDone(pid);
         }
     }
 }
@@ -215,9 +218,9 @@ void puppetThread(PuppetId pid) {
 // Helper class definitions.
 
 /// Handler for messages received from the FPGA.
-class PuppetmasterToHostIndication : public PuppetmasterToHostIndicationWrapper {
+class DebugIndication : public DebugIndicationWrapper {
 public:
-    void transactionRenamed(Message m) {
+    void transactionRenamed(DebugMessage m) {
         numPendingTransactions--;
         numPendingTransactionsCv.notify_all();
         numActiveTransactions++;
@@ -226,7 +229,7 @@ public:
                " at " << m.endTime << " in " << m.endTime - m.startTime << " cycles");
     }
 
-    void transactionFailed(Message m) {
+    void transactionFailed(DebugMessage m) {
         numPendingTransactions--;
         numPendingTransactionsCv.notify_all();
         PM_LOG("failed", m.tid,
@@ -240,38 +243,37 @@ public:
         g_tr_map_cv.notify_all();
     }
 
-    void transactionFreed(Message m) {
+    void transactionFreed(DebugMessage m) {
         numActiveTransactions--;
         numActiveTransactionsCv.notify_all();
         PM_LOG("freed", m.tid,
                " at " << m.endTime << " in " << m.endTime - m.startTime << " cycles");
     }
 
-    PuppetmasterToHostIndication(int id) : PuppetmasterToHostIndicationWrapper(id) {}
+    DebugIndication(int id) : DebugIndicationWrapper(id) {}
 };
 
 /// Handler for messages between FPGA and puppets.
-class PuppetToHostIndication : public PuppetToHostIndicationWrapper {
+class WorkIndication : public WorkIndicationWrapper {
 public:
-    void startTransaction(const PuppetId pid, const TransactionId tid,
-                          const TransactionData trData, Timestamp cycle) {
+    void startWork(WorkMessage msg) {
         {
-            std::scoped_lock threadQueueLock(threadQueueMutexes[pid]);
-            threadQueues[pid].push_back({tid, cycle});
+            std::scoped_lock threadQueueLock(threadQueueMutexes[msg.pid]);
+            threadQueues[msg.pid].push_back({msg.tid, msg.cycle});
         }
-        threadQueueCvs[pid].notify_all();
+        threadQueueCvs[msg.pid].notify_all();
     }
-    PuppetToHostIndication(int id) : PuppetToHostIndicationWrapper(id) {}
+    WorkIndication(int id) : WorkIndicationWrapper(id) {}
 };
 
 // ----------------------------------------------------------------------------
 // Global helper class instances.
 
 /// Indication interface for general progress messages.
-PuppetmasterToHostIndication* pmToHost;
+DebugIndication* debugInd;
 
 /// Indication interface for simulating puppets in software.
-PuppetToHostIndication* puppetsToHost;
+WorkIndication* workInd;
 
 // ----------------------------------------------------------------------------
 
@@ -279,14 +281,19 @@ PuppetToHostIndication* puppetsToHost;
 int main(int argc, char** argv) {
     CXX_MSG("Connectal setting up...");
 
-    fpga = new HostToPuppetmasterRequestProxy(IfcNames_HostToPuppetmasterRequestS2H);
-    puppets = new HostToPuppetRequestProxy(IfcNames_HostToPuppetRequestS2H);
+    hostSetup = new HostSetupRequestProxy(IfcNames_HostSetupRequestS2H);
+    hostTxn = new HostTxnRequestProxy(IfcNames_HostTxnRequestS2H);
+    hostWorkDone = new HostWorkDoneProxy(IfcNames_HostWorkDoneS2H);
     CXX_MSG("Initialized the request interface to the FPGA");
 
-    pmToHost =
-        new PuppetmasterToHostIndication(IfcNames_PuppetmasterToHostIndicationH2S);
-    puppetsToHost = new PuppetToHostIndication(IfcNames_PuppetToHostIndicationH2S);
+    debugInd =
+        new DebugIndication(IfcNames_DebugIndicationH2S);
+    workInd =
+        new WorkIndication(IfcNames_WorkIndicationH2S);
     CXX_MSG("Initialized the indication interfaces");
+
+    // Set up FPGA
+    hostSetup->setSimulatedPuppets(true, 20);
 
     // Set up db.
     g_params["abort_buffer_enable"] = ABORT_BUFFER_ENABLE ? "true" : "false";
@@ -319,7 +326,7 @@ int main(int argc, char** argv) {
     // Run remaining transactions.
     {
         std::scoped_lock hwGuard(g_hw_request_lock);
-        fpga->clearState();
+        hostTxn->clearState();
     }
     // Wait for all transactions to be freed.
     {
