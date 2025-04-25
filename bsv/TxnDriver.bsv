@@ -113,34 +113,44 @@ typedef TExp#(LogFakeTxnBRAMSize) FakeTxnBRAMSize;
 typedef Bit#(LogFakeTxnBRAMSize) FakeTxnBRAMAddr;
 
 module mkFakeTxnDriver(FakeTxnDriver);
-  FIFO#(TransactionStub) txns <- mkSizedBRAMFIFO(valueOf(FakeTxnBRAMSize));
-  Reg#(Bool) started <- mkReg(False);
-  Reg#(FakeTxnBRAMAddr) outCount <- mkReg(0);
+    Reg#(Timestamp) cycle <- mkReg(0);
+    FIFO#(TransactionStub) txns <- mkSizedBRAMFIFO(valueOf(FakeTxnBRAMSize));
+    Reg#(Bool) started <- mkReg(False);
+    Reg#(FakeTxnBRAMAddr) outCount <- mkReg(0);
 
-  method Action resetState;
-      txns.clear();
-      started <= False;
-      outCount <= 0;
-  endmethod
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule tick;
+        cycle <= cycle+1;
+    endrule
 
-  interface Put fromHost;
-      method Action put(InputTransaction txn);
-          txns.enq(toTxnStub(txn));
-      endmethod
-  endinterface
+    method Action resetState;
+        txns.clear();
+        started <= False;
+        outCount <= 0;
+        $fdisplay(stderr, "[%8d] FakeTxnDriver: resetState", cycle);
+    endmethod
 
-  method Action setStreamOpen(Bool ok);
-      started <= ok;
-  endmethod
+    interface Put fromHost;
+        method Action put(InputTransaction txn);
+            txns.enq(toTxnStub(txn));
+            $fdisplay(stderr, "[%8d] FakeTxnDriver: enqueued ", cycle, fshow(toTxnStub(txn)));
+        endmethod
+    endinterface
 
-  interface TxnDriver txnDriver;
-      interface Get transactions;
-          method ActionValue#(InputTransaction) get if (started);
-              let stub <- toGet(txns).get;
-              let txn = toRealTxn(stub, extend(outCount));
-              outCount <= outCount+1;
-              return txn;
-          endmethod
-      endinterface
-  endinterface
+    method Action setStreamOpen(Bool ok);
+        started <= ok;
+        $fdisplay(stderr, "[%8d] FakeTxnDriver: setStreamOpen(%b)", cycle, ok);
+    endmethod
+
+    interface TxnDriver txnDriver;
+        interface Get transactions;
+            method ActionValue#(InputTransaction) get if (started);
+                let stub <- toGet(txns).get;
+                let txn = toRealTxn(stub, extend(outCount));
+                outCount <= outCount+1;
+                $fdisplay(stderr, "[%8d] FakeTxnDriver: Txn returned ", cycle, txn);
+                return txn;
+            endmethod
+        endinterface
+    endinterface
 endmodule
