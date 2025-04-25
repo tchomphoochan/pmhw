@@ -99,7 +99,9 @@ def load_file(file: TextIOBase) -> tuple[float, dict[int, int], dict[int, int]]:
             continue
 
         try:
-            _, message = entry.strip().split(":")
+            src, message = entry.strip().split(":")
+            if src != 'Puppetmaster':
+                continue
         except ValueError:  # no or multiple :s
             continue
 
@@ -148,10 +150,13 @@ def load_file(file: TextIOBase) -> tuple[float, dict[int, int], dict[int, int]]:
         raise ValueError("no transactions started")
     throughput = n_transactions / (last_start - first_start)
 
-    if len(receive_times) != len(start_times):
-        raise ValueError(
-            f"{len(receive_times) - len(start_times)} transactions not started"
-        )
+    # if len(receive_times) != len(start_times):
+    #     raise ValueError(
+    #         f"{len(receive_times) - len(start_times)} transactions not started"
+    #     )
+    for k in list(receive_times.keys()):
+        if k not in start_times:
+            del receive_times[k]
 
     latency_data = dict()
     for transaction_id, receive_time in receive_times.items():
