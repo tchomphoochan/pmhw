@@ -99,6 +99,12 @@ module mkHwTop#(
         method Action setTxnDriver(Bool useSimulated);
             txnDriverMux.select(useSimulated ? 1 : 0);
         endmethod
+        method Action startFakeTxnDriver();
+            fakeTxnDriver.setStreamOpen(True);
+        endmethod
+        method Action stopFakeTxnDriver();
+            fakeTxnDriver.resetState;
+        endmethod
         method Action setSimulatedPuppets(Bool useSimulated, ClockPeriod clockPeriod);
             fakeExecutor.setClockPeriod(clockPeriod);
             executorMux.select(useSimulated ? 1 : 0);

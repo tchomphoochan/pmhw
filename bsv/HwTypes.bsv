@@ -51,6 +51,14 @@ interface HostSetupRequest;
     */
     method Action setTxnDriver(Bool useSimulated);
     /*
+    Self-explanatory
+    */
+    method Action startFakeTxnDriver();
+    /*
+    Self-explanatory
+    */
+    method Action stopFakeTxnDriver();
+    /*
     Set whether to use simulated puppets. If so, simulated puppets have a certain simulated clock period.
     Sadly Connectal doesn't support Maybe types, so Bool and ClockPeriod are given separately here.
     */
