@@ -43,11 +43,12 @@ module mkHwTop#(
 
     // Input side
     RealTxnDriver realTxnDriver <- mkRealTxnDriver;
-    // TODO: add FakeTxnDriver
-    TxnDriver allTxnDrivers[1] = {
-        realTxnDriver.txnDriver
+    FakeTxnDriver fakeTxnDriver <- mkFakeTxnDriver;
+    TxnDriver allTxnDrivers[2] = {
+        realTxnDriver.txnDriver,
+        fakeTxnDriver.txnDriver
     };
-    TxnDriverMux#(1) txnDriverMux <- mkTxnDriverMux(arrayToVector(allTxnDrivers));
+    TxnDriverMux#(2) txnDriverMux <- mkTxnDriverMux(arrayToVector(allTxnDrivers));
 
     // Processing component
     // Create the actual Puppetmaster instance.
@@ -95,6 +96,9 @@ module mkHwTop#(
     // - Configure the fake transaction driver
     // - Configure the fake executor
     interface HostSetupRequest hostSetupRequest;
+        method Action setTxnDriver(Bool useSimulated);
+            txnDriverMux.select(useSimulated ? 1 : 0);
+        endmethod
         method Action setSimulatedPuppets(Bool useSimulated, ClockPeriod clockPeriod);
             fakeExecutor.setClockPeriod(clockPeriod);
             executorMux.select(useSimulated ? 1 : 0);
@@ -145,14 +149,19 @@ module mkHwTop#(
                 writtenObj7,
                 writtenObj8
             };
-            realTxnDriver.fromHost.put(InputTransaction {
+            let txn = InputTransaction {
                 tid: tid,
                 trData: trData,
                 readObjects: arrayToVector(readObjects),
                 writtenObjects: arrayToVector(writtenObjects),
                 readObjectCount: readObjectCount,
                 writtenObjectCount: writtenObjectCount
-            });
+            };
+            if (txnDriverMux.selected == 0) begin
+                realTxnDriver.fromHost.put(txn);
+            end else if (txnDriverMux.selected == 1) begin
+                fakeTxnDriver.fromHost.put(txn);
+            end
 	    endmethod
         method clearState = pm.clearState;
 	endinterface

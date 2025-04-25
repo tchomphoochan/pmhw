@@ -47,8 +47,12 @@ Software can configure whether inputs should be fed from the host or generated o
 */
 interface HostSetupRequest;
     /*
+    Set whether to use a fake transaction streamer.
+    */
+    method Action setTxnDriver(Bool useSimulated);
+    /*
     Set whether to use simulated puppets. If so, simulated puppets have a certain simulated clock period.
-    Sadly Connectal doesn't support Maybe types.
+    Sadly Connectal doesn't support Maybe types, so Bool and ClockPeriod are given separately here.
     */
     method Action setSimulatedPuppets(Bool useSimulated, ClockPeriod clockPeriod);
 endinterface
