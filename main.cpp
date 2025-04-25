@@ -265,6 +265,7 @@ int main(int argc, char** argv) {
             << period;
         print_log(msg.str());
         setup->setSimulatedPuppets(true, period);
+        setup->setTxnDriver(true);
         for (auto&& tr : testInputs) {
             txn->enqueueTransaction(
                 tr.tid, tr.trType, tr.readObjectCount, tr.readObjects[0],
@@ -275,9 +276,12 @@ int main(int argc, char** argv) {
                 tr.writtenObjects[4], tr.writtenObjects[5], tr.writtenObjects[6],
                 tr.writtenObjects[7]);
         }
+        sleep(2);
+        setup->startFakeTxnDriver();
         sem_wait(&sem_all_renamed);
         print_log("Waiting for termination...");
         txn->clearState();
         sem_wait(&sem_all_freed);
+        setup->stopFakeTxnDriver();
     }
 }
