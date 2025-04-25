@@ -121,6 +121,10 @@ void load_default_test(std::vector<InputTransaction>& testInputs) {
                 : round == 2 ? (objSetSize * (i % 2) * 2 + j * 2 + 1)
                              : (objSetSize * 2 + j * 2 + 1);
         }
+        for (std::size_t j = 0; j < objSetSize; j = j + 1) {
+            testInputs[i].readObjects[j] <<= 6;
+            testInputs[i].writtenObjects[j] <<= 6;
+	}
     }
 }
 
