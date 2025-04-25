@@ -148,7 +148,7 @@ module mkFakeTxnDriver(FakeTxnDriver);
                 let stub <- toGet(txns).get;
                 let txn = toRealTxn(stub, extend(outCount));
                 outCount <= outCount+1;
-                $fdisplay(stderr, "[%8d] FakeTxnDriver: Txn returned ", cycle, txn);
+                $fdisplay(stderr, "[%8d] FakeTxnDriver: Txn returned ", cycle, fshow(txn));
                 return txn;
             endmethod
         endinterface
