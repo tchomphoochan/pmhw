@@ -97,8 +97,8 @@ module mkHwTop#(
     // - Configure the fake transaction driver
     // - Configure the fake executor
     interface HostSetupRequest hostSetupRequest;
-        method PmConfigValues getConfig;
-            return PmConfigValues {
+        method Action fetchConfig;
+            debugInd.getPmConfig(PmConfigValues {
                 logNumberRenamerThreads: fromInteger(valueOf(LogNumberRenamerThreads)),
                 logNumberShards: fromInteger(valueOf(LogNumberShards)),
                 logSizeShard: fromInteger(valueOf(LogSizeShard)),
@@ -108,7 +108,7 @@ module mkHwTop#(
                 logNumberPuppets: fromInteger(valueOf(LogNumberPuppets)),
                 numberAddressOffsetBits: fromInteger(valueOf(NumberAddressOffsetBits)),
                 logSizeRenamerBuffer: fromInteger(valueOf(LogSizeRenamerBuffer))
-            };
+            });
         endmethod
         method Action setTxnDriver(Bool useSimulated);
             txnDriverMux.select(useSimulated ? 1 : 0);

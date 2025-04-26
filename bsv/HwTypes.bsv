@@ -35,6 +35,7 @@ typedef struct {
     Timestamp endTime;
 } DebugMessage deriving(Bits, Eq, FShow);
 interface DebugIndication;
+    method Action getPmConfig(PmConfigValues m);
     method Action transactionRenamed(DebugMessage m);
     method Action transactionFreed(DebugMessage m);
     method Action transactionFailed(DebugMessage m);
@@ -64,7 +65,7 @@ interface HostSetupRequest;
     /*
     Get current configuration values.
     */
-    method PmConfigValues getConfig;
+    method Action fetchConfig;
     /*
     Set whether to use a fake transaction streamer.
     */
