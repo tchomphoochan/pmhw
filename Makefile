@@ -49,7 +49,7 @@ CPPFILES += $(filter-out ./DBx1000/./main.cpp, $(DB_CPPS))
 endif
 
 CONNECTALFLAGS += --mainclockperiod=20
-CONNECTALFLAGS += --cxxflags="-std=c++17 -DNOGRAPHITE=1"
+CONNECTALFLAGS += --cxxflags="-g -std=c++17 -DNOGRAPHITE=1"
 CONNECTALFLAGS += --bscflags="+RTS -K1G -H6G -RTS"
 ifneq ($(strip $(DB)),)
 CONNECTALFLAGS += $(foreach dir, $(DB_SRC_DIRS), -I./DBx1000/$(dir))
