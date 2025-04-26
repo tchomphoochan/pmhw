@@ -107,7 +107,10 @@ module mkHwTop#(
                 logNumberSchedulingRounds: fromInteger(valueOf(LogNumberSchedulingRounds)),
                 logNumberPuppets: fromInteger(valueOf(LogNumberPuppets)),
                 numberAddressOffsetBits: fromInteger(valueOf(NumberAddressOffsetBits)),
-                logSizeRenamerBuffer: fromInteger(valueOf(LogSizeRenamerBuffer))
+                logSizeRenamerBuffer: fromInteger(valueOf(LogSizeRenamerBuffer)),
+                useSimulatedTxnDriver: txnDriverMux.selected == 1,
+                useSimulatedPuppets: executorMux.selected == 1,
+                simulatedPuppetsClockPeriod: fakeExecutor.getClockPeriod
             });
         endmethod
         method Action setTxnDriver(Bool useSimulated);

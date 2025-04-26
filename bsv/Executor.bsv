@@ -25,12 +25,15 @@ endinterface
 Output MUX
 */
 interface ExecutorMux#(numeric type n);
+    method Bit#(TLog#(n)) selected;
     method Action select(Bit#(TLog#(n)) idx);
     interface Executor executor;
 endinterface
 
 module mkExecutorMux(Vector#(n, Executor) execs, ExecutorMux#(n) ifc);
     Reg#(Bit#(TLog#(n))) index <- mkRegU;
+
+    method Bit#(TLog#(n)) selected = index;
 
     method Action select(Bit#(TLog#(n)) idx);
         index <= idx;
@@ -67,6 +70,7 @@ endmodule
 Fake executor that just busy-waits.
 */
 interface FakeExecutor;
+    method ClockPeriod getClockPeriod;
     method Action setClockPeriod(ClockPeriod period);
     interface Executor executor;
 endinterface
@@ -106,6 +110,10 @@ module mkFakeExecutor(FakeExecutor);
     ////////////////////////////////////////////////////////////////////////////////
     /// Interface connections and methods.
     ////////////////////////////////////////////////////////////////////////////////
+    method ClockPeriod getClockPeriod;
+        return period;
+    endmethod
+
     method Action setClockPeriod(ClockPeriod p);
         period <= p;
     endmethod

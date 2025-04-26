@@ -54,6 +54,9 @@ typedef struct {
     Bit#(32) logNumberPuppets;
     Bit#(32) numberAddressOffsetBits;
     Bit#(32) logSizeRenamerBuffer;
+    Bool useSimulatedTxnDriver;
+    Bool useSimulatedPuppets;
+    ClockPeriod simulatedPuppetsClockPeriod;
 } PmConfigValues;
 
 /*
