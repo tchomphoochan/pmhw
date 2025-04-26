@@ -65,6 +65,9 @@ private:
     }
 
 public:
+    void getPmConfig(PmConfigValues m) {
+    }
+
     void transactionRenamed(DebugMessage m) {
         log_message(m.tid, "renamed");
         if (++numRenamed == numTansactions) {

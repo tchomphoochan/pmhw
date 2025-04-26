@@ -57,7 +57,7 @@ typedef struct {
     Bool useSimulatedTxnDriver;
     Bool useSimulatedPuppets;
     ClockPeriod simulatedPuppetsClockPeriod;
-} PmConfigValues;
+} PmConfigValues deriving (Bits, Eq, FShow);
 
 /*
 Software-to-hardware interface for configuring the overall Puppetmaster testing setup.
