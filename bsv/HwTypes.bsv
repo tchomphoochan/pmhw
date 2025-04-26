@@ -41,11 +41,30 @@ interface DebugIndication;
 endinterface
 
 /*
+Struct to store all configuration values in PmConfig
+*/
+typedef struct {
+    Bit#(32) logNumberRenamerThreads;
+    Bit#(32) logNumberShards;
+    Bit#(32) logSizeShard;
+    Bit#(32) logNumberHashes;
+    Bit#(32) logNumberComparators;
+    Bit#(32) logNumberSchedulingRounds;
+    Bit#(32) logNumberPuppets;
+    Bit#(32) numberAddressOffsetBits;
+    Bit#(32) logSizeRenamerBuffer;
+} PmConfigValues;
+
+/*
 Software-to-hardware interface for configuring the overall Puppetmaster testing setup.
 For example, software can configure whether to use real puppets on the host or use simulated puppets in FPGA.
 Software can configure whether inputs should be fed from the host or generated on the fly.
 */
 interface HostSetupRequest;
+    /*
+    Get current configuration values.
+    */
+    method PmConfigValues getConfig;
     /*
     Set whether to use a fake transaction streamer.
     */
