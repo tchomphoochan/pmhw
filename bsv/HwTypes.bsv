@@ -74,14 +74,6 @@ interface HostSetupRequest;
     */
     method Action setTxnDriver(Bool useSimulated);
     /*
-    Self-explanatory
-    */
-    method Action startFakeTxnDriver();
-    /*
-    Self-explanatory
-    */
-    method Action stopFakeTxnDriver();
-    /*
     Set whether to use simulated puppets. If so, simulated puppets have a certain simulated clock period.
     Sadly Connectal doesn't support Maybe types, so Bool and ClockPeriod are given separately here.
     */
@@ -92,6 +84,9 @@ endinterface
 Software-to-hardware interface for submitting transactions through the real transaction driver.
 */
 interface HostTxnRequest;
+    /*
+    Add transaction to Puppetmaster.
+    */
     method Action enqueueTransaction(
         TransactionId tid,
         TransactionData trData,
@@ -114,6 +109,12 @@ interface HostTxnRequest;
         ObjectAddress writtenObj7,
         ObjectAddress writtenObj8
     );
+
+    /*
+    For fake transactions, a trigger is needed to send transactions to Puppetmaster.
+    */
+    method Action trigger();
+
     method Action clearState();
 endinterface
 

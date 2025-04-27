@@ -116,12 +116,6 @@ module mkHwTop#(
         method Action setTxnDriver(Bool useSimulated);
             txnDriverMux.select(useSimulated ? 1 : 0);
         endmethod
-        method Action startFakeTxnDriver();
-            fakeTxnDriver.setStreamOpen(True);
-        endmethod
-        method Action stopFakeTxnDriver();
-            fakeTxnDriver.resetState;
-        endmethod
         method Action setSimulatedPuppets(Bool useSimulated, ClockPeriod clockPeriod);
             fakeExecutor.setClockPeriod(clockPeriod);
             executorMux.select(useSimulated ? 1 : 0);
@@ -186,7 +180,10 @@ module mkHwTop#(
                 fakeTxnDriver.fromHost.put(txn);
             end
 	    endmethod
-        method clearState = pm.clearState;
+      method Action trigger();
+          fakeTxnDriver.setStreamOpen(True);
+      endmethod
+      method clearState = pm.clearState;
 	endinterface
 
     // Real executor controller gets updates from host

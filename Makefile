@@ -40,9 +40,9 @@ H2S_INTERFACES = HwTop:DebugIndication \
 BSVFILES += bsv/PmConfig.bsv bsv/HwTypes.bsv
 BSVPATH += $(CONNECTALDIR)/bsv
 ifeq ($(strip $(DB)),)
-CPPFILES += main.cpp pmhw.cpp
+CPPFILES += main.cpp
 else
-CPPFILES += db.cpp pmhw.cpp
+CPPFILES += db.cpp
 DB_SRC_DIRS = ./ ./benchmarks/ ./concurrency_control/ ./storage/ ./system/
 DB_CPPS = $(foreach dir, $(DB_SRC_DIRS), $(wildcard ./DBx1000/$(dir)*.cpp))
 CPPFILES += $(filter-out ./DBx1000/./main.cpp, $(DB_CPPS))
@@ -65,4 +65,5 @@ CONNECTALFLAGS += --nonstrict
 CONNECTALFLAGS += --verilatorflags="--no-timing"
 
 
+CONNECTALFLAGS += -D DEBUG
 include $(CONNECTALDIR)/Makefile.connectal
