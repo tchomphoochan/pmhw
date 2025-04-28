@@ -60,6 +60,9 @@ endif
 ifneq ($(strip $(DEBUG)),)
 CONNECTALFLAGS += -D DEBUG
 endif
+ifneq ($(strip $(PRINT_TIMESTAMP)),)
+CONNECTALFLAGS += -D PRINT_TIMESTAMP
+endif
 CONNECTALFLAGS += --nonstrict
 
 CONNECTALFLAGS += --verilatorflags="--no-timing"

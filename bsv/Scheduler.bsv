@@ -175,7 +175,9 @@ module mkScheduler(Scheduler);
                 maybeTrSets matches tagged Valid .trSets
                 &&& round == fromInteger(maxRounds));
             let duration  = cycle-reqStartCycle;
+            `ifdef PRINT_TIMESTAMPS
             $display("mod=scheduler,task=schedule,latency=%0d", duration);
+            `endif
             maybeTrSets <= tagged Invalid;
             return trSets[0].indices;
         endmethod

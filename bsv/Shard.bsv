@@ -224,7 +224,9 @@ module mkShard(Shard);
         bram.portA.request.put(makeWriteRequest(getKey(req.name), newEntry));
         $fdisplay(stderr, "[%8d] Shard: done deleting O'#%h", cycle, req.name);
         let duration = cycle - reqStartCycle;
+        `ifdef PRINT_TIMESTAMPS
         $display("mod=shard;task=delete;oname=%0d;oaddr=0x%016x;latency=%0d", req.name, entry.objectId, duration);
+        `endif
     endrule
 
     // Write zeros into every line of the renaming table (BRAM).
@@ -261,8 +263,10 @@ module mkShard(Shard);
             isDone <= False;
             let name = keyToName(req, lastKey);
             let duration = cycle - reqStartCycle;
+            `ifdef PRINT_TIMESTAMPS
             $display("mod=shard;task=rename;oaddr=0x%016x;latency=%0d;retries=%0d;success=%0d;oname=%0d",
                 req.address, duration, tries, isSuccess ? 1 : 0, name);
+            `endif
             $fdisplay(stderr, "[%8d] Shard: finished renaming O#%h", cycle, req.address);
             if (isSuccess) begin
                 return ShardRenameResponse { request: req, name: tagged Valid name };
