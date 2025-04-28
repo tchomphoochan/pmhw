@@ -283,12 +283,10 @@ int main(int argc, char** argv) {
                 tr.writtenObjects[4], tr.writtenObjects[5], tr.writtenObjects[6],
                 tr.writtenObjects[7]);
         }
-        sleep(2);
-        setup->startFakeTxnDriver();
+        txn->trigger();
         sem_wait(&sem_all_renamed);
         print_log("Waiting for termination...");
         txn->clearState();
         sem_wait(&sem_all_freed);
-        setup->stopFakeTxnDriver();
     }
 }
